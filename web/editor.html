@@ -273,6 +273,184 @@
                 image-rendering: pixelated; border-radius: 6px; cursor: zoom-in; }
   #scr-wrap:fullscreen { background: black; }
   #scr-wrap:fullscreen #scr-screen { width: min(100vw, 100vh); border-radius: 0; cursor: zoom-out; }
+  /* (2.7) the unit's own screens (docs/img): a page a screen. Status line (transport, BPM, the page), four cards in SURF
+     on the night (label, big value, its unit, the gauge under it in the track's colour; the hot one inverted), the
+     page's graph on SURF, the footer (track number in its colour, engine, sound, page n/m). Barlow Condensed, capitals,
+     square corners */
+  body { font-family: "Barlow Condensed", -apple-system, sans-serif; font-weight: 500; font-size: 15px; letter-spacing: .02em; }
+  main { max-width: 1320px; }
+  button, select, input[type=text], input[type=number], input[type=search], .group, .strip, .tabs button,
+  .seg button, button.tog, .lists button, .pool button { border-radius: 0; }
+  button { font: 700 15px "Barlow Condensed", sans-serif; letter-spacing: .03em; text-transform: uppercase; }
+  select { font: 700 15px "Barlow Condensed", sans-serif; text-transform: uppercase; }
+  label, th, h3, #status, #version, #live, #tstate, #mock, .hint, #ctlhelp { text-transform: uppercase; }
+  h1 { font-size: 22px; margin: 0; display: inline-block; }
+  h1 + p { display: inline-block; margin: 0 0 0 12px; }
+  .top { border-bottom: 1px solid var(--line); padding: 6px 0 0; }
+  .top .bar { min-height: 34px; margin: 0; }
+  #tstate { color: var(--fg); font-weight: 700; }
+  #status { color: var(--dim); font-size: 13px; }
+  .tabs { border: 0; gap: 4px; margin: 4px 0 8px; }
+  .tabs button { height: 34px; min-width: 84px; padding: 0 10px; background: var(--tile); }
+  .trackbar { border: 0; padding: 0 0 10px; }
+  .trackbar > .dim { display: none; }
+  #trackbtns { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px; flex: 1; }
+  #trackbtns button { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 10px 0 0; margin: 0; background: var(--tile);
+    text-align: left; min-width: 0; overflow: hidden; }
+  #trackbtns button b { flex: none; width: 40px; text-align: center; font: 700 30px "Barlow Condensed", sans-serif; }
+  #trackbtns button span { display: block; min-width: 0; color: var(--fg); line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #trackbtns button small { display: block; color: var(--dim); font-weight: 500; }
+  #trackbtns button[aria-pressed="true"] span, #trackbtns button[aria-pressed="true"] small { color: var(--on-trk); }
+  .browser { background: var(--tile); padding: 10px 12px; margin-bottom: 10px; }
+  .browser select[size] { background: var(--bg); border: 0; }
+  /* the screens */
+  .groups { columns: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; }
+  .group { background: var(--bg); border-radius: 0; padding: 0; margin: 0; }
+  .scr { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); padding: 4px 6px 2px; }
+  .scr-top, .scr-foot { display: flex; align-items: baseline; gap: 10px; height: 28px; line-height: 28px; text-transform: uppercase; white-space: nowrap; }
+  .scr-top { font-size: 17px; color: var(--mid, var(--dim)); }
+  .scr-top .st { color: var(--fg); font-weight: 700; font-size: 19px; white-space: pre; }
+  .scr-foot { font-size: 17px; }
+  .scr-foot .fn { font: 700 30px "Barlow Condensed", sans-serif; color: var(--trk); }
+  .scr-foot .fs, .scr-foot > span:last-child { color: var(--fg); }
+  .grow { flex: 1; }
+  .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .card { position: relative; display: grid; grid-template-areas: "lab lab" "val unit"; grid-template-columns: 1fr auto;
+    align-content: start; min-height: 74px; padding: 6px 8px 12px; background: var(--tile); cursor: ew-resize; user-select: none;
+    touch-action: none; }
+  .card > span:first-child { grid-area: lab; color: var(--fg); opacity: .85; font: 500 16px/1.1 "Barlow Condensed", sans-serif; letter-spacing: .02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card > .v { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: baseline; justify-content: space-between; gap: 4px;
+    font: 700 34px/1.05 "Barlow Condensed", sans-serif; white-space: nowrap; overflow: hidden; }
+  .card > .v small { font: 500 17px "Barlow Condensed", sans-serif; color: var(--dim); }
+  .card .gauge { position: absolute; left: 0; bottom: 0; height: 5px; width: var(--p, 0%); background: var(--trk); }
+  .card > input[type=range] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .card.pick { cursor: pointer; }
+  .card.pick > .v { font-size: 28px; }
+  .card.pick > select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; appearance: auto; }
+  .card.hot { background: var(--fg); }
+  .card.hot > span:first-child, .card.hot > .v { color: var(--bg); opacity: 1; }
+  .card.hot > .v small { color: var(--bg); opacity: .7; }
+  .card:focus-within { outline: 1px solid var(--fg); outline-offset: 1px; }
+  .card.pushed > .v { color: var(--trk); }
+  .scr-graph { background: var(--tile); height: 150px; }
+  .scr-graph svg { display: block; width: 100%; height: 100%; }
+  .graph .line { fill: none; stroke: var(--trk); stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .graph .fill { fill: color-mix(in srgb, var(--trk) 35%, transparent); stroke: none; }
+  .graph .axis { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .graph .dot { fill: var(--trk); }
+  .graph .bar { fill: color-mix(in srgb, var(--trk) 85%, black); }
+  .graph .dry { fill: var(--fg); }
+  .graph .lab { fill: var(--fg); font: 500 9px "Barlow Condensed", sans-serif; }
+  .graph .lab.mid { text-anchor: middle; fill: var(--dim); font-size: 8px; }
+  .row.modrow { background: var(--tile); padding: 4px 8px; font-size: 16px; }
+  .row.modrow > span:first-child { font-weight: 700; }
+  /* the other tabs: tiles on the night */
+  .strip { background: var(--tile); }
+  .strip .num { font-size: 32px; }
+  .grid button { background: var(--tile); border: 0; border-bottom: 2px solid var(--bg); height: 58px; font: 500 13px/1.15 "Barlow Condensed", sans-serif; }
+  .grid button .n { font-size: 14px; }
+  .grid button.beat { box-shadow: inset 2px 0 var(--dim); }
+  .list th { text-transform: uppercase; }
+  .list tr.sel td { background: var(--fg); color: var(--bg); }
+  /* the mixer as LANE MIX: thick bars in the track's colour, the selected strip's number inverted */
+  .mixer { gap: 4px; max-width: none; }
+  .strip { padding: 8px 6px; gap: 4px; }
+  .strip .snd { font-size: 14px; text-transform: uppercase; }
+  .strip input[type=range] { -webkit-appearance: none; appearance: none; background: none; cursor: pointer; accent-color: var(--s); }
+  .strip input.fader { width: 34px; height: 170px; }
+  .strip input.fader::-webkit-slider-runnable-track { width: 12px; background: linear-gradient(to top, var(--s) var(--p, 0%), var(--raise) var(--p, 0%)); }
+  .strip input.fader::-webkit-slider-thumb { -webkit-appearance: none; width: 34px; height: 10px; background: var(--fg); border: 0; }
+  .strip input.pan { height: 16px; }
+  .strip input.pan::-webkit-slider-runnable-track { height: 5px; background: linear-gradient(to right, var(--s) var(--p, 0%), var(--raise) var(--p, 0%)); }
+  .strip input.pan::-webkit-slider-thumb { -webkit-appearance: none; width: 6px; height: 14px; margin-top: -5px; background: var(--fg); border: 0; }
+  .strip input[type=range]::-moz-range-track { background: var(--raise); }
+  .strip input[type=range]::-moz-range-progress { background: var(--s); }
+  .strip input[type=range]::-moz-range-thumb { background: var(--fg); border: 0; border-radius: 0; }
+  .strip .v { font: 700 18px "Barlow Condensed", sans-serif; }
+  .strip .v.dim { font-size: 14px; font-weight: 500; }
+  /* the device's MENU as on its screen: a row a setting, its name left, its value right, the one in hand inverted */
+  #device-menu-controls { max-width: 520px; display: flex; flex-direction: column; gap: 2px; }
+  #device-menu-controls h3 { margin: 10px 0 2px; font: 700 15px "Barlow Condensed", sans-serif; color: var(--dim); }
+  #device-menu-controls label.bar { display: flex; justify-content: space-between; align-items: center; height: 40px; margin: 0;
+    padding: 0 6px 0 14px; background: var(--tile); font-size: 19px; }
+  #device-menu-controls label.bar select, #device-menu-controls label.bar input { background: none; border: 0; color: inherit;
+    font: 700 21px "Barlow Condensed", sans-serif; text-align: right; text-align-last: right; cursor: pointer; }
+  #device-menu-controls label.bar select option { background: var(--bg); color: var(--fg); }
+  #device-menu-controls label.bar:hover, #device-menu-controls label.bar:focus-within { background: var(--fg); color: var(--bg); }
+  /* the 6-OP FM tab as FM6 LAB: operator tabs over the chart, carriers thick blue, modulators thin in their colours */
+  .fm6g { position: relative; height: 190px; display: flex; flex-direction: column; padding: 6px 6px 4px; }
+  .fm6g svg { flex: 1; min-height: 0; }
+  .fm6tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 4px; }
+  .fm6tabs button { height: 26px; padding: 0; background: none; color: var(--dim); border: 1px solid var(--line); font-size: 14px;
+    position: relative; white-space: nowrap; overflow: hidden; }
+  .fm6tabs button::after { content: ""; position: absolute; left: 4px; right: 4px; bottom: -1px; height: 3px; background: var(--u); }
+  .fm6tabs button.on { color: var(--fg); border: 2px solid var(--fg); }
+  .fm6cap { display: flex; justify-content: space-between; color: var(--fg); font-size: 15px; text-transform: uppercase; padding: 2px 4px 0; }
+  .graph .car { fill: none; stroke: var(--fmsine); stroke-width: 4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .graph .mod { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .graph .ring { fill: var(--tile); stroke: var(--fg); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .graph .dash { stroke-dasharray: 2 3; }
+  .graph .route { fill: none; stroke: var(--trk); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .graph .box { fill: var(--raise); }
+  .graph .box.car { fill: var(--trk); }
+  .graph .box.pick { fill: var(--raise); stroke: var(--fg); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .graph .boxn { fill: var(--trk); font: 700 12px "Barlow Condensed", sans-serif; text-anchor: middle; }
+  .graph .boxn.ink { fill: var(--bg); }
+  .graph .boxn.off { fill: var(--dim); }
+  .graph .dimline { stroke: var(--dim); }
+  #fm6ops { margin-top: 12px; }
+  /* the sequencer as SEQ's pages: the roll, the lanes, the tiles */
+  .seqg { height: 200px; padding: 6px; cursor: pointer; }
+  .graph .lane { fill: var(--tile); }
+  .graph .lane.c { fill: color-mix(in srgb, var(--fg) 8%, var(--tile)); }
+  .graph .kb { fill: var(--dim); }
+  .graph .kb.blk { fill: var(--raise); }
+  .graph .cell { fill: color-mix(in srgb, var(--fg) 7%, var(--tile)); }
+  .graph .cell.blk { fill: color-mix(in srgb, var(--bg) 55%, var(--tile)); }
+  .graph .lab.big { font-size: 9px; fill: var(--dim); }
+  .graph .lab.big:not(.dimt) { fill: var(--fg); }
+  .graph .dotc.beat { fill: var(--fg); }
+  .graph .note { fill: var(--trk); }
+  .graph .note.on { fill: var(--fg); }
+  .graph .frame { fill: none; stroke: var(--fg); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .graph .hit { fill: var(--trk); }
+  .graph .hit.acc { fill: var(--fg); }
+  .graph .dotc { fill: var(--dim); }
+  .tiles { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px 6px; height: 100%; }
+  .tiles .tile { display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 0; background: none; min-width: 0; }
+  .tiles .tile .tv { width: 100%; flex: 1; display: flex; align-items: flex-end; justify-content: center; background: var(--raise);
+    font: 700 16px "Barlow Condensed", sans-serif; color: var(--fg); padding-bottom: 2px; }
+  .tiles .tile.on .tv { background: var(--trk); color: var(--on-trk); }
+  .tiles .tile.acc .tv { box-shadow: inset 0 3px var(--fg); }
+  .tiles .tile.tie .tv { background: color-mix(in srgb, var(--trk) 45%, var(--tile)); }
+  .tiles .tile.sel .tv { background: var(--fg); color: var(--bg); }
+  .tiles .tile .tn { font: 500 15px "Barlow Condensed", sans-serif; color: var(--fg); padding-top: 2px; }
+  .tiles .tile.sel .tn { color: var(--trk); font-weight: 700; }
+  .steplist { margin-top: 12px; }
+  /* AUTOMATION as its list on the unit: a record a row, LOCK / AUTO, the step, the parameter, its value right */
+  #motion-panel > h2 { font-size: 17px; }
+  #motion-rows { width: 100%; max-width: 640px; border-collapse: separate; border-spacing: 0 2px; font-size: 18px; text-transform: uppercase; }
+  #motion-rows td { background: var(--tile); padding: 4px 10px; }
+  #motion-rows tr:hover td, #motion-rows tr:focus-within td { background: var(--fg); color: var(--bg); }
+  #motion-rows input { background: none; border: 0; color: inherit; font: 700 18px "Barlow Condensed", sans-serif; text-align: right; width: 70px; }
+  #noteshelp { display: none; }
+  .steplist summary { cursor: pointer; font: 700 15px "Barlow Condensed", sans-serif; text-transform: uppercase; padding: 6px 0; }
+  #stepgrid { margin: 6px 0 12px; }
+  /* steps as the unit's tiles: the step's number under, an on step in the track's colour */
+  .grid { gap: 4px; }
+  .grid button { height: 64px; border: 0; }
+  /* the unit's last line, for the whole page */
+  .footbar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 12px; min-height: 40px; margin-top: 16px;
+    background: var(--bg); border-top: 1px solid var(--line); text-transform: uppercase; font-size: 17px; }
+  .footbar b { font: 700 30px "Barlow Condensed", sans-serif; color: var(--trk); }
+  .footbar .grow { flex: 1; }
+  @media (max-width: 600px) {
+    .tabs button { min-width: 0; }
+    .card > .v { font-size: 26px; }
+    .scr-top { font-size: 14px; }
+  }
+  :root { --fmsine: #3d63ff; }   /* (FM6 LAB) a pure sine's blue, the ramp's cool end */
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -340,15 +518,9 @@
       <p class="bar"><label><span data-t="fm6Factories"></span> <select id="fm6slot"></select></label>
         <button id="fm6load" data-t="load"></button></p>
       <p class="dim" id="fm6keep" data-t="fm6Keep"></p>
-    </div>
-    <div class="group">
-      <h2 data-t="fm6Voice" data-ic="ui_knob"></h2>
       <div id="fm6voice"></div>
     </div>
-    <div class="group">
-      <h2 data-t="fm6Ops" data-ic="function_env_adsr_exp"></h2>
-      <div id="fm6ops"></div>
-    </div>
+    <div class="groups" id="fm6ops"></div>
   </section>
 
   <section class="panel" id="p-sequencer" data-tab="sequencer" data-dev hidden>
@@ -358,8 +530,8 @@
       <p class="bar"><button id="reloadsteps" data-t="reload" data-ic="control_arrow_loop"></button>
         <button id="clearseq" data-t="clearSeq" data-ic="symbol_trash"></button>
         <span class="dim" id="noteshelp"></span></p>
-      <div class="grid" id="stepgrid"></div>
-      <div class="stepcols" id="steptables"></div>
+      <div class="groups" id="stepgrid"></div>
+      <details class="steplist"><summary data-t="stepList"></summary><div class="stepcols" id="steptables"></div></details>
     </div>
     <div id="motion-panel" hidden style="margin-top:16px">
       <h2 data-t="motion"></h2>
@@ -505,6 +677,8 @@
     </div>
   </section>
 
+  <div class="footbar" id="footbar" hidden><b id="fb-n"></b><span id="fb-eng"></span><span class="dim" id="fb-snd"></span>
+    <span class="grow"></span><span class="dim" id="fb-st"></span></div>
   <footer>Skiff by illuminus5 (<a href="https://github.com/illuminus5/skiff" target="_blank" rel="noopener">github.com/illuminus5/skiff</a>), built on Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments</a>. GPL-3.0.<br>
     <span data-t="foot"></span> M-VAVE and FM-1 are trademarks of their respective owners.<br>
     <a href="FUKIAI-LICENSE.txt" data-t="iconsCredit"></a></footer>
@@ -3576,7 +3750,8 @@ const TEXT = {
     smpFail: "サンプルの書き込みに失敗しました: ", smpErased: "消去しました USR",
     confirmErase: "USR{n} を消去しますか？", confirmUpload: "USR{n} に書き込みますか？ 今の内容は消えます。",
     layout: "（ファームウェアのパラメーター数が想定と違うため、簡易表示にしています）",
-    ctlHelp: "スライダーはクリックしてからホイールか矢印キーで微調整（Shift で 10 ずつ）、ダブルクリックで初期値。",
+    stepList: "ステップ一覧（ノートとヒットを文字で入力）",
+    ctlHelp: "カードはノブのように：左右か上下にドラッグ（Shift で細かく）、選んだカードはホイールか矢印キーで微調整、ダブルクリックで初期値。",
     live: "● リアルタイム", polling: "○ ポーリング（古いファームウェア）",
     library: "ライブラリ", libSearch: "名前・タグで検索", allEngines: "全エンジン", allTags: "全タグ",
     sortModified: "更新順", sortCreated: "作成順", sortName: "名前順", sortEngine: "エンジン順",
@@ -3730,7 +3905,8 @@ const TEXT = {
     smpFail: "Sample upload failed: ", smpErased: "Erased USR",
     confirmErase: "Erase USR{n}?", confirmUpload: "Write to USR{n}? Its current contents will be replaced.",
     layout: "(The firmware has a different parameter count; showing a plain list.)",
-    ctlHelp: "Sliders: click, then fine-tune with the wheel or arrow keys (Shift: steps of 10); double-click resets.",
+    stepList: "Step list (type notes and hits)",
+    ctlHelp: "Cards turn as the knobs: drag across or up (Shift: fine); the hot card takes the wheel and the arrow keys; double-click resets.",
     live: "● Live", polling: "○ Polling (older firmware)",
     library: "Library", libSearch: "Search name or tag", allEngines: "All engines", allTags: "All tags",
     sortModified: "Recently changed", sortCreated: "Recently added", sortName: "Name", sortEngine: "Engine",
@@ -3861,7 +4037,7 @@ function renderPanels() {
 function renderTransport(x) {
   const on = !!dev && !!dev.dump && !!dev.info && !!(dev.info.skiff & 1);
   $("transport").hidden = $("tstate").hidden = !on;
-  if (!on) return;
+  if (!on) { renderFootbar(); return; }
   if (x) dev.transport = x;
   const s = dev.transport;
   if (!s) return;
@@ -3873,6 +4049,7 @@ function renderTransport(x) {
   const armed = Array.from({ length: dev.info.ntrk || 0 }, (_, i) => i).filter((i) => s.rec >> i & 1).map((i) => "T" + (i + 1));
   $("tstate").textContent = [t(s.counting && !s.pending ? "countIn" : playing ? "playing" : "stopped"),
     ...(armed.length ? [`REC ${armed.join(" ")}`] : [])].join(" · ");
+  renderFootbar();
 }
 async function readTransport(d = dev) {
   if (!d || !d.info || !(d.info.skiff & 1)) return;
@@ -4188,8 +4365,8 @@ const stepEdit = new Map(); /* index -> time of the last edit */
 const EXPECT = { pcount: 91, gcount: 27, pe0: 83 };
 /* the same layout without the chord keys (P_COUNT 89, P_E0 81), the FM operator ENVs too (69, 61) or the matrix
    (firmware 1.0: 57, 49) */
-const knownLayout = (info) => info.gcount === EXPECT.gcount &&
-  [[146, 138], [143, 135], [135, 127], [125, 117], [103, 95], [100, 92], [99, 91], [91, 83], [89, 81], [69, 61], [57, 49]].some(([c, e]) => info.pcount === c && info.pe0 === e);
+const knownLayout = (info) => (info.gcount === EXPECT.gcount || (info.gcount === 28 && info.pcount === 148)) &&   /* ((2.5) G_DMODE) */
+  [[148, 140], [146, 138], [143, 135], [135, 127], [125, 117], [103, 95], [100, 92], [99, 91], [91, 83], [89, 81], [69, 61], [57, 49]].some(([c, e]) => info.pcount === c && info.pe0 === e);
 const P = { LEVEL: 0, SLEN: 29 };
 const LAYOUT = (pe0) => [
   { t: "ENV", pages: [["ENV", 0, [1, 2, 3, 4]], ["ENV DEST", 0, pe0 >= 127 ? [5, 6, 7, P_ESYNC] : [5, 6, 7]],   /* ((Skiff W5) P_ED_FX,
@@ -4452,10 +4629,31 @@ function renderTrackbar() {
   if (box.children.length !== ntrk || box.dataset.lang !== lang) {
     box.dataset.lang = lang;
     box.replaceChildren(...Array.from({ length: ntrk }, (_, i) => el("button", { type: "button", "data-i": i,
-      onclick: () => selectTrack(i) }, String(i + 1))));
+      "aria-label": `${t("track")} ${i + 1}`, onclick: () => selectTrack(i) }, el("b", { text: String(i + 1) }), el("span"))));
   }
-  for (const b of box.children) b.setAttribute("aria-pressed", +b.dataset.i === (dev.sel || 0) ? "true" : "false");
+  /* each tile: its number in the track's colour, its engine and sound under it (the mixer's read) */
+  const tracks = dev && dev.mix ? dev.mix.tracks : [];
+  for (const b of box.children) {
+    const i = +b.dataset.i, x = tracks[i];
+    b.setAttribute("aria-pressed", i === (dev.sel || 0) ? "true" : "false");
+    const eng = x ? dev.info.engines[x.engine] || "" : "", snd = x ? (dev.names[x.engine] || [])[x.preset] || "" : "";
+    const sp = b.lastChild;
+    if (sp.dataset.v !== eng + "|" + snd) { sp.dataset.v = eng + "|" + snd; sp.replaceChildren(eng, el("small", { text: snd })); }
+  }
   document.documentElement.style.setProperty("--trk", `var(--t${(dev.sel || 0) + 1})`);   /* (the selected track's colour) */
+  renderFootbar();
+}
+/* (2.7) the screen's last line: the selected track, its engine and sound, the transport */
+function renderFootbar() {
+  const bar = $("footbar");
+  if (!dev || !dev.dump) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const e = dev.dump.engine;
+  $("fb-n").textContent = String((dev.sel || 0) + 1);
+  $("fb-eng").textContent = dev.info.engines[e] || "";
+  $("fb-snd").textContent = (dev.names[e] || [])[dev.dump.preset] || "";
+  $("fb-st").textContent = $("tstate").hidden ? "" : $("tstate").textContent;
+  renderScreens();
 }
 function selectTrack(i) {
   if (!dev || !hasTracks() || i === dev.sel) return;
@@ -4507,47 +4705,164 @@ function modDst(d, txt) {
 
 function buildGroups() {
   ctl.clear();
+  screens.length = 0;
   dev.built = dev.dump.engine;
-  /* Sound: the selected track's parameters; Sequencer: its pattern settings; Settings: globals */
+  /* (2.7) as on the unit: a page a screen (its name on the status line, four cards, its graph, the footer with the
+     track, its sound and the page's number in its group). Sound: the selected track's; Sequencer: its pattern
+     settings; Settings: globals */
   const groups = { groups: [], seqgroups: [], setgroups: [] };
   const { info } = dev;
   if (knownLayout(info)) {
     for (const g of LAYOUT(info.pe0)) {
-      const div = el("div", { class: "group" }, el("h2", { ic: HEAD_IC[g.t], text: g.engine ? `EDIT ${info.engines[dev.dump.engine] || ""}` : g.t }));
       if (g.mod != null) {                          /* MOD: slot number, SRC, DST, AMT in one row */
+        const rows = [];
         for (let k = 0; k < 4; k++) {
           const r = [0, 1, 2].map((j) => paramRow(0, g.mod + 3 * k + j));
           if (r.some((x) => !x)) continue;
           const row = el("div", { class: "row modrow" }, el("span", { text: String(k + 1) }), r[0].children[1], r[1].children[1],
             r[2].children[1], r[2].children[2]);
           for (let j = 0; j < 3; j++) ctl.get(key(0, g.mod + 3 * k + j)).row = row;   /* (the push highlight) */
-          div.append(row);
+          rows.push(row);
         }
-        groups.groups.push(div);
+        groups.groups.push(screen("MOD", "1/1", rows));
         continue;
       }
-      for (const [title, s, ids] of g.pages) {
-        const rows = ids.map((id) => paramRow(s, id)).filter(Boolean);
-        if (!rows.length) continue;
+      const pages = g.pages.map(([title, sc, ids]) => {
+        const cards = ids.map((id) => paramRow(sc, id)).filter(Boolean);
         const tt = g.engine && (dev.titles[dev.dump.engine] || [])[g.pages.findIndex((x) => x[0] === title)];
-        if (g.pages.length > 1) div.append(el("h3", { ic: PAGE_IC[tt || title], text: tt || title }));
-        div.append(...rows);
-      }
-      groups[g.tab || "groups"].push(div);
+        return { name: g.engine && title === "EDIT 1" && !tt ? `EDIT ${info.engines[dev.dump.engine] || ""}` : tt || title, sc, ids, cards };
+      }).filter((x) => x.cards.length);
+      pages.forEach((x, n) => groups[g.tab || "groups"].push(screen(x.name, `${n + 1}/${pages.length}`, x.cards, x)));
     }
   } else {
-    /* unknown firmware layout: everything in id order */
-    const a = el("div", { class: "group" }, el("h2", { ic: HEAD_IC.INSTRUMENT, text: "INSTRUMENT" }), el("p", { class: "dim", text: t("layout") }));
-    const b = el("div", { class: "group" }, el("h2", { ic: HEAD_IC.EDIT, text: "EDIT" }));
-    const c = el("div", { class: "group" }, el("h2", { ic: HEAD_IC.GLOBAL, text: "GLOBAL" }));
-    for (let i = 0; i < info.pcount; i++) { const r = paramRow(0, i); if (r) (i >= info.pe0 ? b : a).append(r); }
-    for (let i = 0; i < info.gcount; i++) { const r = paramRow(1, i); if (r) c.append(r); }
-    groups.groups.push(a, b);
-    groups.setgroups.push(c);
+    /* unknown firmware layout: everything in id order, four to a screen */
+    const chunk = (name, sc, ids, out) => {
+      const cards = ids.map((i) => paramRow(sc, i)).filter(Boolean), n = Math.ceil(cards.length / 4);
+      for (let k = 0; k < n; k++) out.push(screen(name, `${k + 1}/${n}`, cards.slice(4 * k, 4 * k + 4)));
+    };
+    const all = (n) => Array.from({ length: n }, (_, i) => i);
+    chunk("INSTRUMENT", 0, all(info.pe0), groups.groups);
+    chunk(`EDIT ${info.engines[dev.dump.engine] || ""}`, 0, all(info.pcount).slice(info.pe0), groups.groups);
+    chunk("GLOBAL", 1, all(info.gcount), groups.setgroups);
   }
   if (kitShown()) groups.groups.push(kitGroup());     /* ((Skiff W3)) */
   for (const [id, divs] of Object.entries(groups)) $(id).replaceChildren(...divs);
   if (kitShown()) { renderKit(); op(() => readKit()); }
+  renderScreens();
+}
+
+/* (2.7) a screen: the status line (transport, BPM, the page's name), the cards, the page's graph when it has one, the
+   footer (the track, its engine and sound, the page in its group) */
+const screens = [];
+function screen(name, num, cards, page) {
+  const graph = page && GRAPHS[graphOf(page)];
+  const svg = graph ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : null;
+  if (svg) { svg.setAttribute("viewBox", "0 0 240 100"); svg.setAttribute("preserveAspectRatio", "none"); svg.classList.add("graph"); }
+  const div = el("div", { class: "group scr" },
+    el("div", { class: "scr-top" }, el("span", { class: "st" }), el("span", { class: "grow" }), el("span", { text: name })),
+    el("div", { class: "cards" }, ...cards),
+    ...(svg ? [el("div", { class: "scr-graph" }, svg)] : []),
+    el("div", { class: "scr-foot" }, el("b", { class: "fn" }), el("span", { class: "fe" }), el("span", { class: "fs" }),
+      el("span", { class: "grow" }), el("span", { text: num })));
+  if (svg) {
+    const x = { page, svg, draw: graph };
+    screens.push(x);
+    for (const id of page.ids) { const c = ctl.get(key(page.sc, id)); if (c) c.scr = x; }
+  }
+  return div;
+}
+/* a page's value by its label (raw, min, max, shown text) */
+function pageVal(page, label) {
+  for (const id of page.ids) {
+    const c = ctl.get(key(page.sc, id));
+    if (c && c.desc.label === label) {
+      const v = page.sc ? dev.dump.g[id] : dev.dump.p[id];
+      return { v, n: (v - c.desc.min) / Math.max(1, c.desc.max - c.desc.min), txt: fmtValue(c.desc, v)[0] };
+    }
+  }
+  return null;
+}
+const graphOf = (page) => /^ENV( 2)?$/.test(page.name) ? "env" : /^LFO( 2)?$/.test(page.name) ? "lfo" :
+  page.name === "DLY" ? "dly" : page.name === "REVERB" ? "rev" : page.name === "FX" ? "sends" :
+  /^EDIT /.test(page.name) && page.ids.some((id) => ctl.get(key(page.sc, id))?.desc.label === "WAVE") ? "osc" :
+  page.name === "VOICE" ? "glide" : page.name === "CHORUS" ? "lfo" : null;
+const svgPath = (d, fill) => `<path d="${d}" class="${fill ? "fill" : "line"}"/>`;
+function waveY(name, ph) {                         /* a wave's value at phase 0..1, -1..1 */
+  const w = String(name || "").toUpperCase();
+  if (/SQ|PUL|PWM/.test(w)) return ph < .5 ? 1 : -1;
+  if (/TRI/.test(w)) return ph < .5 ? 4 * ph - 1 : 3 - 4 * ph;
+  if (/SAW|RAMP/.test(w)) return /DN|DOWN/.test(w) ? 1 - 2 * ph : 2 * ph - 1;
+  if (/S&H|S\+H|RND|RAND|NOISE/.test(w)) return Math.sin(Math.floor(ph * 4) * 12.9898) % 1;
+  return Math.sin(2 * Math.PI * ph);
+}
+const GRAPHS = {
+  env(page) {
+    const a = pageVal(page, "ATTACK"), d = pageVal(page, "DECAY"), su = pageVal(page, "SUSTAIN"), r = pageVal(page, "RELEASE");
+    if (!a || !d || !su || !r) return "";
+    const ta = 4 + 60 * a.n ** 1.6, td = 4 + 70 * d.n ** 1.6, tr = 4 + 60 * r.n ** 1.6, ys = 92 - 82 * su.n, x1 = 6 + ta, x2 = x1 + td,
+      x3 = 234 - tr;
+    return `<line x1="0" y1="92" x2="240" y2="92" class="axis"/>` + svgPath(`M6 92 L${x1} 10 Q${x1 + 4} ${ys} ${x2} ${ys} L${x3} ${ys} Q${x3 + 4} 92 234 92`) +
+      [[x1, 10], [x2, ys], [x3, ys]].map(([x, y]) => `<rect x="${x - 2.5}" y="${y - 2.5}" width="5" height="5" class="dot"/>`).join("");
+  },
+  lfo(page) {
+    const w = pageVal(page, "WAVE") || pageVal(page, "MODE"), rt = pageVal(page, "RATE"), dp = pageVal(page, "DEPTH");
+    const cyc = 1 + Math.round(6 * (rt ? rt.n : .4)), amp = 38 * (dp ? .3 + .7 * dp.n : 1);
+    let d = "";
+    for (let x = 0; x <= 240; x += 2) d += `${x ? "L" : "M"}${x} ${(50 - amp * waveY(w && w.txt, (x / 240 * cyc) % 1)).toFixed(1)}`;
+    return `<line x1="0" y1="50" x2="240" y2="50" class="axis"/>` + svgPath(d + " L240 50 L0 50 Z", true) + svgPath(d);
+  },
+  osc(page) {
+    const w = pageVal(page, "WAVE");
+    let d = "";
+    for (let x = 0; x <= 240; x += 1) d += `${x ? "L" : "M"}${x} ${(50 - 38 * waveY(w && w.txt, (x / 240 * 2.5) % 1)).toFixed(1)}`;
+    return `<text x="6" y="14" class="lab">${w ? w.txt : ""}</text>` + svgPath(d);
+  },
+  dly(page) {
+    const fb = pageVal(page, "FEEDBACK"), mx = pageVal(page, "MIX");
+    let out = `<rect x="10" y="10" width="14" height="82" class="dry"/>`;
+    for (let k = 1; k < 8; k++) {
+      const h = 82 * (mx ? .2 + .8 * mx.n : .7) * (fb ? fb.n : .5) ** (k - 1);
+      if (h > 1) out += `<rect x="${10 + 30 * k}" y="${92 - h}" width="14" height="${h}" class="bar"/>`;
+    }
+    return out;
+  },
+  rev(page) {
+    const sz = pageVal(page, "SIZE"), dm = pageVal(page, "DAMP"), len = 40 + 190 * (sz ? sz.n : .5);
+    let d = "M10 92 L10 12";
+    for (let x = 0; x <= len; x += 3) d += ` L${10 + x} ${(92 - 80 * Math.exp(-4 * x / len) * (1 - .3 * (dm ? dm.n : 0) * x / len)).toFixed(1)}`;
+    return svgPath(d + ` L${10 + len} 92 Z`, true) + svgPath("M" + d.slice(d.indexOf("L10 12") + 1));
+  },
+  sends(page) {
+    return ["DIST", "CHORUS", "DELAY", "REVERB"].map((l, k) => {
+      const x = pageVal(page, l), h = 76 * (x ? x.n : 0);
+      return `<rect x="${18 + 58 * k}" y="${84 - h}" width="30" height="${h}" class="bar"/><text x="${33 + 58 * k}" y="97" class="lab mid">${l}</text>`;
+    }).join("");
+  },
+  glide(page) {
+    const g = pageVal(page, "GLIDE"), w = 20 + 150 * (g ? g.n : 0);
+    return `<rect x="10" y="70" width="70" height="10" class="dry"/>` + svgPath(`M80 75 L${80 + w} 25 L232 25`) +
+      `<rect x="${80 + w}" y="20" width="${152 - w}" height="10" class="bar"/>`;
+  },
+};
+let scrQueued = false;
+function renderScreens() {
+  if (scrQueued) return;
+  scrQueued = true;
+  requestAnimationFrame(() => {
+    scrQueued = false;
+    if (!dev || !dev.dump) return;
+    for (const x of screens) if (x.svg.isConnected) x.svg.innerHTML = x.draw(x.page);
+    const sel = dev.sel || 0, e = dev.dump.engine;
+    const st = `${$("tstate").hidden || !/PLAY|再生/i.test($("tstate").textContent) ? "■" : "▶"}  ${bpmText()}`;
+    for (const n of document.querySelectorAll(".scr .st")) n.textContent = st;
+    for (const n of document.querySelectorAll(".scr .fn")) n.textContent = String(sel + 1);
+    for (const n of document.querySelectorAll(".scr .fe")) n.textContent = dev.info.engines[e] || "";
+    for (const n of document.querySelectorAll(".scr .fs")) n.textContent = (dev.names[e] || [])[dev.dump.preset] || "";
+  });
+}
+function bpmText() {
+  const i = dev.gdesc.findIndex((d) => d && d.label === "BPM");
+  return i >= 0 ? `${fmtValue(dev.gdesc[i], dev.dump.g[i])[0]} BPM` : "";
 }
 
 /* (Skiff W3) the DRUM-X kit on a DRUM-X track's Sound tab (INFO 4B): one kit for every DRUM-X track, the project's (as
@@ -4647,7 +4962,36 @@ function paramRow(s, id) {
   }
   input.title = d.label;
   const out = el("span", { class: "v" });
-  const row = el("div", { class: "row" }, el("span", { text: d.label }), input, out);
+  const row = el("div", { class: input.tagName === "SELECT" ? "row card pick" : "row card" }, el("span", { text: d.label }), input, out,
+    el("i", { class: "gauge" }));
+  /* (2.7) a card turns as the unit's knob: dragged right or up, the wheel when it is the hot one, double-click resets */
+  row.addEventListener("pointerdown", () => hotCard(row));
+  if (input.type === "range") {
+    row.addEventListener("pointerdown", (e) => {
+      if (e.button) return;
+      e.preventDefault();
+      input.focus({ preventScroll: true });
+      dragging = k;
+      const x0 = e.clientX, y0 = e.clientY, v0 = +input.value, span = d.max - d.min;
+      row.setPointerCapture(e.pointerId);
+      const move = (ev) => {
+        const px = (ev.clientX - x0) - (ev.clientY - y0);
+        const nv = Math.max(d.min, Math.min(d.max, v0 + Math.round(px * Math.max(span, 24) / (ev.shiftKey ? 1600 : 200))));
+        if (nv !== +input.value) { input.value = String(nv); userSet(s, id, nv, false); }
+      };
+      const up = () => { row.removeEventListener("pointermove", move); row.removeEventListener("pointerup", up); row.removeEventListener("pointercancel", up); };
+      row.addEventListener("pointermove", move);
+      row.addEventListener("pointerup", up);
+      row.addEventListener("pointercancel", up);
+    });
+    row.addEventListener("dblclick", () => { input.value = d.def; userSet(s, id, d.def, true); });
+    row.addEventListener("wheel", (e) => {
+      if (document.activeElement !== input) return;
+      e.preventDefault();
+      input.dispatchEvent(new WheelEvent("wheel", { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, shiftKey: e.shiftKey }));
+    }, { passive: false });
+  }
+  input.addEventListener("focus", () => hotCard(row));
   ctl.set(k, { input, out, desc: d, scope: s, id, row });
   showValue(k, s ? dev.dump.g[id] : dev.dump.p[id], true);
   return row;
@@ -4666,8 +5010,17 @@ function showValue(k, v, force) {
   if (eSyncOn(c)) { txt = ESYNC_NAMES[(v & 127) * ESYNC_NAMES.length >> 7]; unit = ""; }   /* ((1.3) ENV SYNC: a note value) */
   c.out.textContent = unit ? `${txt} ${unit}` : txt;
   if (c.input.type === "range") c.input.setAttribute("aria-valuetext", c.out.textContent);   /* ((Skiff W6) read as shown) */
+  if (unit && c.row && c.row.classList.contains("card")) c.out.replaceChildren(txt, el("small", { text: unit }));
   if (force || !touched(k)) c.input.value = String(v);
+  if (c.row) c.row.style.setProperty("--p", `${(v - c.desc.min) * 100 / Math.max(1, c.desc.max - c.desc.min)}%`);
+  if (c.scr) renderScreens();
 }
+/* (2.7) a range drawn as the unit's bar: filled to its value (CSS --p), however it moved */
+function barFill(r) { r.style.setProperty("--p", `${(r.value - r.min) * 100 / Math.max(1, r.max - r.min)}%`); }
+document.addEventListener("input", (e) => { if (e.target.matches?.(".strip input[type=range]")) barFill(e.target); });
+/* the one active thing, as on the unit: the card last touched, drawn inverted */
+let hot = null;
+function hotCard(row) { if (hot && hot !== row) hot.classList.remove("hot"); hot = row; row.classList.add("hot"); }
 /* the user is working on this control: polling and pushes must not move it */
 function touched(k) {
   const c = ctl.get(k), st = sets.get(k);
@@ -5011,24 +5364,206 @@ function updateStepRows() {
   }
   renderGrid();
 }
-/* the step grid: one cell per step up to LEN; a cell jumps to its row in the table */
+/* (2.7) the steps as the unit's SEQ pages: NOTES (the piano roll; a drum track: its lanes' grid), FEEL and STEP, each a
+   screen of cards over the step picked (click a step in the chart to pick it, double-click to play it or rest it) */
+let seqSel = 0, seqLane = 0, seqCards = [], seqScr = [];
+const SEQ_LANES = ["BD", "SD", "CP", "CH", "OH", "TM", "RS", "CB"];
+const seqDrum = () => ["DRUM", "DRUM-X"].includes(engName());
+const stepAt = (i) => dev.steps[i] || { n: 0, notes: [0, 0, 0, 0], time: 2, flags: 0, vel: 0, hit: 0, acc: 0 };
+/* a step's length: it and the TIE steps after it */
+function stepLength(i) {
+  const len = stepLen();
+  let n = 1;
+  while (i + n < len && dev.steps[i + n] && dev.steps[i + n].time === 1) n++;
+  return n;
+}
+/* write step i as s (shown at once, the device's answer after: one request per step in flight, the latest wins) */
+function stepPut(i, s) {
+  if ((s.n || s.hit) && s.time === 2) s.time = 0;
+  if ((s.n || s.hit) && !s.vel) s.vel = 96;
+  dev.steps[i] = s;
+  stepEdit.set(i, performance.now());
+  updateStepRows();
+  rq(req.stepSet(i, s), { key: "step:" + i }).then((r) => { if (dev) { dev.steps[i] = parse[CMD.STEP_SET](r); seqUpdate(); } })
+    .catch((err) => report(err));
+}
+const editSel = (f) => { const s = structuredClone(stepAt(seqSel)); f(s); stepPut(seqSel, s); };
+function seqPages() {
+  const sel = () => stepAt(seqSel), opt = (names) => (v) => [names[v] ?? String(v)];
+  const field = (f, lo, hi, def, text, apply) => ({ lo, hi, def, text, get: () => +(sel()[f] ?? def), set: (v) => editSel((s) => { s[f] = v; if (apply) apply(s, v); }) });
+  const start = { lo: 0, hi: 63, def: 0, get: () => seqSel, set: (v) => { seqSel = Math.min(v, stepLen() - 1); }, text: (v) => [String(v + 1), `/${stepLen()}`] };
+  const vel = field("vel", 0, 127, 96, (v) => [String(v)]);
+  const notes = seqDrum()
+    ? { name: "NOTES", chart: "lanes", cards: [
+      ["LANE", { lo: 0, hi: 7, def: 0, get: () => seqLane, set: (v) => { seqLane = v; }, text: (v) => [LANES[v]] }],
+      ["HIT", { lo: 0, hi: 1, get: () => sel().hit >> seqLane & 1, set: (v) => editSel((s) => { s.hit = v ? s.hit | 1 << seqLane : s.hit & ~(1 << seqLane); if (!v) s.acc &= ~(1 << seqLane); }), text: opt(["OFF", "ON"]) }],
+      ["ACC", { lo: 0, hi: 1, get: () => sel().acc >> seqLane & 1, set: (v) => editSel((s) => { s.acc = v ? s.acc | 1 << seqLane : s.acc & ~(1 << seqLane); if (v) s.hit |= 1 << seqLane; }),
+        text: (v) => [sel().hit >> seqLane & 1 ? ["OFF", "ON"][v] : "--"] }],
+      ["VELOCITY", vel]] }
+    : { name: "NOTES", chart: "roll", cards: [
+      ["PITCH", { lo: 0, hi: 127, def: 60, get: () => (sel().n ? sel().notes[0] : 60),
+        set: (v) => editSel((s) => { const d = v - (s.n ? s.notes[0] : 60); if (!s.n) { s.n = 1; s.notes = [v, 0, 0, 0]; s.time = 0; } else s.notes = s.notes.map((x, k) => (k < s.n ? Math.max(0, Math.min(127, x + d)) : x)); }),
+        text: (v) => [sel().n && sel().time !== 2 ? noteName(v) : "--", sel().n > 1 ? "CHR" : ""] }],
+      ["START", start],
+      ["LENGTH", { lo: 1, hi: 16, def: 1, get: () => stepLength(seqSel), text: (v) => [String(v), v > 1 ? "STEPS" : "STEP"],
+        set: (v) => { const len = stepLen(), was = stepLength(seqSel);
+          for (let k = 1; k < Math.max(v, was + 1) && seqSel + k < len; k++) {
+            const s = structuredClone(stepAt(seqSel + k));
+            if (k < v) { if (s.time !== 1) { s.time = 1; stepPut(seqSel + k, s); } }
+            else if (s.time === 1) { s.time = 2; stepPut(seqSel + k, s); }
+          } } }],
+      ["VELOCITY", vel]] };
+  const pages = [notes];
+  if (dev.info.chance) pages.push({ name: "FEEL", chart: "tiles", show: "chance", cards: [
+    ["CHANCE", field("chance", 0, 100, 100, (v) => [String(v), "%"])],
+    ...(dev.info.ratchet ? [["RATCHET", field("ratchet", 1, dev.info.ratchet, 1, (v) => [sel().flam ? "FLAM" : "X" + v])]] : []),
+    ...(dev.info.stepx ? [["NUDGE", field("nudge", -32, 31, 0, (v) => [(v > 0 ? "+" : "") + v])],
+      ["TYPE", field("cond", 0, TC_NAMES.length - 1, 0, opt(TC_NAMES))]] : [])] });
+  pages.push({ name: "STEP", chart: "tiles", show: "vel", cards: [
+    ["TIME", field("time", 0, 2, 0, opt(TIMES))],
+    ["ACCENT", { lo: 0, hi: 1, get: () => sel().flags & 1, set: (v) => editSel((s) => { s.flags = (s.flags & ~1) | v; }), text: opt(["OFF", "ON"]) }],
+    ["SLIDE", { lo: 0, hi: 1, get: () => sel().flags >> 1 & 1, set: (v) => editSel((s) => { s.flags = (s.flags & ~2) | v << 1; }), text: opt(["OFF", "ON"]) }],
+    ...(dev.info.stepx ? [["FLAM", { lo: 0, hi: 1, get: () => +!!sel().flam, set: (v) => editSel((s) => { s.flam = v; }), text: opt(["OFF", "ON"]) }]] : [])] });
+  return pages;
+}
 function renderGrid() {
   const box = $("stepgrid");
-  if (!dev || !dev.steps.length) { box.replaceChildren(); return; }
-  const len = stepLen();
-  if (box.children.length !== len) {
-    box.replaceChildren(...Array.from({ length: len }, (_, i) => el("button", { type: "button", "data-i": i, onclick: () => focusStep(i) })));
+  if (!dev || !dev.steps.length) { box.replaceChildren(); seqScr = []; return; }
+  const shape = `${seqDrum()}|${stepLen()}|${dev.sel}|${lang}`;
+  if (box.dataset.shape !== shape || !box.children.length) {
+    box.dataset.shape = shape;
+    seqSel = Math.min(seqSel, stepLen() - 1);
+    seqCards = [];
+    const pages = seqPages();
+    seqScr = pages.map((pg, n) => {
+      const chart = el("div", { class: "scr-graph seqg" }), cap = el("div", { class: "fm6cap" });
+      const div = el("div", { class: "group scr" },
+        el("div", { class: "scr-top" }, el("span", { class: "st" }), el("span", { class: "grow" }), el("span", { text: pg.name })),
+        el("div", { class: "cards" }, ...pg.cards.map(([l, k]) => knobCard(l, k, seqCards, seqUpdate))),
+        chart, cap,
+        el("div", { class: "scr-foot" }, el("b", { class: "fn" }), el("span", { class: "fe" }), el("span", { class: "fs" }),
+          el("span", { class: "grow" }), el("span", { text: `${n + 1}/${pages.length}` })));
+      return { pg, chart, cap, div };
+    });
+    box.replaceChildren(...seqScr.map((x) => x.div));
   }
-  for (const b of box.children) {
-    const i = +b.dataset.i, s = dev.steps[i];
-    const on = stepOn(s), tie = stepTie(s);
-    const txt = on ? [stepNotes(s), hitsText(s.hit | 0, s.acc | 0)].filter(Boolean).join(" ") : tie ? "—" : "";
-    const marks = s && on ? (s.flags & 1 ? " >" : "") + (s.flags & 2 ? " ~" : "") + (s.ratchet > 1 ? " x" + s.ratchet : "") +
-      (s.flam ? " f" : "") + (s.cond ? " " + TC_NAMES[s.cond] : "") + (s.nudge ? " " + (s.nudge > 0 ? "+" : "") + s.nudge : "") : "";
-    b.className = [on && "on", tie && "tie", on && s.flags & 1 && "acc", i % 4 === 0 && "beat"].filter(Boolean).join(" ");
-    b.title = `${i + 1}: ${on ? txt : tie ? "TIE" : "REST"}${marks}`;
-    b.replaceChildren(el("span", { class: "n", text: String(i + 1) + marks }), el("span", { class: "x", text: txt }));
+  seqUpdate();
+}
+function seqUpdate() {
+  if (!dev || !dev.steps.length) return;
+  for (const c of seqCards) c.update();
+  for (const x of seqScr) {
+    SEQ_CHARTS[x.pg.chart](x.chart, x.pg);
+    x.cap.replaceChildren(el("span", { text: `STEP ${seqSel + 1}` }),
+      el("span", { class: "dim", text: x.pg.chart === "roll" ? scaleText() : seqDrum() ? LANES[seqLane] : stepNotes(stepAt(seqSel)) || "REST" }));
   }
+  renderScreens();
+}
+/* the track's ROOT and SCALE as the roll's caption says them (C CHR) */
+function scaleText() {
+  const v = (lb) => { const i = dev.pdesc.findIndex((d, k) => d && k < dev.info.pe0 && d.label === lb); return i >= 0 ? fmtValue(dev.pdesc[i], dev.dump.p[i])[0] : ""; };
+  return `${v("ROOT")} ${v("SCALE")}`.trim();
+}
+/* pick step i: a click; a double-click plays it or rests it */
+function seqPick(i, dbl) {
+  seqSel = i;
+  if (dbl) editSel((s) => { if (stepOn(s)) s.time = 2; else { s.time = 0; if (!s.n && !s.hit) { if (seqDrum()) s.hit = 1 << seqLane; else { s.n = 1; s.notes = [60, 0, 0, 0]; } } } });
+  seqUpdate();
+}
+const SEQ_CHARTS = {
+  /* the piano roll as NOTES draws it: two octaves round the notes, a key column (white keys light, black ones dark) with
+     the Cs named, a cell a step and a row (the black keys' rows darker), a note a bar in its cell (its ties after it), the
+     step picked framed, the scale under */
+  roll(box) {
+    const len = stepLen(), all = [];
+    for (let i = 0; i < len; i++) { const s = stepAt(i); if (stepOn(s)) for (let k = 0; k < s.n; k++) all.push(s.notes[k]); }
+    const mid = all.length ? Math.round((Math.min(...all) + Math.max(...all)) / 2) : 60;
+    const hi = Math.max(mid + 11, all.length ? Math.max(...all) : 0), lo = Math.min(hi - 23, all.length ? Math.min(...all) : 127);
+    const rows = hi - lo + 1, W = 240, H = 104, x0 = 30, top = 3, cw = (W - x0 - 4) / len, rh = (H - top) / rows;
+    const blk = (n) => [1, 3, 6, 8, 10].includes(n % 12);
+    let out = "";
+    for (let r = 0; r < rows; r++) {
+      const n = hi - r, y = top + r * rh;
+      out += `<rect x="20" y="${y + .4}" width="7" height="${rh - .8}" class="${blk(n) ? "kb blk" : "kb"}"/>`;
+      if (n % 12 === 0) out += `<text x="1" y="${y + rh * .5 + 3.5}" class="lab big">${noteName(n)}</text>`;
+      for (let i = 0; i < len; i++)
+        out += `<rect x="${x0 + i * cw + .3}" y="${y + .3}" width="${cw - .6}" height="${rh - .6}" class="${blk(n) ? "cell blk" : "cell"}"/>`;
+    }
+    for (let i = 0; i < len; i++) {
+      const s = stepAt(i);
+      if (!stepOn(s)) continue;
+      const l = stepLength(i);
+      for (let k = 0; k < s.n; k++) {
+        const n = s.notes[k];
+        if (n < lo || n > hi) continue;
+        out += `<rect x="${x0 + i * cw + cw * .18}" y="${top + (hi - n) * rh + rh * .22}" width="${l * cw - cw * .36}" height="${rh * .56}" class="${i === seqSel ? "note on" : "note"}"/>`;
+      }
+    }
+    out += `<rect x="${x0 + seqSel * cw}" y="${top - 1}" width="${cw * stepLength(seqSel)}" height="${rows * rh + 2}" class="frame"/>`;
+    seqSvg(box, out, (fx) => Math.floor((fx * W - x0) / cw));
+  },
+  /* the drum lanes: a dot a step, a hit a square in the track's colour (an accent white), the lane picked lit, the step framed */
+  lanes(box) {
+    const len = stepLen(), W = 240, H = 110, x0 = 16, cw = (W - x0) / len, rh = H / 8;
+    let out = `<rect x="0" y="${seqLane * rh}" width="${W}" height="${rh}" class="lane c"/>`;
+    for (let l = 0; l < 8; l++) {
+      out += `<text x="2" y="${l * rh + rh * .5 + 3.5}" class="lab big${l === seqLane ? "" : " dimt"}">${SEQ_LANES[l]}</text>`;
+      for (let i = 0; i < len; i++) {
+        const s = stepAt(i), on = stepOn(s) && stepLanes(s) >> l & 1, acc = on && stepAccents(s) >> l & 1, cx = x0 + i * cw + cw / 2, cy = l * rh + rh / 2;
+        out += on ? `<rect x="${cx - cw * .4}" y="${cy - rh * .4}" width="${cw * .8}" height="${rh * .8}" class="${acc ? "hit acc" : "hit"}"/>`
+          : `<rect x="${cx - .7}" y="${cy - .7}" width="1.4" height="1.4" class="${i % 4 ? "dotc" : "dotc beat"}"/>`;
+      }
+    }
+    out += `<rect x="${x0 + seqSel * cw + cw * .06}" y="${seqLane * rh + rh * .06}" width="${cw * .88}" height="${rh * .88}" class="frame"/>`;
+    seqSvg(box, out, (fx) => Math.floor((fx * W - x0) / cw), (fy) => Math.floor(fy * 8));
+  },
+  /* the steps as tiles, as FEEL draws them: two rows of eight a bar, the value on a sounding one, its number under */
+  tiles(box, pg) {
+    const len = stepLen(), first = Math.floor(seqSel / 16) * 16;
+    if (!box._tiles || box._tiles.length !== 16) {
+      box._tiles = Array.from({ length: 16 }, (_, k) => {
+        const b = el("button", { type: "button", class: "tile" }, el("span", { class: "tv" }), el("span", { class: "tn" }));
+        b.addEventListener("click", () => seqPick(+b.dataset.i, false));
+        b.addEventListener("dblclick", () => seqPick(+b.dataset.i, true));
+        return b;
+      });
+      box.replaceChildren(el("div", { class: "tiles" }, ...box._tiles));
+    }
+    box._tiles.forEach((b, k) => {
+      const i = first + k, s = stepAt(i), on = i < len && stepOn(s), tie = i < len && stepTie(s);
+      b.dataset.i = i;
+      b.hidden = i >= len;
+      b.className = ["tile", on && "on", tie && "tie", i === seqSel && "sel", on && s.flags & 1 && "acc"].filter(Boolean).join(" ");
+      b.children[0].textContent = !on ? "" : pg.show === "chance" ? (s.ratchet > 1 ? "X" + s.ratchet : s.flam ? "FLAM" : String(s.chance ?? 100)) : String(s.vel);
+      b.children[1].textContent = String(i + 1);
+    });
+  },
+};
+function seqSvg(box, inner, colAt, rowAt) {
+  let svg = box.querySelector("svg");
+  if (!svg) {
+    svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 240 110");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.classList.add("graph");
+    const at = (e) => { const r = svg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+    const pick = (e, dbl) => {
+      const [fx, fy] = at(e), i = svg._col(fx);
+      if (i < 0 || i >= stepLen()) return;
+      if (svg._row) {                               /* a lane's cell: picks the lane, a double-click strikes it or clears it */
+        seqLane = Math.max(0, Math.min(7, svg._row(fy)));
+        seqSel = i;
+        if (dbl) editSel((s) => { s.hit ^= 1 << seqLane; s.acc &= s.hit; if (s.hit) s.time = 0; });
+        seqUpdate();
+      } else seqPick(i, dbl);
+    };
+    svg.addEventListener("click", (e) => pick(e, false));
+    svg.addEventListener("dblclick", (e) => pick(e, true));
+    box.replaceChildren(svg);
+  }
+  svg._col = colAt;
+  svg._row = rowAt;
+  svg.innerHTML = inner;
 }
 function focusStep(i) {
   const tr = $("steptables").querySelector(`tr[data-i="${i}"]`);
@@ -5700,6 +6235,7 @@ function renderMixer() {
     box.replaceChildren(...m.tracks.map((_, i) => buildStrip(i)));
   }
   m.tracks.forEach((_, i) => updateStrip(i));
+  renderTrackbar();
 }
 function buildStrip(i) {
   const lvDesc = dev.pdesc[P.LEVEL] || { fmt: F.INT, min: 0, max: 127, def: 100 };
@@ -5746,6 +6282,7 @@ function updateStrip(i) {
   c.snd.textContent = nm;
   c.snd.title = nm;
   if (!mixTouched("lv", i)) c.fader.value = String(x.level);
+  barFill(c.fader);
   const [lt, lu] = fmtValue(c.lvDesc, x.level);
   c.lvOut.textContent = lu ? `${lt} ${lu}` : lt;
   c.mute.setAttribute("aria-pressed", x.mute ? "true" : "false");
@@ -5753,12 +6290,14 @@ function updateStrip(i) {
   c.pan.disabled = x.pan == null;
   if (x.pan != null) {
     if (!mixTouched("pan", i)) c.pan.value = String(x.pan);
+    barFill(c.pan);
     const [pt, pu] = fmtValue(c.pDesc, x.pan);
     c.panOut.textContent = pu ? `${pt} ${pu}` : pt;
   }
   c.rev.disabled = x.rev == null || (!dev.v4 && i !== dev.sel);   /* ((Skiff W3) another track's: TRACK_PARAM, v4) */
   if (x.rev != null) {
     if (!mixTouched("rev", i)) c.rev.value = String(x.rev);
+    barFill(c.rev);
     const [rt, ru] = fmtValue(c.rDesc, x.rev);
     c.revOut.textContent = ru ? `${rt} ${ru}` : rt;
   }
@@ -6747,41 +7286,260 @@ function fm6Set(i, val) {
     fm6Timer = setTimeout(() => op(() => fm6Send(true)), 150);
   }
 }
-function fm6Num(i, title) {
-  return el("input", { type: "number", min: 0, max: FM6.max(i), value: fm6v[i], title, class: "fm6n",
-    onchange: (e) => { fm6Set(i, e.target.value); e.target.value = fm6v[i]; renderFm6Ops(); } });
-}
-function fm6Sel(i, names, title) {
-  const s = el("select", { title, onchange: (e) => { fm6Set(i, e.target.value); renderFm6(); } },
-    ...names.map((n, k) => el("option", { value: k, text: n })));
-  s.value = fm6v[i];
-  return s;
-}
+/* (2.7) the patch as the unit's FM6 LAB (ui_fm6.c, DESIGN.md FM6 LAB): OPERATOR's five pages for the operator
+   picked (its tabs OP1 .. OP6 over the chart), ALL OPS' four; each a screen of cards and the chart the unit draws */
+let fm6Op = 1;                         /* the operator picked, 1..6 */
+let fm6Cards = [];                     /* [{update}] of the cards shown */
+const FM6_LFO_WAVES = ["TRI", "SAW DN", "SAW UP", "SQUARE", "SINE", "S&H"];
+const FM6_TABS = ["var(--fmsine)", "var(--t2)", "var(--t3)", "var(--t4)", "var(--t5)", "var(--t6)"];
+const fm6Hz = (v) => 0.062 * Math.exp(v * 0.0695);   /* the LFO's RATE (DX7's curve, near enough to draw) */
+const fm6Semis = (l) => (l - 50) * 48 / 50;
 function renderFm6Voice() {
-  const V = FM6.VI, alg = fm6v[V.ALG], fb = FM6.feedbackOp(alg);
-  const nm = el("input", { type: "text", maxlength: 10, value: FM6.name(fm6v), size: 11,
-    onchange: (e) => { FM6.setName(fm6v, e.target.value); fm6Set(0, fm6v[0]); e.target.value = FM6.name(fm6v); } });
-  const row = (label, ...kids) => el("tr", {}, el("th", { text: label }), el("td", {}, ...kids));
-  $("fm6voice").replaceChildren(el("table", {},
-    row(t("name"), nm),
-    row("ALG", fm6Sel(V.ALG, Array.from({ length: 32 }, (_, k) => String(k + 1)), "ALG"),
-      el("span", { class: "dim", text: ` ${t("fm6Carriers")} ${FM6.carriers(alg).join(" ")}, ${t("fm6Feedback")} OP${fb}` })),
-    row("FB", fm6Num(V.FB, "FB"), " OKS ", fm6Num(V.OKS, "OKS"), " TRNSP ", fm6Num(V.TRNSP, "TRNSP")),
-    row("LFO", fm6Sel(V.LFW, FM6_WAVES, "WAVE"), " SPD ", fm6Num(V.LFS, "SPEED"), " DLY ", fm6Num(V.LFD, "DELAY"),
-      " PMD ", fm6Num(V.LPMD, "PMD"), " AMD ", fm6Num(V.LAMD, "AMD"), " PMS ", fm6Num(V.LPMS, "PMS"), " SYNC ", fm6Num(V.LKS, "SYNC")),
-    row(t("fm6PitchEg"), "R ", ...[0, 1, 2, 3].map((k) => fm6Num(V.PR1 + k, "R" + (k + 1))),
-      " L ", ...[0, 1, 2, 3].map((k) => fm6Num(V.PL1 + k, "L" + (k + 1))))));
+  const nm = el("input", { type: "text", maxlength: 10, value: FM6.name(fm6v), size: 11, "aria-label": t("name"),
+    onchange: (e) => { FM6.setName(fm6v, e.target.value); fm6Set(0, fm6v[0]); e.target.value = FM6.name(fm6v); fm6Update(); } });
+  $("fm6voice").replaceChildren(el("p", { class: "bar" }, el("label", {}, el("span", { text: t("name") }), " ", nm)));
 }
+/* a card over patch bytes: get/set a 'knob' value lo..hi, its text and unit */
+function fm6Card(label, k) { return knobCard(label, k, fm6Cards, fm6Update); }
+/* a card turned as the unit's knob over any value k = {get, set, lo, hi, def, text}; after() redraws what it moves */
+function knobCard(label, k, list, after) {
+  const out = el("span", { class: "v" }), row = el("div", { class: "row card", tabindex: 0, role: "slider", "aria-label": label },
+    el("span", { text: label }), out, el("i", { class: "gauge" }));
+  const update = () => {
+    const v = k.get(), [txt, unit] = k.text(v);
+    out.replaceChildren(txt, ...(unit ? [el("small", { text: unit })] : []));
+    row.setAttribute("aria-valuetext", unit ? `${txt} ${unit}` : txt);
+    row.style.setProperty("--p", `${(v - k.lo) * 100 / Math.max(1, k.hi - k.lo)}%`);
+  };
+  const put = (v) => { v = Math.max(k.lo, Math.min(k.hi, v)); if (v !== k.get()) { k.set(v); after(); } };
+  row.addEventListener("pointerdown", (e) => {
+    if (e.button) return;
+    e.preventDefault();
+    hotCard(row);
+    row.focus({ preventScroll: true });
+    const x0 = e.clientX, y0 = e.clientY, v0 = k.get();
+    row.setPointerCapture(e.pointerId);
+    const move = (ev) => put(v0 + Math.round(((ev.clientX - x0) - (ev.clientY - y0)) * Math.max(k.hi - k.lo, 24) / (ev.shiftKey ? 1600 : 200)));
+    const up = () => { row.removeEventListener("pointermove", move); row.removeEventListener("pointerup", up); };
+    row.addEventListener("pointermove", move);
+    row.addEventListener("pointerup", up);
+  });
+  row.addEventListener("dblclick", () => put(k.def ?? k.lo));
+  row.addEventListener("focus", () => hotCard(row));
+  row.addEventListener("keydown", (e) => {
+    const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    put(k.get() + dir * (e.shiftKey ? 10 : 1));
+  });
+  let acc = 0;
+  row.addEventListener("wheel", (e) => {
+    if (document.activeElement !== row) return;
+    e.preventDefault();
+    acc += (e.deltaMode === 1 ? 33 : 1) * -e.deltaY;
+    const n = Math.trunc(acc / 50);
+    if (n) { acc -= n * 50; put(k.get() + n * (e.shiftKey ? 10 : 1)); }
+  }, { passive: false });
+  list.push({ update });
+  update();
+  return row;
+}
+/* plain patch bytes: an operator's (n: the picked one) or the voice's */
+const opB = (f) => () => FM6.at(fm6Op, f);
+function byteK(idx, text, lo = 0, hi = null, def = null) {
+  return { get: () => fm6v[idx()], set: (v) => fm6Set(idx(), v), lo, hi: hi ?? FM6.max(idx()), def: def ?? lo, text };
+}
+const num = (v) => [String(v)];
+/* RATIO: one knob over x0.5, x1 .. x31, then the fixed 1, 10, 100, 1K HZ (MODE) */
+const ratioK = { lo: 0, hi: 35, def: 1,
+  get: () => fm6v[FM6.at(fm6Op, "MODE")] ? 32 + (fm6v[FM6.at(fm6Op, "FC")] & 3) : fm6v[FM6.at(fm6Op, "FC")],
+  set: (v) => { if (v >= 32) { fm6Set(FM6.at(fm6Op, "MODE"), 1); fm6Set(FM6.at(fm6Op, "FC"), v - 32); }
+    else { fm6Set(FM6.at(fm6Op, "MODE"), 0); fm6Set(FM6.at(fm6Op, "FC"), v); } },
+  text: (v) => v >= 32 ? [["1", "10", "100", "1K"][v - 32], "HZ"] : [v ? String(v) : "0.5", "x"] };
+const V = () => FM6.VI;
+const fm6RatioTab = (n) => { const fc = fm6v[FM6.at(n, "FC")]; return fm6v[FM6.at(n, "MODE")] ? ["1", "10", "100", "1K"][fc & 3] + "HZ" : (fc ? fc : 0.5) + "x"; };
+function fm6Pages() {
+  const op = (f, text, lo, hi, def) => byteK(opB(f), text, lo, hi, def);
+  const vc = (f, text, lo, hi, def) => byteK(() => V()[f], text, lo, hi, def);
+  const curve = (v) => [FM6_CURVES[v]];
+  const opName = () => `OPERATOR ${fm6Op}`;
+  return [
+    { name: opName, num: "1/5", chart: "env", tabs: "ratio", cards: [["OUTPUT", op("OL", num, 0, 99, 99)], ["RATIO", ratioK],
+      ["FINE", op("FF", () => { const f = FM6.freqText(fm6v, fm6Op); return f.startsWith("x") ? [f.slice(1), "x"] : [f.replace(" Hz", ""), "HZ"]; })],
+      ["DETUNE", op("DET", (v) => [String(v - 7)], 0, 14, 7)]] },
+    { name: opName, num: "2/5", chart: "env", tabs: "op", cards: [["RATE 1", op("R1", num)], ["LEVEL 1", op("L1", num)],
+      ["RATE 2", op("R2", num)], ["LEVEL 2", op("L2", num)]] },
+    { name: opName, num: "3/5", chart: "env", tabs: "op", cards: [["RATE 3", op("R3", num)], ["LEVEL 3", op("L3", num)],
+      ["RATE 4", op("R4", num)], ["LEVEL 4", op("L4", num)]] },
+    { name: opName, num: "4/5", chart: "keys", tabs: "op", cards: [["L CURVE", op("LC", curve)], ["L DEPTH", op("LD", num)],
+      ["R DEPTH", op("RD", num)], ["R CURVE", op("RC", curve)]] },
+    { name: opName, num: "5/5", chart: "keys", tabs: "op", cards: [["BREAK", op("BP", (v) => [noteName(v + 21)], 0, 99, 39)],
+      ["KEY RATE", op("RS", num)], ["VELOCITY", op("KVS", num)], ["LFO AMP", op("AMS", num)]] },
+    { name: () => "ALL OPS", num: "1/5", chart: "algo", cards: [["ALGO", vc("ALG", (v) => [String(v + 1)])], ["FEEDBACK", vc("FB", num)],
+      ["TRANSP", vc("TRNSP", (v) => [String(v - 24), "ST"], 0, 48, 24)]] },
+    { name: () => "ALL OPS", num: "2/5", chart: "pitch", cards: [["RATE 1", vc("PR1", num)], ["PITCH 1", vc("PL1", (v) => [fm6Semis(v).toFixed(1), "ST"], 0, 99, 50)],
+      ["RATE 2", vc("PR2", num)], ["PITCH 2", vc("PL2", (v) => [fm6Semis(v).toFixed(1), "ST"], 0, 99, 50)]] },
+    { name: () => "ALL OPS", num: "3/5", chart: "pitch", cards: [["RATE 3", vc("PR3", num)], ["PITCH 3", vc("PL3", (v) => [fm6Semis(v).toFixed(1), "ST"], 0, 99, 50)],
+      ["RATE 4", vc("PR4", num)], ["PITCH 4", vc("PL4", (v) => [fm6Semis(v).toFixed(1), "ST"], 0, 99, 50)]] },
+    { name: () => "ALL OPS", num: "4/5", chart: "lfo", cards: [["WAVE", vc("LFW", (v) => [FM6_LFO_WAVES[v]])],
+      ["RATE", vc("LFS", (v) => [fm6Hz(v) < 10 ? fm6Hz(v).toFixed(1) : String(Math.round(fm6Hz(v))), "HZ"])], ["FADE", vc("LFD", num)],
+      ["KEY SYNC", vc("LKS", (v) => [v ? "ON" : "OFF"])]] },
+    { name: () => "ALL OPS", num: "5/5", chart: "lfo", cards: [["VIBRATO", vc("LPMD", num)], ["VIB SENS", vc("LPMS", num)],
+      ["TREMOLO", vc("LAMD", num)]] },
+  ];
+}
+let fm6Screens = [];
 function renderFm6Ops() {
-  const car = FM6.carriers(fm6v[FM6.VI.ALG]);
-  const head = el("tr", {}, el("th", { text: "OP" }), ...FM6.OP.map(([n]) => el("th", { text: n })), el("th", { text: t("fm6Freq") }));
-  const rows = [1, 2, 3, 4, 5, 6].map((n) => el("tr", {},
-    el("th", { text: (car.includes(n) ? "● " : "") + n }),
-    ...FM6.OP.map(([f]) => el("td", {}, f === "LC" || f === "RC" ? fm6Sel(FM6.at(n, f), FM6_CURVES, f)
-      : f === "MODE" ? fm6Sel(FM6.at(n, f), ["RATIO", "FIXED"], f) : fm6Num(FM6.at(n, f), `OP${n} ${f}`))),
-    el("td", { class: "dim", text: FM6.freqText(fm6v, n) })));
-  $("fm6ops").replaceChildren(el("div", { class: "fm6ops" }, el("table", {}, head, ...rows)), el("p", { class: "dim", text: t("fm6Legend") }));
+  fm6Cards = [];
+  fm6Screens = fm6Pages().map((pg) => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 240 110");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.classList.add("graph");
+    const name = el("span"), cap = el("div", { class: "fm6cap" }), tabs = pg.tabs ? el("div", { class: "fm6tabs" }) : null;
+    const div = el("div", { class: "group scr" },
+      el("div", { class: "scr-top" }, el("span", { class: "st" }), el("span", { class: "grow" }), name),
+      el("div", { class: "cards" }, ...pg.cards.map(([l, k]) => fm6Card(l, k))),
+      el("div", { class: "scr-graph fm6g" }, ...(tabs ? [tabs] : []), svg, cap),
+      el("div", { class: "scr-foot" }, el("b", { class: "fm6n" }), el("span", { text: "FM6" }), el("span", { class: "fm6nm" }),
+        el("span", { class: "grow" }), el("span", { text: pg.num })));
+    return { pg, svg, name, cap, tabs, div };
+  });
+  $("fm6ops").replaceChildren(...fm6Screens.map((x) => x.div));
+  fm6Update(true);
 }
+/* every card's value and every chart again (after a change anywhere: one byte moves several charts) */
+function fm6Update(cardsToo = true) {
+  if (cardsToo) for (const c of fm6Cards) c.update();
+  const trk = fm6Track();
+  for (const x of fm6Screens) {
+    x.name.textContent = x.pg.name();
+    const [svg, cap] = FM6_CHARTS[x.pg.chart]();
+    x.svg.innerHTML = svg;
+    x.cap.replaceChildren(...cap.map((c) => el("span", { text: c })));
+    if (x.tabs) x.tabs.replaceChildren(...[1, 2, 3, 4, 5, 6].map((n) => el("button", { type: "button", class: n === fm6Op ? "on" : "",
+      style: `--u:${FM6.carriers(fm6v[V().ALG]).includes(n) ? "linear-gradient(90deg,var(--fmsine),var(--rec))" : FM6_TABS[n - 1]}`,
+      onclick: () => { fm6Op = n; fm6Update(); } }, x.pg.tabs === "ratio" ? `${n}  ${fm6RatioTab(n)}` : `OP${n}`)));
+  }
+  const st = `${$("tstate").hidden || !/PLAY|再生/i.test($("tstate").textContent) ? "■" : "▶"}  ${dev && dev.dump ? bpmText() : ""}`;
+  for (const n of document.querySelectorAll("#fm6ops .st")) n.textContent = st;
+  for (const n of document.querySelectorAll("#fm6ops .fm6n")) { n.textContent = String(trk + 1); n.style.color = `var(--t${trk + 1})`; }
+  for (const n of document.querySelectorAll("#fm6ops .fm6nm")) n.textContent = FM6.name(fm6v);
+}
+/* an operator's envelope as breakpoints [ms, dB]: from L4 up through L1 L2 to L3 held, key up at 1.2 s, then to L4 */
+const fm6Ms = (r) => 2 ** ((99 - r) / 6.5);   /* a stage's length (ms) at rate r, near enough to draw: 99 instant, 0 ~40 s */
+const fm6Db = (l, ol = 99) => l ? (l - 99) * 0.75 + (ol - 99) * 0.75 : -96;
+function fm6EnvPts(n) {
+  const g = (f) => fm6v[FM6.at(n, f)], ol = g("OL");
+  const p = [[1, fm6Db(g("L4"), ol)]];
+  let tm = 1;
+  for (const [r, l] of [["R1", "L1"], ["R2", "L2"], ["R3", "L3"]]) { tm += fm6Ms(g(r)); p.push([tm, fm6Db(g(l), ol)]); }
+  const up = Math.max(tm * 1.2, 1200);
+  p.push([up, p[3][1]], [up + fm6Ms(g("R4")), fm6Db(g("L4"), ol)]);
+  return p;
+}
+const fm6X = (ms, end) => 6 + 228 * Math.log(ms) / Math.log(end);
+const fm6Y = (db) => 6 + 92 * Math.min(1, -db / 60);
+const FM6_CHARTS = {
+  env() {
+    const car = FM6.carriers(fm6v[V().ALG]), pts = [1, 2, 3, 4, 5, 6].map(fm6EnvPts);
+    const end = Math.max(...pts.map((p) => p[4][0])) * 1.05;
+    const line = (p) => p.map(([m, d], i) => `${i ? "L" : "M"}${fm6X(m, end).toFixed(1)} ${fm6Y(d).toFixed(1)}`).join(" ");
+    let out = `<line x1="0" y1="98" x2="240" y2="98" class="axis"/><line x1="${fm6X(pts[0][3][0], end)}" y1="4" x2="${fm6X(pts[0][3][0], end)}" y2="98" class="axis dash"/>`;
+    for (let n = 1; n <= 6; n++)
+      if (!car.includes(n)) out += `<path d="${line(pts[n - 1])}" class="mod" style="stroke:${FM6_TABS[n - 1]}" opacity="${n === fm6Op ? 1 : .55}"/>`;
+    for (const n of car) out += `<path d="${line(pts[n - 1])}" class="car"/>`;
+    out += pts[fm6Op - 1].slice(1, 4).map(([m, d]) => `<circle cx="${fm6X(m, end)}" cy="${fm6Y(d)}" r="3.2" class="ring"/>`).join("");
+    return [out, [`OP${fm6Op} ${car.includes(fm6Op) ? "CARRIER" : "MODULATOR"}`, `${(end / 1000).toFixed(1)} S`]];
+  },
+  keys() {
+    const g = (f) => fm6v[FM6.at(fm6Op, f)], bp = g("BP") + 21;
+    const shape = (d, c) => (c === 1 || c === 2 ? (2 ** (4 * d) - 1) / 15 : d) * (c >= 2 ? 1 : -1);
+    const dbAt = (key) => {
+      const left = key < bp, d = Math.min(1, Math.abs(key - bp) / 48);
+      return (g("OL") - 99) * 0.75 + 48 * (left ? g("LD") : g("RD")) / 99 * shape(d, left ? g("LC") : g("RC"));
+    };
+    const y = (db) => 10 + 82 * Math.min(1, Math.max(0, -db / 48));
+    const x = (k) => 6 + 228 * (k - 21) / 87;
+    let d = "";
+    for (let k = 21; k <= 108; k++) d += `${k > 21 ? "L" : "M"}${x(k).toFixed(1)} ${y(dbAt(k)).toFixed(1)}`;
+    const keys = [36, 60, 84].map((k) => `<text x="${x(k)}" y="108" class="lab mid">${noteName(k)}</text>`).join("");
+    return [`<line x1="${x(bp)}" y1="4" x2="${x(bp)}" y2="96" class="axis dash"/><text x="${x(bp) + 3}" y="12" class="lab">BREAK ${noteName(bp)}</text>` +
+      `<path d="${d}" class="line"/><rect x="${x(60) - 2}" y="${y(dbAt(60)) - 2}" width="4" height="4" class="dry"/>` + keys,
+      [`C7 ${Math.round(dbAt(96))} DB`, "0 TO -48 DB"]];
+  },
+  algo() {
+    const a = fm6v[V().ALG] & 31, cell = FM6_CELL[a], f = FM6.ALG[a], m = [0, 0, 0, 0, 0, 0], bus = [0, 0, 0, 0];
+    for (let k = 0; k < 6; k++) {                    /* fm6_routes: who wrote a bus modulates its reader */
+      const o = 5 - k, inb = f[k] >> 4 & 3, ob = f[k] & 3;
+      m[o] = inb ? bus[inb] : 0;
+      bus[ob] = ((f[k] & 4) ? bus[ob] : 0) | 1 << o;
+    }
+    const car = FM6.carriers(a), fb = FM6.feedbackOp(a), BH = 17;
+    const hi = Math.max(...cell.map((c) => c & 7)), top = Math.max(...cell.map((c) => c >> 4));
+    const by = 55 + (27 + 23 * top) / 2, X = cell.map((c) => 120 + (c & 7) * 24 - hi * 12), Y = cell.map((c) => by - 6 - BH - 23 * (c >> 4));
+    let out = "";
+    for (let k = 0; k < 6; k++) {
+      for (let j = 0; j < 6; j++) if (m[k] >> j & 1)
+        out += `<path d="M${X[j]} ${Y[j] + BH} L${X[j]} ${Y[k] - 3} L${X[k]} ${Y[k] - 3} L${X[k]} ${Y[k]}" class="route"/>`;
+      if (car.includes(k + 1)) out += `<line x1="${X[k]}" y1="${Y[k] + BH}" x2="${X[k]}" y2="${by}" class="axis"/>`;
+    }
+    const cx = car.map((n) => X[n - 1]);
+    out += `<path d="M${Math.min(...cx)} ${by} L${Math.max(...cx) + 14} ${by} M${Math.max(...cx) + 10} ${by - 3} L${Math.max(...cx) + 14} ${by} L${Math.max(...cx) + 10} ${by + 3}" class="axis"/>`;
+    const fx = X[fb - 1], fy = Y[fb - 1];
+    out += `<path d="M${fx} ${fy} L${fx} ${fy - 5} L${fx + 14} ${fy - 5} L${fx + 14} ${fy + BH + 3} L${fx} ${fy + BH + 3}" class="axis${fm6v[V().FB] ? "" : " dash"}"/>`;
+    for (let k = 0; k < 6; k++) {
+      const on = fm6v[FM6.at(k + 1, "OL")] > 0, isCar = car.includes(k + 1), pick = k + 1 === fm6Op;
+      out += `<rect x="${X[k] - 10}" y="${Y[k]}" width="21" height="${BH}" class="${isCar && on ? "box car" : pick ? "box pick" : "box"}"/>` +
+        `<text x="${X[k] + .5}" y="${Y[k] + 13}" class="boxn${isCar && on ? " ink" : on ? "" : " off"}">${k + 1}</text>`;
+    }
+    out += `<text x="6" y="12" class="lab">ALG ${String(a + 1).padStart(2, "0")}</text>`;
+    const mods = [0, 1, 2, 3, 4, 5].filter((k) => m[k] >> (fm6Op - 1) & 1).map((k) => `OP${k + 1}`);
+    const what = !fm6v[FM6.at(fm6Op, "OL")] ? "IS SILENT: OUTPUT 0" : car.includes(fm6Op) ? "GOES TO THE OUTPUT" : `MODULATES ${mods.join(", ")}`;
+    return [out, [`OP${fm6Op} ${what}`]];
+  },
+  pitch() {
+    const v = (f) => fm6v[V()[f]];
+    let tm = 1;
+    const p = [[1, fm6Semis(v("PL4"))]];
+    for (const k of [1, 2, 3]) { tm += fm6Ms(v("PR" + k)); p.push([tm, fm6Semis(v("PL" + k))]); }
+    const up = Math.max(tm * 1.2, 1200);
+    p.push([up, p[3][1]], [up + fm6Ms(v("PR4")), fm6Semis(v("PL4"))]);
+    const rng = [0.5, 1, 2, 4, 12, 24, 48].find((r) => r >= Math.max(...p.map((x) => Math.abs(x[1])))) || 48;
+    const end = p[4][0] * 1.05, y = (st) => 55 - 45 * st / rng;
+    const d = p.map(([m2, st], i) => `${i ? "L" : "M"}${fm6X(m2, end).toFixed(1)} ${y(st).toFixed(1)}`).join(" ");
+    return [`<line x1="0" y1="55" x2="240" y2="55" class="axis"/><text x="6" y="12" class="lab">+${rng} ST</text><text x="6" y="104" class="lab">-${rng} ST</text>` +
+      `<path d="${d}" class="line"/>` + p.slice(1, 4).map(([m2, st]) => `<circle cx="${fm6X(m2, end)}" cy="${y(st)}" r="3" class="ring"/>`).join(""),
+      ["PITCH OVER THE NOTE", `${(end / 1000).toFixed(2)} S`]];
+  },
+  lfo() {
+    const v = (f) => fm6v[V()[f]], hz = fm6Hz(v("LFS")), delay = 2 * v("LFD") / 99 * 0.8;
+    const pm = v("LPMD") / 99 * (v("LPMS") / 7), am = v("LAMD") / 99, w = FM6_LFO_WAVES[v("LFW")];
+    const sem = (pm * 0.6).toFixed(2), y = (x) => 42 - 30 * Math.max(.04, pm) * (x / 240 * 2 < delay ? 0 : Math.min(1, (x / 240 * 2 - delay) / 0.3));
+    let d = "", t2 = "";
+    for (let x = 0; x <= 240; x++) {
+      const ph = (x / 240 * 2 * Math.min(hz, 40)) % 1;
+      d += `${x ? "L" : "M"}${x} ${(42 + (y(x) - 42) * waveY(w, ph)).toFixed(1)}`;
+      t2 += `${x ? "L" : "M"}${x} ${(88 - 12 * am * (1 + waveY(w, ph)) / 2).toFixed(1)}`;
+    }
+    return [`<line x1="0" y1="42" x2="240" y2="42" class="axis"/><text x="6" y="12" class="lab">+${sem} ST</text>` +
+      `<path d="${d}" class="line"/>` + (am ? `<path d="${t2}" class="line dimline"/>` : ""),
+      [`VIBRATO ${hz < 10 ? hz.toFixed(1) : Math.round(hz)} HZ, IN AFTER ${delay.toFixed(2)} S`, "2.0 S"]];
+  },
+};
+/* ui_graph.c FM6_CELL: each algorithm's chart, an operator's column and row (row 0 the carriers') */
+const FM6_CELL = [
+  [0x00, 0x10, 0x01, 0x11, 0x21, 0x31], [0x00, 0x10, 0x02, 0x12, 0x22, 0x32], [0x00, 0x10, 0x20, 0x01, 0x11, 0x21],
+  [0x00, 0x10, 0x20, 0x01, 0x11, 0x21], [0x00, 0x10, 0x01, 0x11, 0x02, 0x12], [0x00, 0x10, 0x01, 0x11, 0x02, 0x12],
+  [0x00, 0x10, 0x01, 0x11, 0x12, 0x22], [0x00, 0x10, 0x01, 0x12, 0x11, 0x21], [0x00, 0x10, 0x02, 0x12, 0x13, 0x23],
+  [0x00, 0x10, 0x20, 0x01, 0x11, 0x12], [0x00, 0x10, 0x20, 0x01, 0x11, 0x12], [0x00, 0x10, 0x03, 0x12, 0x13, 0x14],
+  [0x00, 0x10, 0x02, 0x11, 0x12, 0x13], [0x00, 0x10, 0x01, 0x11, 0x20, 0x21], [0x00, 0x10, 0x02, 0x12, 0x21, 0x22],
+  [0x01, 0x10, 0x11, 0x21, 0x12, 0x22], [0x01, 0x12, 0x10, 0x20, 0x11, 0x21], [0x01, 0x10, 0x12, 0x11, 0x21, 0x31],
+  [0x00, 0x10, 0x20, 0x01, 0x02, 0x11], [0x00, 0x01, 0x10, 0x02, 0x12, 0x13], [0x00, 0x01, 0x10, 0x02, 0x03, 0x12],
+  [0x00, 0x10, 0x01, 0x02, 0x03, 0x12], [0x00, 0x01, 0x11, 0x02, 0x03, 0x12], [0x00, 0x01, 0x02, 0x03, 0x04, 0x13],
+  [0x00, 0x01, 0x02, 0x03, 0x04, 0x13], [0x00, 0x01, 0x11, 0x02, 0x12, 0x13], [0x00, 0x01, 0x11, 0x03, 0x13, 0x14],
+  [0x00, 0x10, 0x01, 0x11, 0x21, 0x02], [0x00, 0x01, 0x02, 0x12, 0x03, 0x13], [0x00, 0x01, 0x02, 0x12, 0x22, 0x03],
+  [0x00, 0x01, 0x02, 0x03, 0x04, 0x14], [0x00, 0x01, 0x02, 0x03, 0x04, 0x05]];
 function renderFm6Imported() {
   const box = $("fm6imported");
   if (!fm6Imported.length || !fm6Ok()) { box.replaceChildren(); return; }
