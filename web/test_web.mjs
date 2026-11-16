@@ -7,7 +7,7 @@
 //   the user preset bank / librarian, library files, live pushes, older-firmware fallback, the v3 tracks
 //   and the mixer, the v5 drum grid in steps and user presets), its tab layout and ja/en strings,
 //   and the user-sample pipeline byte for byte against tools/sampleio.py
-// - fm1pkg.js: productOf and logicalImage on build/felucca.fwsc (skipped without a build)
+// - fm1pkg.js: productOf and logicalImage on build/skiff-smk37.fwsc (skipped without a build)
 // - fm1ota.js: a full install and an unplug during the write against a simulated FM-1
 
 import { execFileSync } from "node:child_process";
@@ -290,15 +290,16 @@ async function editorMock() {
        items.map((d) => d.name).join() === E.MENU.map((x) => x.name).join() &&
        items.every((d) => d.kind === 0 && d.min === 0 && d.names.length === d.max - d.min + 1) &&
        items[0].name === "THEME" && eq(items[0].names, prefs.palettes) && items[0].value === m.state.palette &&
-       byName("LEDS").names.join() === "OFF,DIM LO,DIM HI,INV" && byName("LEDS").value === 2 && byName("HOLD").value === 1 &&
+       byName("KEY VELOCITY").names.join() === "DYNAMIC,SOFT,HARD,FIXED 64,FIXED 100,FIXED 127" && byName("KEY VELOCITY").value === 0 &&
+       byName("HOLD").value === 1 &&
        byName("SCREEN OFF").names.join() === "NEVER,5 MIN,15 MIN,30 MIN,60 MIN" && byName("SCREEN OFF").value === 3,
        "editor: MENU_DESC lists every setting, its value names and value");
     ok(items.every((d, i) => d.tab === E.MENU[i].tab && d.tabName === E.MENU_TABS[d.tab]),
        "editor: MENU_DESC gives each setting's tab on the device, after its names");
     ok(E.parse[E.CMD.MENU_DESC](await rq(E.req.menuDesc(20))).id === 127, "editor: MENU_DESC past the list answers id 127");
-    let r = E.parse[E.CMD.MENU_SET](await rq(E.req.menuSet(4, 3)));
-    ok(r.rc === 0 && r.id === 4 && r.value === 3 && E.parse[E.CMD.MENU_DESC](await rq(E.req.menuDesc(3))).value === 3,
-       "editor: MENU_SET round trip (LEDS INV)");
+    let r = E.parse[E.CMD.MENU_SET](await rq(E.req.menuSet(18, 3)));
+    ok(r.rc === 0 && r.id === 18 && r.value === 3 && E.parse[E.CMD.MENU_DESC](await rq(E.req.menuDesc(15))).value === 3,
+       "editor: MENU_SET round trip (KEY VELOCITY FIXED 64)");
     const pal = m.state.palette;
     r = E.parse[E.CMD.MENU_SET](await rq(E.req.menuSet(0, 50)));
     ok(r.rc === 0 && r.value === 5 && E.parse[E.CMD.UI_STATE](await rq(E.req.uiState())).palette === 5,
@@ -307,7 +308,7 @@ async function editorMock() {
     ok(r.rc === 0 && r.id === 17 && r.value === 4, "editor: MENU_SET clamps (SCREEN OFF 9 -> 60 MIN)");
     await rq(E.req.menuSet(17, 3));
     ok(E.parse[E.CMD.MENU_SET](await rq(E.req.menuSet(7, 1))).rc === 1, "editor: MENU_SET of a retired id (FX LATCH): rc 1");
-    await rq(E.req.menuSet(0, pal)); await rq(E.req.menuSet(4, 2));
+    await rq(E.req.menuSet(0, pal)); await rq(E.req.menuSet(18, 0));
     const d = E.parse[E.CMD.MENU_DESC]([3, 20, 1, 5, 64, 0, 64, 100, 64, 88, 0, 109, 115, 0]);
     ok(d.kind === 1 && d.value === 5 && d.max === 100 && d.name === "X" && d.unit === "ms" && d.names === null && d.tab === -1,
        "editor: MENU_DESC kind 1 (a number): its unit");
@@ -410,7 +411,7 @@ async function editorSamplePresets() {
   const set = E.parse[C.DESC](await rq(E.req.desc(0, info.pe0)));
   ok(eq(names.names.slice(0, 6), ["PIANO", "PIANO", "FLUTE", "SAX", "PIANO", "LOFI PIANO"]) && names.names.length === 10 &&
     eq(set.names.slice(0, 4), ["PIANO", "PIANO", "FLUTE", "SAX"]) && set.names[4] === "PIANO" &&
-    eq(set.names.slice(5), ["USR1", "USR2", "USR3"]),
+    eq(set.names.slice(5), ["USR1"]),
     "SAMPLE: TRANH and PERC removed, SET 1 and 4 kept as PIANO aliases, indices unchanged; (phase 9) the variations after");
   ok(E.aliasOf(names.names, 1) === 0 && E.aliasOf(names.names, 2) === 2 && E.aliasOf(set.names, 5) === 5 &&
      E.aliasOf(set.names, 4) === 0, "SAMPLE: an entry named like an earlier one is an alias of it");
@@ -423,12 +424,12 @@ async function editorSamplePresets() {
   const kitD = E.parse[C.DESC](await rq(E.req.desc(0, info.pe0)));
   const kitSet = [];
   for (const v of [1, 2, 3]) kitSet.push(E.parse[C.SET](await rq(E.req.set(0, info.pe0, v))).value);
-  ok(eq(kitD.names, ["STD", "66", "10", "77", "80", "10", "66", "55", "77", "DEEP", "TIGHT", "PERC", "USR1", "USR2", "USR3"]) &&
+  ok(eq(kitD.names, ["STD", "66", "10", "77", "80", "10", "66", "55", "77", "DEEP", "TIGHT", "PERC", "USR1"]) &&
      eq([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((v) => E.aliasOf(kitD.names, v)), [0, 6, 5, 8, 4, 5, 6, 7, 8, 9, 10, 11]) &&
      eq(E.enumShown(kitD).filter((v) => E.aliasOf(kitD.names, v) === v).map((v) => kitD.names[v]),
-        ["STD", "80", "10", "66", "55", "77", "DEEP", "TIGHT", "PERC", "USR1", "USR2", "USR3"]) &&
+        ["STD", "80", "10", "66", "55", "77", "DEEP", "TIGHT", "PERC", "USR1"]) &&
      eq(kitSet, [6, 5, 8]),
-    "DRUM: KIT 1..3 (once HAND CYM H+CYM) named 66 10 77, aliases of 6 5 8: hidden, a SET lands there; ((2.0, #35) USR1..3 after)");
+    "DRUM: KIT 1..3 (once HAND CYM H+CYM) named 66 10 77, aliases of 6 5 8: hidden, a SET lands there; ((2.0, #35) USR1 after, the SMK-37 has the one)");
   const removed = E.parse[C.PRESET](await rq(E.req.preset(4, 4)));
   const kit = E.parse[C.DUMP](await rq(E.req.dump()), info);
   ok(removed.engine === 10 && removed.preset === 0 && kit.engine === 10 && eq(kit.p.slice(info.pe0), E.DRUM_KIT_E),
@@ -1881,7 +1882,7 @@ function samplesMatch() {
 
 /* ------------------------------------------------------- packages: JS == Python --- */
 async function packages() {
-  const pkg = join(FW_ROOT, "build/felucca.fwsc");
+  const pkg = join(FW_ROOT, "build/skiff-smk37.fwsc");
   if (!existsSync(pkg)) {
     console.log("packages: skipped (run ./build.sh first)");
     return;
@@ -1890,7 +1891,7 @@ async function packages() {
   const logical = py(`import sys; raw = open(sys.argv[1], "rb").read()
 sys.stdout.buffer.write(b"".join(raw[i * 48:i * 48 + 47] for i in range(20)) + raw[960:])`, pkg);
   ok(eq(logicalImage(raw), logical), "fm1pkg.js logicalImage");
-  ok(/^FM-1_7\d\d$/.test(productOf(raw)), "fm1pkg.js productOf");   /* Skiff's identities (Felucca's: FM-1_9xx) */
+  ok(/^SMK-37 Pro_7\d\d$/.test(productOf(raw)), "fm1pkg.js productOf");   /* Skiff's identities on the SMK-37 */
 }
 
 /* ------------------------------------------------- update protocol (fm1ota.js) --- */

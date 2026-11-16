@@ -14,6 +14,7 @@ static uint32_t lgn, lg_hold;                     /* events read; lg_hold: the h
 
 static void mo_drain(void)                       /* what a host reads: everything queued */
 {
+    mo.rt = mo_w;                                 /* (the TRS jack sends what is queued whether a host reads or not) */
     if (lg_hold)
         return;
     while (mo_r != mo_w) {
@@ -35,7 +36,7 @@ static void out_reset(void)                       /* (CLOCK OUT off: the notes' 
     ui_power_on();
     memset(&mn, 0, sizeof mn);
     memset(&mo, 0, sizeof mo);
-    mo_w = mo_r = 0;
+    mo_w = mo_r = mo.rt = 0;
     usb.config = 1;
     lgn = lg_hold = 0;
     fm1_in.notes = kb_prev = 0;

@@ -1,21 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-// The browser build (build/emu/felucca.wasm, web/emu/felucca_web.c) in Node, as the worklet runs it. After X0X's
-// tests/host/emu_test.mjs (charlesvestal/fm1-x0x, GPL-3.0).
+// The web build (build/emu/felucca.wasm, web/emu/felucca_web.c: the firmware's sources for the SMK-37 Pro against a
+// simulated one, the base of the editor's Screen tab copy) in Node. After X0X's tests/host/emu_test.mjs
+// (charlesvestal/fm1-x0x, GPL-3.0).
 //   node web/emu/emu_test.mjs build/emu/felucca.wasm [NATIVE.f32]
-// Checks: it boots (splash, then HOME on the screen, the HOME LED; the power-on LED sweep under the splash, over by
-// 1 s), a held key sounds and lights its LED, PLAY
-// starts the sequencer (PLAY's green LED), a user preset saved from the panel (SAVE, OCT+, OCT+) reaches the flash,
-// and the flash sectors kept as the page keeps them bring it back in a fresh instance; the same gestures twice
-// give the same audio (deterministic), with NATIVE.f32 (web/emu/native_check.c) the native build's, bit for bit.
-// Then the cost: 1 s of a heavy song (FM6, PHYS, GRAIN chords, DRUM) against real time (BENCH_MAX, default 0.5:
-// fails above half of real time on this machine).
+// Checks: it boots (splash, then HOME on the screen), a MIDI note sounds, a knob redraws the screen, PLAY starts the
+// sequencer, a user preset saved from the panel (SAVE, OCT+, OCT+) reaches the flash, and the flash sectors kept (as
+// a page would keep them) bring it back in a fresh instance; the same gestures twice give the same audio
+// (deterministic), with NATIVE.f32 (web/emu/native_check.c) the native build's, bit for bit. Then the cost: 1 s of a
+// heavy song (FM6, PHYS, GRAIN chords, DRUM) against real time (BENCH_MAX, default 0.5: fails above half of real time
+// on this machine).
 import fs from "fs";
-import { storeSectors, restoreSectors } from "./worklet.js";
+
+// The flash a page would keep: storage.c's window (projects, user presets, the autosave, their FM6 patches, the
+// settings: 0x9D000..0xBAFFF) and USRFLASH (the tape store and the user sample slot: 0xC2000..0xF3FFF), only the
+// sectors that hold something (an erased sector is all 0xFF). {offset: bytes}
+const STORE_AREAS = [[0x9D000, 0xBB000], [0xC2000, 0xF4000]];
+function storeSectors(nor) {
+  const out = {};
+  for (const [first, end] of STORE_AREAS)
+    for (let off = first; off < end; off += 4096) {
+      const sector = nor.subarray(off, off + 4096);
+      if (sector.some((v) => v !== 0xFF)) out[off] = sector.slice();
+    }
+  return out;
+}
+function restoreSectors(nor, sectors) {
+  for (const [key, value] of Object.entries(sectors || {})) {
+    const off = +key, bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+    if (STORE_AREAS.some(([first, end]) => off >= first && off + 4096 <= end && off % 4096 === 0) && bytes.length === 4096)
+      nor.set(bytes, off);
+  }
+}
 
 const wasmPath = process.argv[2] || "build/emu/felucca.wasm", nativePath = process.argv[3];
 const bytes = fs.readFileSync(wasmPath);
-const B = { FX: 0, SEL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, OCTDN: 12, OCTUP: 13 };
+const B = { FX: 0, SEL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, OCTDN: 12, OCTUP: 13 };   // panel labels (web_buttons)
 const EN = { SELECT: 0, ALGO: 1, PRESETS: 2, K1: 3, K2: 4, K3: 5, K4: 6 };
 let fails = 0;
 const check = (what, ok) => { console.log(`emu: ${what.padEnd(76)} ${ok ? "ok" : "FAIL"}`); if (!ok) fails++; };
@@ -56,27 +76,10 @@ const colours = (fb) => new Set(fb).size;
 const a = await device(null);
 a.render(200);
 const splash = colours(a.screen());
-{ // the power-on LED sweep (hal/fm1_led_anim.h) under the splash: at 200 ms its head on the middle of the keyboard, the
-  // keys it passed glowing (DIM HI), the ones ahead dark, the buttons not yet; the UI's LEDs untouched until it ends
-  const p = a.ex.web_anim_levels(), lv = p ? Array.from(new Uint8Array(a.mem.buffer, p, 41)) : [];
-  const keys = lv.slice(14), head = keys.indexOf(Math.max(...keys.map((q) => q & 127)) | 128);
-  check(`power-on LED sweep: at 200 ms the head on key ${head}, glow behind, dark ahead, buttons dark`,
-        lv.length === 41 && head >= 8 && head <= 18 && keys.slice(0, head - 6).every((q) => q === 128) &&
-        keys.slice(head + 3).every((q) => q === 0) && lv.slice(0, 14).every((q) => q === 0) &&
-        a.ex.web_lit_keys() === 0 && a.ex.web_lit_buttons() === 0);
-}
 a.render(800);
-check("  over by 1 s (~0.70 s)", a.ex.web_anim_levels() === 0);
 const home = a.screen();
-check(`boots: the splash, then HOME (${colours(home)} colours), the HOME LED lit`,
-      splash > 1 && colours(home) > 4 && (a.ex.web_lit_buttons() >> B.HOME & 1) === 1);
+check(`boots: the splash, then HOME (${colours(home)} colours)`, splash > 1 && colours(home) > 4);
 check("silent at rest", a.peak === 0);
-a.ex.web_keys(1 << 7);                                        // C4
-a.render(300);
-const keyLit = (a.ex.web_lit_keys() >> 7) & 1;
-a.ex.web_keys(0);
-a.render(400);
-check(`a key sounds (peak ${a.peak.toFixed(3)}) and lights its LED`, a.peak > 0.01 && keyLit === 1);
 a.render(1500);
 a.peak = 0;
 a.ex.web_midi(0x90, 64, 100);                                  // Web MIDI: E4 on channel 1
@@ -89,36 +92,10 @@ a.turn(EN.K1, 3);
 check("KNOB 1 redraws the screen", a.ex.web_screen_draws() > draws);
 a.tap(B.PLAY);
 a.render(1000);
-check("PLAY: the sequencer runs, PLAY's green LED", a.ex.web_playing() === 1 && (a.ex.web_lit_buttons() >> 14 & 1) === 1);
+check("PLAY: the sequencer runs", a.ex.web_playing() === 1);
 a.tap(B.PLAY);
 a.render(300);
 check("PLAY again stops it", a.ex.web_playing() === 0);
-a.ex.web_buttons(1 << B.FX);                                  // #119: FX held, its map: the effects breathe
-a.render(800);
-const brK = a.ex.web_breath_keys(), brB = a.ex.web_breath_buttons(), litK = a.ex.web_lit_keys();
-a.ex.web_buttons(0);
-a.render(300);
-check("FX held: its button and the effects' keys breathe, (2.0) its black keys 1..6 lit as GLO's (the tracks sound); " +
-      "let go: nothing",                                         // (F#3 G#3 A#3 C#4 D#4 F#4: keys 1 3 5 8 10 13)
-      (brB >> B.FX & 1) === 1 && brK !== 0 && (brK & litK) === 0 && litK === 0x252A &&
-      a.ex.web_breath_keys() === 0 && a.ex.web_breath_buttons() === 0);
-{ // the page's breathing peaks against the firmware's (hal/fm1_input.h FM1_LED_BREATH_PK / _LO, /256 of lit): the
-  // colour at 50 % between the dark and the lit one by the LED's share, gamma-encoded (sRGB), within 0.06
-  const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
-  const hal = fs.readFileSync(new URL("../../firmware/hal/fm1_input.h", import.meta.url), "utf8");
-  const pk = (n) => +hal.match(new RegExp(`#define ${n} (\\d+)u`))[1] / 256;
-  const srgb = (x) => x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
-  const red = (c) => parseInt(c.slice(1, 3), 16);
-  const share = (name, lit) => {                        // (the red channel: the peak's share of dark .. lit)
-    const m = html.match(new RegExp(`@keyframes ${name} \\{ 0%, 100% \\{ fill: (#[0-9a-f]{6}); \\} 50% \\{ fill: (#[0-9a-f]{6})`));
-    return (red(m[2]) - red(m[1])) / (lit - red(m[1]));
-  };
-  const hi = srgb(pk("FM1_LED_BREATH_PK")), lo = srgb(pk("FM1_LED_BREATH_PK_LO")), litBtn = 0xff, litSlit = 0xec;
-  const got = [share("breath-btn", litBtn), share("breath-slit", litSlit), share("breath-btn-lo", litBtn), share("breath-slit-lo", litSlit)];
-  check(`the page's breath peaks ${got.map((x) => x.toFixed(2)).join(" ")} ~ ${hi.toFixed(2)} (HI) ${lo.toFixed(2)} (LO)`,
-        Math.abs(got[0] - hi) <= 0.06 && Math.abs(got[1] - hi) <= 0.06 && Math.abs(got[2] - lo) <= 0.06 &&
-        Math.abs(got[3] - lo) <= 0.06);
-}
 
 // ---- a user preset saved from the panel, kept across a fresh instance
 const w0 = a.ex.web_flash_writes_count();

@@ -11,6 +11,8 @@ static uint16_t fb[240][240];                   /* RGB565 as the panel stores it
 static uint32_t win[4], cx, cy, cmd, outside;
 static const uint8_t *pend;
 static uint32_t pend_n;
+static void fm1_padled_send(const void *p, uint32_t n) { (void)p; (void)n; }   /* (lcd.c padled_flush: the pads) */
+static void fm1_padled_done(void) {}
 static void fm1_lcd_hw_init(void) {}
 static void fm1_lcd_baud(uint32_t b) { (void)b; }
 static void fm1_lcd_backlight(uint32_t on) { (void)on; }

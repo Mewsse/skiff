@@ -3,21 +3,21 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Build Felucca: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y[-suffix]] [--board fm1|smk37] [--model pro|elite|mke]
+  tools/build.py [--release X.Y[-suffix]] [--model pro|elite|mke]
 
 Outputs in build/: felucca.bin (app), loader/ota.bin (update loader),
-felucca.fwsc (package). A release build (--release X.Y) writes skiff-X.Y.fwsc and a folder
+skiff-smk37.fwsc (package). A release build (--release X.Y) writes skiff-smk37-X.Y.fwsc and a folder
 release-X.Y/ with the package, the app, SHA256SUMS, the samples' attributions and the licence files; (Skiff 2.0) it
 leaves the serial console out (FELUCCA_CDC=0, a developer tool: FELUCCA_CDC=1 keeps it), so the unit is a plain audio
 + MIDI device (macOS 13-15 see its USB audio input) and MENU has no USB SERIAL.
 See BUILDING.md for the toolchain and the SDK.
 
-BOARD=smk37 (or --board smk37) builds Skiff for the M-VAVE SMK-37 Pro (after genkigenki's SMK-37 layer for Felucca):
--DBOARD_SMK37=1 for the app and the loader, identity SMK-37 Pro_700 (release SMK-37 Pro_7XY), the SMK flash layout
-(fm1pkg_make.py), the package build/skiff-smk37.fwsc (skiff-smk37-X.Y.fwsc for a release). MODEL=elite / mke (or
---model) with smk37: the same build under the SMK-37 Elite's or the MKE-P37's model name (identity, loader, update
-record; -DSMK_MODEL), so the stock updater still takes that unit's factory package: skiff-smk37-elite.fwsc, -mke.fwsc.
-The default stays the FM-1, whose build gets no new flag.
+This fork builds Skiff for the M-VAVE SMK-37 Pro only (after genkigenki's SMK-37 layer for Felucca): identity
+SMK-37 Pro_700 (release SMK-37 Pro_7XY), the SMK flash layout (fm1pkg_make.py), the package build/skiff-smk37.fwsc
+(skiff-smk37-X.Y.fwsc for a release). MODEL=elite / mke (or --model): the same build under the SMK-37 Elite's or the
+MKE-P37's model name (identity, loader, update record; -DSMK_MODEL), so the stock updater still takes that unit's
+factory package: skiff-smk37-elite.fwsc, -mke.fwsc. --board smk37 (or BOARD=smk37) is accepted and does nothing; the
+FM-1 is not supported here.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -48,8 +48,7 @@ APP_SLOT = fm1pkg_make.APP_SLOT
 LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 # the staged loader (its ota.bin, the package's UFW entry) must fit what the stock app leaves for one: on the SMK-37
-# its staging at 0xBD000, its update record at 0xBEF00 (SMK37.md), where a bigger one may spill into BTIF / USRTRIM;
-# on the FM-1 (V15) 0xE6000 and 0xE7F00, the same 7,936 B (both measured from dumps, 2026-10-20)
+# its staging at 0xBD000, its update record at 0xBEF00 (SMK37.md), where a bigger one may spill into BTIF / USRTRIM
 LDR_MAX = 0xBEF00 - 0xBD000
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
 CFLAGS = ["-Os", "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
@@ -62,12 +61,12 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_700"                # package identity; release builds are FM-1_7XY (Felucca's are FM-1_9XY)
-BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --board
-BOARD_PRODUCT = {"fm1": "FM-1_700", "smk37": "SMK-37 Pro_700"}   # a dev build's identity
-BOARD_PREFIX = {"fm1": "FM-1_7", "smk37": "SMK-37 Pro_7"}        # a release build's: prefix + X + Y
-BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}           # the FM-1 build gets no new flag (byte-identical)
-BOARD_STEM = {"fm1": "skiff", "smk37": "skiff-smk37"}            # a release package: STEM-X.Y.fwsc
+PRODUCT = "SMK-37 Pro_700"          # package identity; release builds are SMK-37 Pro_7XY
+BOARD = "smk37"                     # the only board: --board smk37 / BOARD=smk37 are accepted
+BOARD_PRODUCT = {"smk37": "SMK-37 Pro_700"}   # a dev build's identity
+BOARD_PREFIX = {"smk37": "SMK-37 Pro_7"}      # a release build's: prefix + X + Y
+BOARD_DEFS = {"smk37": []}
+BOARD_STEM = {"smk37": "skiff-smk37"}         # a release package: STEM-X.Y.fwsc
 # smk37: the keyboard's model name (MODEL env or --model); one hardware, three names. pro adds no flag
 MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/felucca.c)
@@ -204,7 +203,7 @@ def build_loader():
 
 
 def write_smk_ldr(ota):
-    """SMK-37: the app carries its own loader (build/gen/smk_ldr.h, ota.c) and stages it for M-VAVE's packages"""
+    """the app carries its own loader (build/gen/smk_ldr.h, ota.c) and stages it for M-VAVE's packages"""
     rows = ",\n".join("    " + ", ".join(f"0x{b:02x}" for b in ota[i:i + 16]) for i in range(0, len(ota), 16))
     (GEN / "smk_ldr.h").write_text(
         "/* generated by tools/build.py: this build's update loader (build/loader/ota.bin), staged by ota.c in place of\n"
@@ -249,12 +248,11 @@ def build_app():
            OUT / "felucca_size.ll", "-o", OUT / "felucca.o")
     elf = OUT / "felucca.elf"
     ld = FW / "app.ld"
-    if APP_SLOT != 0x8DFBC:          # another board's app slot (SMK-37 Pro): the same script, its XIP length
-        txt = ld.read_text()
-        if txt.count("LENGTH = 0x8DFBC") != 1:
-            raise SystemExit("app.ld: the XIP LENGTH line was not found")
-        ld = OUT / "app.ld"
-        ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#x}"))
+    txt = ld.read_text()             # the SMK-37 Pro's app slot: the same script, its XIP length
+    if txt.count("LENGTH = 0x8DFBC") != 1:
+        raise SystemExit("app.ld: the XIP LENGTH line was not found")
+    ld = OUT / "app.ld"
+    ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#x}"))
     tc("pi32v2/bin/ld", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
        *([OUT / "fm1_cpu1.o"] if CPU2 else []), OUT / "felucca.o", "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin"):
@@ -266,7 +264,7 @@ def build_app():
                                ("common/bin/objdump", "-d", elf),
                                ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
     (OUT / "felucca.dis").write_text(dis)
-    (OUT / f"felucca-{BOARD}.dis").write_text(dis)     # one per board: tests/run_tests.sh checks the cost of both
+    (OUT / f"felucca-{BOARD}.dis").write_text(dis)
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
@@ -377,24 +375,23 @@ def mmio_check():
 def main():
     global PRODUCT, VERSION, BOARD, APP_SLOT
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_7XY, version string vX.Y")
-    ap.add_argument("--board", choices=sorted(BOARD_PRODUCT), default=None,
-                    help="target board: fm1 (default) or smk37 (default: $BOARD, else fm1)")
+    ap.add_argument("--release", metavar="X.Y", help="release build: identity SMK-37 Pro_7XY, version string vX.Y")
+    ap.add_argument("--board", default=None, help="smk37 (the only board; accepted, does nothing)")
     ap.add_argument("--model", choices=sorted(MODELS), default=None,
-                    help="smk37: the model name, pro (default), elite or mke (default: $MODEL, else pro)")
+                    help="the model name, pro (default), elite or mke (default: $MODEL, else pro)")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
-    BOARD = (a.board or os.environ.get("BOARD") or "fm1").lower().replace("-", "")
+    BOARD = (a.board or os.environ.get("BOARD") or "smk37").lower().replace("-", "")
     if BOARD not in BOARD_PRODUCT:
-        raise SystemExit(f"BOARD={BOARD}: use fm1 or smk37")
-    model = (a.model or (os.environ.get("MODEL") if BOARD == "smk37" else None) or "pro").lower()
-    if model not in MODELS or (model != "pro" and BOARD != "smk37"):
-        raise SystemExit(f"MODEL={model}: pro, elite or mke, with BOARD=smk37")
+        raise SystemExit(f"BOARD={BOARD}: this fork builds for the SMK-37 only (--board smk37, or no --board)")
+    model = (a.model or os.environ.get("MODEL") or "pro").lower()
+    if model not in MODELS:
+        raise SystemExit(f"MODEL={model}: pro, elite or mke")
     fm1pkg_make.set_board(BOARD)
     APP_SLOT = fm1pkg_make.APP_SLOT
     PRODUCT = BOARD_PRODUCT[BOARD]
     stem = BOARD_STEM[BOARD]
-    name = "felucca.fwsc" if BOARD == "fm1" else f"{stem}.fwsc"
+    name = f"{stem}.fwsc"
     if model != "pro":              # another model name: identity, loader and update record (fm1_cc.h SMK_MODEL)
         BOARD_DEFS[BOARD] = [*BOARD_DEFS[BOARD], f'-DSMK_MODEL="{MODELS[model]}"']
         PRODUCT = PRODUCT.replace(MODELS["pro"], MODELS[model])
@@ -418,8 +415,7 @@ def main():
         gen, ldr = ex.submit(generate), ex.submit(build_loader)
         gen.result()
         ota = ldr.result()
-    if BOARD == "smk37":
-        write_smk_ldr(ota)
+    write_smk_ldr(ota)
     img, syms, dis, rt = build_app()
     errors, notes = check(img, syms, dis, rt)
     hal_err = mmio_check()
@@ -439,7 +435,7 @@ def main():
         shutil.copy(att, OUT / "ATTRIBUTION.txt")
     print(f"app      {OUT / 'felucca.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
-    print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}" + (f", board {BOARD}" if BOARD != "fm1" else ""))
+    print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}, board {BOARD}")
     if a.release:                   # what a release carries: the package, the app and every licence they need
         rel = OUT / f"release-{a.release}"
         shutil.rmtree(rel, ignore_errors=True)

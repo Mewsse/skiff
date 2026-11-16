@@ -20,15 +20,11 @@
 #include "fm1_sys.h"
 /* the loader may write the app area and erase update records; never the head, nor Felucca's store
  * [0x97000, 0xE0000) (user data, never a record: ldr_core.c) */
-#include "fm1_cc.h"                             /* BOARD_SMK37 */
-#if BOARD_SMK37
+#include "fm1_cc.h"                             /* SMK_MODEL */
 /* SMK-37 Pro: app area 0x4000..0x9CFFF, records in the VM 0x9D000..0xBFFFF only: never BTIF / USRTRIM
  * 0xC0000..0xC1FFF, USR 0xF4000.., key_mac 0xFF000 (FL_LDR_RANGE_OK, asserted in fm1_flash_map.h; the RAM driver
  * refuses every protected range on its own as well, FL_GUARD) */
 #define FL_RANGE_OK(off, n) FL_LDR_RANGE_OK(off, n)
-#else
-#define FL_RANGE_OK(off, n) (FL_IN(off, n, 0x4000u, 0x97000u) || FL_IN(off, n, 0xE0000u, 0xFC000u))
-#endif
 #include "fm1_flash.h"
 #define fm1_irq_off() ((void)0)          /* (lcd.c's, around port A: interrupts are off for the whole loader) */
 #define fm1_irq_on() ((void)0)
@@ -40,10 +36,8 @@
 #include "ldr_screen.c"                         /* (Skiff) the screen: UPDATE MODE, WRITING */
 #include "fm1_clk_regs.h"                       /* (Skiff) the flash controller's divider as the app has it */
 static uint32_t ldr_sfc_found;                  /* SFC_BAUD as this start found it (0x7C's last word on the SMK) */
-#if BOARD_SMK37
 #include "ldr_crumb.h"                          /* (Skiff) the start record: why it started, how far the last run got */
 #define LDR_CRUMB ((ldr_crumb_t *)FM1_LDR_CRUMB_ADDR)
-#endif
 
 static uint32_t ldr_ms(void)   /* monotonic ms; survives the TIMER4 wrap (178.9 s) */
 {
@@ -77,7 +71,6 @@ static int ota_fread(uint32_t off, void *p, uint32_t n) { return fl_read_ram(off
 static void ota_show(uint32_t step, int32_t code) { (void)step; (void)code; }
 static void ota_commit(const uint8_t *parm) { (void)parm; }
 #include "../src/ota.c"
-#if BOARD_SMK37
 /* ota.c's queries (cmd 0x7B the start record, 0x7C the clock registers: ldr_crumb.h, fm1_clk_regs.h), 32 bytes each;
  * 0x7C's last word is SFC_BAUD as the loader found it at its start, before it set the app's (in place of USB_CLK) */
 static void ota_reply_info(void) { ota_send_msg(0x7B, (const uint8_t *)LDR_CRUMB, 32); }
@@ -93,7 +86,6 @@ static __attribute__((noinline)) void ldr_stage(uint32_t st, uint32_t sec)
     ldr_crumb_stage(LDR_CRUMB, st, sec, ldr_ms());
 }
 #define LDR_STAGE(st, sec) ldr_stage((st), (sec))
-#endif
 
 /* ---- ldr_core.c hooks: interrupts are off for the whole loader. Each feeds the watchdog first: no stretch without a
  * feed spans more than one flash operation ---- */
@@ -106,15 +98,11 @@ static int ldr_erase(uint32_t off)
 {
     uint32_t took;
     fm1_wdt_feed();
-#if BOARD_SMK37
     int rc;
     took = 0;                                       /* (a refused erase leaves it as it is) */
     rc = fl_erase4k_ram(off, &took);
     ldr_crumb_erase(LDR_CRUMB, took);
     return rc;
-#else
-    return fl_erase4k_ram(off, &took);
-#endif
 }
 static int ldr_prog(uint32_t off, const void *p, uint32_t n)
 {
@@ -167,17 +155,13 @@ void ldr_main(void)
 void ldr_cstart(void)
 {
     uint32_t *p;
-#if BOARD_SMK37
     uint32_t warm = (uint32_t)fm1_updata_parm_set();   /* (the app's RAM record still there: a warm start) */
-#endif
     ldr_record_clear();                             /* first thing: a crash below cannot loop through a
                                                      * warm reset; resume after power loss uses the flash record */
     for (p = _bss_start; p < _bss_end; p++)
         *p = 0;
     ldr_sfc_found = fm1_sfc_baud_app();             /* (a power-on start: the boot ROM's slow divider, fm1_clk_regs.h) */
-#if BOARD_SMK37
     fm1_reset_reason();
     ldr_crumb_start(LDR_CRUMB, warm, fm1_boot.p3_rst, fm1_boot.rst_src, fm1_boot.wdt_con);
-#endif
     ldr_main();
 }

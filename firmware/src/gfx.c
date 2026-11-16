@@ -805,10 +805,8 @@ static int32_t cv_free_text(int32_t x, int32_t y, const aafont_t *f, const char 
  * as SHIFT's map says them */
 static const char *kc_name(uint32_t id)
 {
-#if BOARD_SMK37
     if (id == KC_SELECT || id == KC_ALGO || id == KC_PRESETS)
         return KC[id == KC_SELECT ? KC_K2 : id == KC_ALGO ? KC_K3 : KC_K4].label;
-#endif
     return KC[id < KC_COUNT ? id : 0u].label;
 }
 static int32_t kc_w(uint32_t id) { return id < KC_COUNT ? text_w(&AF_S, kc_name(id)) : 0; }

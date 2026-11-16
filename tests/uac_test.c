@@ -38,6 +38,7 @@
 #define FELUCCA_UAC 1
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"   /* SIE register macros (never touched here) */
+#include "smk_uart_host.h"
 #include "../firmware/src/usb.c"
 static const uint8_t zlo[2 * 4096];                    /* ((2.5) uac_tap's bits below Q15: none, the words exact) */
 

@@ -60,7 +60,6 @@ static uint32_t st_crc32(const void *p, uint32_t n)   /* zlib CRC-32 */
     return ~st_crc32_on(0xFFFFFFFFu, p, n);
 }
 
-#if BOARD_SMK37
 /* SMK-37 Pro (fm1_flash_map.h; after genkigenki's SMK-37 layer): every object an A/B pair in FL_DATA 0x9D000..0xBAFFF
  * (the stock VM), in this order: projects 0x9D000..0xA4FFF, user preset banks 0xA5000..0xA8FFF, the autosave 0xA9000 /
  * 0xAA000, the user presets' FM6 patches (OBJ_UPFM6, the pair of the retired OBJ_FM6BANK) 0xAB000 / 0xAC000, settings
@@ -80,20 +79,6 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
 {
     return ST_SMK_BASE + (ST_SMK_ORDER[obj % OBJ_COUNT] * 2u + (copy & 1u)) * ST_SECTOR;
 }
-#else
-static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy A (0) / B (1) */
-{
-    if (obj == OBJ_SETTINGS)
-        return 0xFC000u + copy * ST_SECTOR;
-    if (obj == OBJ_FM6BANK || obj == OBJ_UPFM6)          /* (the same pair: see the flash map) */
-        return copy ? 0xFE000u : 0x9F000u;
-    if (obj == OBJ_AUTOSAVE)
-        return 0xE5000u + copy * ST_SECTOR;
-    if (obj >= OBJ_UPRESET0)
-        return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
-    return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
-}
-#endif
 
 static uint8_t st_buf[ST_PAYLOAD_MAX] __attribute__((aligned(4)));
 
@@ -196,7 +181,6 @@ static int st_save_to(uint32_t obj, const void *src, uint32_t len, int to)
 
 static int st_save(uint32_t obj, const void *src, uint32_t len) { return st_save_to(obj, src, len, -1); }
 
-#if BOARD_SMK37
 /* (SMK-37 Pro, after genkigenki's SMK-37 layer) The store's owner. The store window is the stock firmware's VM, so
  * after an install it may hold the stock firmware's (or another port's) data, which Skiff must never parse as its own.
  * The sector after the objects (ST_OWNER_OFF) holds the tag "SMK37DATA" + the data family (SMK_DATA_FAMILY, zero
@@ -292,4 +276,3 @@ static void st_owner_check(void)
     st_erase(ST_OWNER_OFF);
     st_prog(ST_OWNER_OFF, want, 16);
 }
-#endif

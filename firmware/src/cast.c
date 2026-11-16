@@ -60,17 +60,10 @@ static __attribute__((noinline)) void cast_take(uint32_t pressed, uint32_t struc
         return;
     cast.lb = b;
     cast.ln = k;
-#if BOARD_SMK37
     cast_rec('T', b, k | (uint32_t)cast.pass << 27);
     if (pressed | struck)
         cast_rec('U', struck, pressed);
-#else
-    cast_rec('T', b | pressed << 14, k | (uint32_t)cast.pass << 27);
-    if (struck)
-        cast_rec('U', struck, 0);
-#endif
 }
-#if BOARD_SMK37
 /* smk_ui.c smk_ui_frame, after its reading (smk_rd): the faders, the wheels and the pedal, when they changed */
 static __attribute__((noinline)) void cast_smk(void)
 {
@@ -84,7 +77,6 @@ static __attribute__((noinline)) void cast_smk(void)
         cast_rec('A', a, w);
     }
 }
-#endif
 /* the music (each track's values and steps, the globals) and what the UI shows, hashed */
 static __attribute__((noinline)) uint32_t cast_hash(void)
 {
@@ -156,12 +148,8 @@ static __attribute__((noinline)) void cast_cmd(uint32_t op)
         cast.lb = fm1_in.buttons;
         cast.ln = fm1_in.notes;
         cast.chk = fm1_ms;
-#if BOARD_SMK37
         cast.la = cast.lw = ~0u;                      /* (the first frame's A: always) */
 #define CAST_LAYOUT (CAST_VER | CAST_SMK)
-#else
-#define CAST_LAYOUT CAST_VER
-#endif
         cast.on = 1;
         cast_rec('B', fm1_ms, (uint32_t)master_knob | CAST_LAYOUT << 24 | (uint32_t)C1_ON() << 31);
     } else if (op == 0u) {

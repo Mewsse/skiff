@@ -170,7 +170,6 @@ static void lcd_wake_now(void)
     fm1_lcd_backlight(1);
 }
 
-#if BOARD_SMK37
 /* The SMK-37 Pro's 16 RGB pads (after genkigenki's SMK-37 layer): WS2812-class LEDs on SPI1 group B (PC10), one SPI
  * byte per LED bit (0xF0 = 1, 0xC0 = 0, MSB first, GRB), 250 zero bytes of reset first (~300 us: the stock 36 bytes
  * are too short for newer parts, whose chain then shifts by one). The frame goes out between LCD transfers (LCD CS
@@ -209,4 +208,3 @@ static void padled_flush(void)
     fm1_lcd_wait();
     fm1_padled_done();
 }
-#endif

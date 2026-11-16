@@ -4,7 +4,7 @@
  * host serves a package over the SysEx protocol, the "device" flash starts as
  * another package's flash.bin (as if that firmware were installed).
  *   ldr_test OLD.fwsc NEW.fwsc
- * With -DBOARD_SMK37=1 (packages from fm1pkg_make.py --board smk37; after genkigenki's SMK-37 layer): the SMK-37 Pro
+ * The packages are from fm1pkg_make.py --board smk37, after genkigenki's SMK-37 layer; the SMK-37 Pro
  * windows (app area up to 0x9D000, records 0x9D000..0xBFFFF) and the protected ranges BTIF / USRTRIM
  * 0xC0000..0xC1FFF, USR 0xF4000..0xFDFFF and key_mac 0xFF000 never touched, even with a valid-looking record in them.
  * Both boards: the app's header sector (0x4000) erased before any other write and written last, a write cut short
@@ -18,7 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if BOARD_SMK37
 #define FELUCCA_ID "ota-SMK-37 Pro_700"
 #define T_APP_HI 0x9D000u                   /* end of the app area the loader writes */
 #define T_REC 0xBFF00u                      /* the SMK build's update record (ota.c OTA_RES) */
@@ -28,17 +27,6 @@
 #define T_DATA_LO 0u                        /* no store range skipped (the sample and the pool are in USRFLASH) */
 #define T_DATA_HI 0u
 #define T_USER 0xC2000u                     /* user sample data (USR1), outside the record window */
-#else
-#define FELUCCA_ID "ota-FM-1_900"
-#define T_APP_HI 0x93000u
-#define T_REC 0xE4F00u
-#define T_REC2 0xE8F00u                     /* the stock firmware's */
-#define T_ERASE_LO 0x4000u
-#define T_ERASE_HI 0xFC000u
-#define T_DATA_LO 0x97000u
-#define T_DATA_HI 0xE0000u
-#define T_USER 0xA0000u
-#endif
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_LOADER 1                    /* (ota.c as the loader has it) */
 
@@ -114,7 +102,6 @@ static int ota_fread(uint32_t off, void *p, uint32_t n) { memcpy(p, nor + off, n
 static void ota_show(uint32_t step, int32_t code) { (void)step; (void)code; }
 static void ota_commit(const uint8_t *parm) { (void)parm; }
 #include "../firmware/src/ota.c"
-#if BOARD_SMK37
 #include "../firmware/loader/ldr_crumb.h"
 static ldr_crumb_t crumb;                          /* (loader.c keeps it at FM1_LDR_CRUMB_ADDR) */
 #define LDR_STAGE(st, sec) ldr_crumb_stage(&crumb, (st), (sec), now_ms)
@@ -128,7 +115,6 @@ static void host_ask(uint32_t cmd)                 /* the host's query: 00 59 cm
     info_cmd = 0;
     ota_service();
 }
-#endif
 
 static int ldr_fread(uint32_t off, void *p, uint32_t n) { memcpy(p, nor + off, n); return 0; }
 static int ldr_erase(uint32_t off)
@@ -209,7 +195,6 @@ static void put_record_at(uint32_t at)              /* a valid update record (th
 
 static uint8_t prot_vm[T_ERASE_HI - T_APP_HI];     /* (stock_test: what lies above the app area, before) */
 static uint32_t nfo_stock;
-#if BOARD_SMK37
 /* the SMK's protected ranges: a pattern, and a valid-looking record in BTIF, USRTRIM and USR */
 static const uint32_t PROT[][2] = {{0xC0000u, 0xC2000u}, {0xF4000u, 0xFE000u}, {0xFF000u, 0x100000u}};
 static uint8_t prot_img[sizeof nor];
@@ -233,10 +218,6 @@ static int protect_ok(void)
             return 0;
     return 1;
 }
-#else
-static void protect_fill(void) {}
-static int protect_ok(void) { return 1; }
-#endif
 
 /* M-VAVE's own package through this loader (the SMK app stages it for one, ota.c): its flash.bin's app area over
  * OLD's, the head the stock package's own (so its chip key), a record pending */
@@ -350,19 +331,16 @@ int main(int argc, char **argv)
     bad += check("... and written last", head_prog > other_last);
     memcpy(nor, old + ofo, T_APP_HI);
     put_record_at(T_REC);
-#if BOARD_SMK37
     memset(&crumb, 0xA5, sizeof crumb);            /* (a power-on: RAM as it comes) */
     ldr_crumb_start(&crumb, 0, 0x01, 0, 0);
     bad += check("SMK record: a power-on starts it at 1, nothing before", crumb.starts == 1 && crumb.prev.stage == 0 &&
                  crumb.now.stage == 1 && !crumb.now.warm && crumb.magic == LDR_CRUMB_MAGIC);
-#endif
     progs = 0; cut_at = 100;
     rc = ldr_session();
     cut_at = 0;
     for (i = 0x4000u; i < 0x5000u && nor[i] == 0xFFu; i++) {}
     bad += check("a write cut short: the header erased, the record kept",
                  rc == -10 && progs == 100u && i == 0x5000u && nor[T_REC + 6u] == 0x41);
-#if BOARD_SMK37
     bad += check("SMK record: the cut run stopped writing, at the sector it was writing",
                  crumb.now.stage == 3 && crumb.now.sector == (cut_off & ~0xFFFu));
     ldr_crumb_start(&crumb, 0, 0x04, 0x20, 0x5D);  /* the next start: a watchdog reset */
@@ -371,11 +349,9 @@ int main(int argc, char **argv)
                  info_cmd == 0x7B && info_reply[0] == 0x04 && info_reply[1] == 0x5D && info_reply[2] == 2 &&
                  ota_rd32(info_reply + 4) == 0x20 && info_reply[8] == 1 && info_reply[20] == 3 &&
                  ota_rd32(info_reply + 24) == (cut_off & ~0xFFFu));
-#endif
     rc = ldr_session();
     bad += check("the next session completes it, the record gone", rc == 0 && nor[T_REC + 6u] == 0xFF &&
                  !memcmp(nor + 0x4000, logical + nfo + 0x4000, T_APP_HI - 0x4000));
-#if BOARD_SMK37
     bad += check("SMK record: done (stage 5)", crumb.now.stage == 5);
     host_ask(0x7C);
     bad += check("SMK info: the clock query answers its 32 bytes (0x7C)", info_cmd == 0x7C && info_reply[0] == 0x5A);
@@ -383,7 +359,6 @@ int main(int argc, char **argv)
     ldr_crumb_erase(&crumb, 310000);
     ldr_crumb_erase(&crumb, 2000);
     bad += check("SMK record: the slowest erase kept (310 ms)", crumb.now.erase_max_ms == 310);
-#endif
     bad += check("protected ranges untouched (SMK: BTIF, USRTRIM, USR, key_mac)", protect_ok());
     /* a power-on start finds the boot ROM's flash divider (0xB9 on the SMK, the app's 1): the app's set back */
     bad += check("start: the boot ROM's flash divider 0xB9 under the app's clocks -> the app's 1",

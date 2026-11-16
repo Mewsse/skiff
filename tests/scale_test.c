@@ -89,7 +89,7 @@ static void key_events_test(void)
     host_tracks_init();
     kb_prev = 0;
     usb.config = 1;
-    mo_w = mo_r = 0;
+    mo_w = mo_r = mo.rt = 0;
     host_mset[32u * 15u + 17u] = NO_KEYS;
     t->p[P_QUANT] = 2;
     t->p[P_SCALE] = 2;                      /* C minor: E key plays Eb */

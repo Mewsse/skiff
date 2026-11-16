@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * SMK-37 Pro port: Copyright (C) 2026 M. Geisler (genkigenki/makkuro); Skiff's family and pool */
-/* The SMK-37 Pro store's owner tag (storage.c st_owner_check, build with -DBOARD_SMK37=1) on a simulated flash: another
+/* The SMK-37 Pro store's owner tag (storage.c st_owner_check) on a simulated flash: another
  * firmware's store, an untagged one and Skiff's own; the stock firmware's mapping in USRFLASH and its marker. Only the
  * store's nine pairs, the pool's sectors that hold a chunk ("SKB1"), the tag and the marker's sectors are ever erased,
  * only the tag ever written; ours is kept, and so are the calibration, the user sample and anything else. */
@@ -8,9 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "fm1_cc.h"
-#if !BOARD_SMK37
-#error "build with -DBOARD_SMK37=1"
-#endif
 #include "fm1_flash_map.h"
 
 static uint8_t nor[0x100000];

@@ -41,6 +41,7 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
     }
     return 0;
 }
+#include "fm1_flash_map.h"                       /* (the SMK-37 Pro's: the store's window FL_DATA) */
 #include "../firmware/src/storage.c"
 
 static int check(const char *what, int ok)
@@ -100,29 +101,32 @@ int main(void)
     nor[st_sector(OBJ_PROJECT0 + 2, 0) + 8] ^= 0x01;    /* both headers broken */
     nor[st_sector(OBJ_PROJECT0 + 2, 1) + 8] ^= 0x01;
     bad += check("both headers broken -> nothing", st_load(OBJ_PROJECT0 + 2, got, sizeof got) < 0);
-    bad += check("data stays in the Felucca regions",
-                 st_sector(OBJ_SETTINGS, 1) + 4096 <= 0xFF000 && st_sector(OBJ_PROJECT0 + 3, 1) + 4096 <= 0xE0000 &&
-                     st_sector(OBJ_UPRESET0, 0) >= 0xDC000 && st_sector(OBJ_UPRESET0 + 1, 1) + 4096 <= 0xE0000);
-    /* the user presets' FM6 patches (1.0.3) in the two sectors of the retired FM6 bank: 0x9F000 (after the projects)
-     * and 0xFE000 (after the settings); the two objects share them, told apart by the commit record's type */
-    bad += check("FM6 user preset patches (and the retired bank) in the sectors 0x9F000 / 0xFE000",
-                 OBJ_UPFM6 == OBJ_COUNT - 2 && OBJ_FM6BANK == OBJ_UPFM6 - 1 && st_sector(OBJ_UPFM6, 0) == 0x9F000u &&
-                     st_sector(OBJ_PROJECT0 + 3, 1) + 4096 == 0x9F000u && st_sector(OBJ_UPFM6, 1) == 0xFE000u &&
-                     st_sector(OBJ_FM6BANK, 0) == 0x9F000u && st_sector(OBJ_FM6BANK, 1) == 0xFE000u &&
-                     st_sector(OBJ_SETTINGS, 1) + 4096 == 0xFE000u);
-    /* the autosave (1.2, project.c): its own pair 0xE5000 / 0xE6000, above the OTA staging, apart from every other
-     * object; a save there touches no other object */
     {
-        uint32_t o, c, ok = OBJ_AUTOSAVE == OBJ_COUNT - 1 && st_sector(OBJ_AUTOSAVE, 0) == 0xE5000u &&
-                               st_sector(OBJ_AUTOSAVE, 1) == 0xE6000u;
-        static uint8_t snap[0x100000];
-        for (o = 0; o < OBJ_AUTOSAVE; o++)
+        uint32_t o, c, ok = 1;
+        for (o = 0; o < OBJ_COUNT; o++)
             for (c = 0; c < 2u; c++)
-                ok &= st_sector(o, c) + 4096u <= 0xE5000u || st_sector(o, c) >= 0xE7000u;
+                ok &= st_sector(o, c) >= FL_DATA_LO && st_sector(o, c) + 4096u <= FL_DATA_HI;
+        bad += check("data stays in the SMK-37 Pro's store window (FL_DATA 0x9D000..)", ok);
+    }
+    /* the user presets' FM6 patches (1.0.3) in the two sectors of the retired FM6 bank: 0xAB000 and 0xAC000 (after
+     * the autosave); the two objects share them, told apart by the commit record's type */
+    bad += check("FM6 user preset patches (and the retired bank) in the sectors 0xAB000 / 0xAC000",
+                 OBJ_UPFM6 == OBJ_FM6BANK + 1 && st_sector(OBJ_UPFM6, 0) == 0xAB000u &&
+                     st_sector(OBJ_AUTOSAVE, 1) + 4096 == 0xAB000u && st_sector(OBJ_UPFM6, 1) == 0xAC000u &&
+                     st_sector(OBJ_FM6BANK, 0) == 0xAB000u && st_sector(OBJ_FM6BANK, 1) == 0xAC000u &&
+                     st_sector(OBJ_SETTINGS, 0) == 0xAD000u);
+    /* the autosave (1.2, project.c): its own pair 0xA9000 / 0xAA000, apart from every other object; a save there
+     * touches no other object */
+    {
+        uint32_t o, c, ok = st_sector(OBJ_AUTOSAVE, 0) == 0xA9000u && st_sector(OBJ_AUTOSAVE, 1) == 0xAA000u;
+        static uint8_t snap[0x100000];
+        for (o = 0; o < OBJ_COUNT; o++)
+            for (c = 0; c < 2u; c++)
+                ok &= o == OBJ_AUTOSAVE || st_sector(o, c) + 4096u <= 0xA9000u || st_sector(o, c) >= 0xAB000u;
         memcpy(snap, nor, sizeof nor);
         ok &= st_save(OBJ_AUTOSAVE, a, sizeof a) == 0 && st_load(OBJ_AUTOSAVE, got, sizeof got) == (int)sizeof a &&
-              !memcmp(got, a, sizeof a) && !memcmp(snap, nor, 0xE5000u) && !memcmp(snap + 0xE7000u, nor + 0xE7000u, 0x19000u);
-        bad += check("the autosave in its own sectors 0xE5000 / 0xE6000, nothing else touched", ok);
+              !memcmp(got, a, sizeof a) && !memcmp(snap, nor, 0xA9000u) && !memcmp(snap + 0xAB000u, nor + 0xAB000u, 0x55000u);
+        bad += check("the autosave in its own sectors 0xA9000 / 0xAA000, nothing else touched", ok);
     }
     {
         static uint8_t bank[3472], back[3728], tab[3728];
@@ -144,7 +148,7 @@ int main(void)
                      st_load(OBJ_UPFM6, back, sizeof back) == (int)sizeof tab && back[0] == tab[0]);
         {
             int erased = 1;
-            for (i = 256u + sizeof tab; i < 4096u; i++) erased &= nor[0x9F000u + i] == 0xFFu && nor[0xFE000u + i] == 0xFFu;
+            for (i = 256u + sizeof tab; i < 4096u; i++) erased &= nor[0xAB000u + i] == 0xFFu && nor[0xAC000u + i] == 0xFFu;
             bad += check("FM6 patches: the sector tails stay erased", erased);
         }
     }

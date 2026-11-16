@@ -16,21 +16,15 @@ static const char *const B_NAME[NB] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO",
                                         "ARP", "SEQ", "PLAY", "REC", "OCT-", "OCT+"};
 static const char *const E_NAME[NE] = {"SELECT", "ALGORITHM", "PRESETS", "KNOB 1", "KNOB 2",
                                         "KNOB 3", "KNOB 4"};
-#ifndef FM1_NBTN                        /* (host builds without a HAL: the FM-1's buttons and knobs) */
-#define FM1_NBTN 14u
+#ifndef FM1_NBTN                        /* (host builds without a HAL: the SMK-37's buttons and knobs) */
+#define FM1_NBTN 18u
 #endif
 #ifndef FM1_NENC
-#define FM1_NENC 7u
+#define FM1_NENC 8u
 #endif
-#if BOARD_SMK37
 #define PANEL_MAGIC 0x504E5331u          /* "PNS1" (SMK-37 Pro): bump when PANEL_DEFAULT changes */
 #define PANEL_NBTN FM1_NBTN              /* the matrix's buttons and knobs (panel_init): 18, 8 */
 #define PANEL_NENC FM1_NENC
-#else
-#define PANEL_MAGIC 0x50414E35u          /* "PAN5": bump when PANEL_DEFAULT changes */
-#define PANEL_NBTN NB                    /* (as written before: the FM-1 build stays the same) */
-#define PANEL_NENC NE
-#endif
 
 typedef struct {
     uint32_t magic;
@@ -40,7 +34,6 @@ typedef struct {
 } panel_t;
 panel_t panel __attribute__((section(".noinit")));
 
-#if BOARD_SMK37
 /* SMK-37 Pro (smk_input.h button ids, after genkigenki's layer): the printed SMK name -> the FM-1 function. FX = FX,
  * SCALE = SEL, CHORD = ENV, NOTE REPEAT = LFO, PARA = EDIT, GLOBE = GLO, PATCH = HOME, BT = SAVE, ARP and SEQ as
  * printed, SEQ PLAY = PLAY, SEQ REC = REC, OCTAVE- / + as printed; KNOB BANK, FADER BANK, < and > are not an FM-1
@@ -53,14 +46,6 @@ static const panel_t PANEL_DEFAULT = {
     {1, 2, 3, 4, 5, 6, 7},
     {1, 1, 1, 1, 1, 1, 1},
 };
-#else
-static const panel_t PANEL_DEFAULT = {
-    PANEL_MAGIC,
-    {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1},   /* PLAY = 12, REC = 13 (measured on hardware) */
-    {0, 1, 6, 2, 3, 4, 5},                           /* SELECT = enc 0, ALGORITHM = enc 1, PRESETS = enc 6 (printed labels) */
-    {1, 1, 1, 1, 1, 1, 1},
-};
-#endif
 
 static void panel_init(void)                     /* also after a flash load: ids are used as array indexes and shifts */
 {

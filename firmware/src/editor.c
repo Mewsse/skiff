@@ -93,11 +93,9 @@ static int ed_smp_erase(uint32_t k, uint32_t all)  /* header sector, or the whol
 {
     uint32_t i, took;
     int rc = 0;
-#if BOARD_SMK37
     if (!SMP_USER_HAS(k))
         return -8;                                 /* SMK: USR2 / USR3 have no flash */
     st_stock_release();                            /* before the first erase in USRFLASH: storage.c */
-#endif
     usr_nz[k] = 0;
     for (i = 0; i < 16u; i++)
         usr_zone[k][i].n = 0;                     /* a sounding voice ends instead of reading 0xFF */
@@ -113,10 +111,8 @@ static int ed_flash_stop(void);
 static int ed_smp_end(uint32_t k, const uint8_t *a, uint32_t na)
 {
     const smp_user_hdr_t *h = (const smp_user_hdr_t *)ed_smp_buf;
-#if BOARD_SMK37
     if (!SMP_USER_HAS(k))
         return 4;                                  /* SMK: USR2 / USR3 have no flash */
-#endif
     if (ed_unpack7(a, na, ed_smp_buf, sizeof(smp_user_hdr_t)) != sizeof(smp_user_hdr_t))
         return 1;
     if (h->magic != SMP_USER_MAGIC || h->version != 1 || !h->nz || h->nz > 16u ||
@@ -564,7 +560,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                                          * P_E0 in two bytes; a track id from 128 on as scope 2 (ED_TID), a motion
                                          * record's from 128 on with bit 6 of its step byte */
 #if FELUCCA_CAST
-            0x59, 1, 1u | (BOARD_SMK37 ? 2u : 0u),     /* (Skiff Studio) the cast, cmd 83 (cast.c); bit 1: the SMK-37's
+            0x59, 1, 3u,     /* (Skiff Studio) the cast, cmd 83 (cast.c); bit 1: the SMK-37's
                                                          * layout (its copy: felucca_cast_smk.wasm) */
 #endif
             0x5A, 1, 1,                                 /* (Skiff P11) the note tape: TAPE, TAPE_GET (editor_tape.c) */
@@ -722,9 +718,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         else {
             if (!(off & 0xFFFu)) {                         /* first write into a sector: erase it */
                 audio_silence();
-#if BOARD_SMK37
                 st_stock_release();                        /* (storage.c: the stock mapping's marker) */
-#endif
                 rc = fl_erase4k(ed_smp_slot(a[0]) + off, &took) ? 2u : 0u;
             }
             if (!rc && fl_write(ed_smp_slot(a[0]) + off, ed_smp_buf, len))

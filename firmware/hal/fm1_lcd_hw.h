@@ -41,7 +41,6 @@
 #define FM1_LCD_SPI_CNT (*(volatile uint32_t *)0x11D10u)
 #define FM1_LCD_GROUP_B 0x10u             /* IOMAP_CON1 bit4: SPI1 on PC8/PC9/PC10 */
 
-#if BOARD_SMK37
 #define FM1_LCD_CS_OUT FM1_LCD_PC_OUT
 #define FM1_LCD_CS (1u << 8)              /* PC8 */
 #define FM1_LCD_DC_OUT FM1_LCD_PB_OUT
@@ -50,24 +49,12 @@
 #define FM1_LCD_DO (1u << 7)              /* PB7 */
 #define FM1_PADLED_DO (1u << 10)          /* PC10 */
 #define FM1_PADLED_BAUD 8u                /* lsb / 9 = 6.67 MHz: one SPI byte per LED bit */
-#else
-#define FM1_LCD_CS_OUT FM1_LCD_PC_OUT
-#define FM1_LCD_CS (1u << 7)              /* PC7 */
-#define FM1_LCD_DC_OUT FM1_LCD_PC_OUT
-#define FM1_LCD_DC (1u << 8)              /* PC8 */
-#define FM1_LCD_CLK (1u << 9)             /* PC9 */
-#define FM1_LCD_DO (1u << 10)             /* PC10 */
-#define FM1_LCD_BL (1u << 2)              /* PA2, active low */
-#endif
 
 static uint32_t fm1_lcd_timeouts;
-#if BOARD_SMK37
 static uint8_t fm1_lcd_cur_baud = 4u;             /* (fm1_padled_done restores it) */
-#endif
 
 FM1_INLINE void fm1_lcd_hw_init(void)
 {
-#if BOARD_SMK37
     FM1_LCD_IOMAP_CON1 &= ~FM1_LCD_GROUP_B;
     FM1_LCD_CS_OUT |= FM1_LCD_CS;
     FM1_LCD_PC_DIR &= ~FM1_LCD_CS;
@@ -75,22 +62,11 @@ FM1_INLINE void fm1_lcd_hw_init(void)
     FM1_LCD_PB_DIR &= ~(FM1_LCD_DC | FM1_LCD_CLK | FM1_LCD_DO);
     FM1_LCD_PC_OUT &= ~FM1_PADLED_DO;     /* the LED line idles low (latch) */
     FM1_LCD_PC_DIR &= ~FM1_PADLED_DO;
-#else
-    FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
-    FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
-    FM1_LCD_IOMAP_CON1 |= FM1_LCD_GROUP_B;
-    FM1_LCD_CS_OUT |= FM1_LCD_CS;
-    FM1_LCD_PC_OUT &= ~(FM1_LCD_DC | FM1_LCD_CLK | FM1_LCD_DO);
-    FM1_LCD_PC_DIR &= ~(FM1_LCD_CS | FM1_LCD_DC | FM1_LCD_CLK | FM1_LCD_DO);
-#endif
     FM1_LCD_SPI_CON = 0x4021u;
     FM1_LCD_SPI_BAUD = 4u;
-#if BOARD_SMK37
     fm1_lcd_cur_baud = 4u;
-#endif
 }
 
-#if BOARD_SMK37
 FM1_INLINE void fm1_lcd_backlight(uint32_t on) { (void)on; }   /* always on; never touch PA2 (a matrix row) */
 
 FM1_INLINE void fm1_lcd_baud(uint32_t b)
@@ -98,17 +74,6 @@ FM1_INLINE void fm1_lcd_baud(uint32_t b)
     FM1_LCD_SPI_BAUD = b;
     fm1_lcd_cur_baud = (uint8_t)b;
 }
-#else
-FM1_INLINE void fm1_lcd_backlight(uint32_t on)
-{
-    if (on)
-        FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
-    else
-        FM1_LCD_PA_OUT |= FM1_LCD_BL;
-}
-
-FM1_INLINE void fm1_lcd_baud(uint32_t b) { FM1_LCD_SPI_BAUD = b; }
-#endif
 
 static void fm1_lcd_wait(void)
 {
@@ -139,7 +104,6 @@ FM1_INLINE void fm1_lcd_send_data(const void *p, uint32_t n)
     FM1_LCD_SPI_CNT = n;
 }
 
-#if BOARD_SMK37
 FM1_INLINE void fm1_padled_send(const void *p, uint32_t n)
 {
     FM1_LCD_CS_OUT |= FM1_LCD_CS;         /* the panel ignores the bus */
@@ -155,4 +119,3 @@ FM1_INLINE void fm1_padled_done(void)
     FM1_LCD_IOMAP_CON1 &= ~FM1_LCD_GROUP_B;
     FM1_LCD_SPI_BAUD = fm1_lcd_cur_baud;
 }
-#endif

@@ -24,6 +24,7 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
         nor[off + i] &= s[i];
     return 0;
 }
+#include "fm1_flash_map.h"                       /* (the SMK-37 Pro's: the store's window FL_DATA) */
 #include "../firmware/src/storage.c"
 #include "../firmware/src/upreset.c"
 
@@ -147,9 +148,9 @@ int main(void)
     len = st_load(OBJ_UPRESET0, &up_bank[0], sizeof up_bank[0]);
     up_bank_check(0, len);
     bad += check("bank 0 never written -> empty", len < 0 && !up_used(0) && up_bank[0].magic == 0);
-    bad += check("banks in 0xDC000..0xDFFFF", st_sector(OBJ_UPRESET0, 0) == 0xDC000u &&
-                                                   st_sector(OBJ_UPRESET0 + 1, 1) == 0xDF000u &&
-                                                   st_sector(OBJ_PROJECT0 + 3, 1) + 4096u <= 0xA0000u);
+    bad += check("banks in 0xA5000..0xA8FFF", st_sector(OBJ_UPRESET0, 0) == 0xA5000u &&
+                                                   st_sector(OBJ_UPRESET0 + 1, 1) == 0xA8000u &&
+                                                   st_sector(OBJ_PROJECT0 + 3, 1) + 4096u <= 0xA5000u);
     up_bank[1].rsize = 190;                                 /* another record layout */
     up_bank_check(1, (int)sizeof up_bank[1]);
     bad += check("bank with another record size -> empty", !up_used(17));

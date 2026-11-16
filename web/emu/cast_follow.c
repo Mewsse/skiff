@@ -14,7 +14,7 @@
  * its pieces' stamps; ui_input passes between frames at the takes' blocks, idle ones at each ms and after each audio
  * half); the audio ISR's records (N keys, M MIDI, o overflow, s shed) at their block. A half's length and the unit's
  * ms boundaries are estimated as the records come (the replayer fits them over a whole recording).
- * -DBOARD_SMK37=1 (felucca_cast_smk.wasm): an SMK-37 Pro's cast (B's CAST_SMK layout): its T and U, the outer keys (X)
+ * (felucca_cast_smk.wasm): an SMK-37 Pro's cast (B's CAST_SMK layout): its T and U, the outer keys (X)
  * and the velocities (V) at their block, the pads' taps (D) and the faders, wheels and pedal (A) for its frame's
  * smk_ui_frame; its wheels' MIDI comes as the unit's M records (SMK_MIDI_PUT: none of the copy's own). */
 #ifndef FELUCCA_CAST
@@ -140,7 +140,6 @@ static void web_cast_block(void)
             mi_w++;
         } else if (r->ty == 'o')
             midi_in_overflow = 1;
-#if BOARD_SMK37
         else if (r->ty == 'X') {                    /* (seq.c kb_outer takes it from the queue, as the scan put it) */
             uint32_t e = r->w[2] & 0xFFFFu, bed = e >> 8;
             if ((e & 0xFFu) && bed < 37u)
@@ -152,7 +151,6 @@ static void web_cast_block(void)
             if (r->w[2] < 27u)
                 fm1_in.key_vel[kb_bed(r->w[2])] = (uint8_t)r->w[3];
         }
-#endif
         else {
             n_shed++;
             pend_shed = 1;                          /* (s: put before the half's blocks: at the last one's count) */
@@ -192,7 +190,6 @@ static void advance(const cf_rec_t *r)
 }
 static void apply_take(const cf_rec_t *r)
 {
-#if BOARD_SMK37
     if (r->ty == 'T') {                             /* (18 buttons: what they did in U) */
         fm1_in.buttons = r->w[2] & 0x3FFFFu;
         fm1_in.notes = r->w[3] & 0x7FFFFFFu;
@@ -200,14 +197,6 @@ static void apply_take(const cf_rec_t *r)
         web_notes_pressed |= r->w[2];
         web_pressed |= r->w[3] & 0x3FFFFu;
     }
-#else
-    if (r->ty == 'T') {
-        fm1_in.buttons = r->w[2] & 0x3FFFu;
-        web_pressed |= (r->w[2] >> 14) & 0x3FFFu;
-        fm1_in.notes = r->w[3] & 0x7FFFFFFu;
-    } else if (r->ty == 'U')
-        web_notes_pressed |= r->w[2];
-#endif
     else if (r->ty == 'K') {
         uint32_t role = r->w[2] & 0xFFu;
         if (role < NE)
@@ -306,7 +295,6 @@ static uint32_t cf_frame(uint32_t i)
         }
     felucca_dbg.ui_frames++;
     ui_input();
-#if BOARD_SMK37
     for (j = i + 1; j < cf_nr && cf_r[j].ty != 'e' && cf_r[j].ty != 'F'; j++)
         if (cf_r[j].ty == 'A') {                    /* (smk_ui_frame's reading) */
             uint32_t a = cf_r[j].w[2], w = cf_r[j].w[3], f;
@@ -321,7 +309,6 @@ static uint32_t cf_frame(uint32_t i)
             smk_padq_w = (uint8_t)((smk_padq_w + 1u) % SMK_PADQ);
         }
     smk_ui_frame();
-#endif
     settings_poll();
     autosave_poll();
     ui_leds();
@@ -357,7 +344,7 @@ static void cf_boot(void)
     set_clock(B->t);
     fm1_ms = B->w[2];
     cf_ver = (B->w[3] >> 24) & 0x3Fu;
-    cf_board_off = ((B->w[3] >> 30) & 1u) != (uint32_t)BOARD_SMK37;   /* (CAST_SMK: the editor picked another copy) */
+    cf_board_off = ((B->w[3] >> 30) & 1u) != 1u;   /* (CAST_SMK: not an SMK-37's cast, this copy's only board) */
     master_knob = (int32_t)(B->w[3] & 0xFFFFFFu);
     song.master_q12 = master_of_pot((uint32_t)(master_knob / 16));
     kb_boot_hold = 0;                               /* (main.c after cast_boot_hold) */

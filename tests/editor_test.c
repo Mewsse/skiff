@@ -13,7 +13,7 @@ static unsigned char host_samples[3][0x14000];
 /* (Skiff 2.0) the MENU settings an editor is offered: 18 ((2.5) 19: KEEP SENDS; (P3) 20: GRID); without the console (FELUCCA_CDC=0,
  * a release) one less, no USB SERIAL (the 10th): item i is the full list's MENU_I(i) */
 #define MENU_NI (20u - !FELUCCA_CDC)
-#define MENU_I(i) (FELUCCA_CDC || (i) < 9u ? (i) : (i) + 1u)
+#define MENU_I(i) (FELUCCA_CDC || (i) < 8u ? (i) : (i) + 1u)
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -930,17 +930,18 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
 static int menu_protocol(void)
 {
     static const char *const WANT[20][2] = {   /* ((Skiff U2) STYLE, id 1, and FX LATCH, id 7, retired) */
-        {"THEME", 0}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
+        {"THEME", 0}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF"},   /* (SMK-37: no LEDS row, ids from 5) */
         {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"}, {"BPM LOCK", "OFF,ON"},
         {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
         {"CLICK", "OFF,REC,ON"}, {"CLICK LEVEL", "LOW,MID,HIGH"}, {"COUNT-IN", "OFF,1 BAR,2 BARS"},   /* (1.1: appended) */
         {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "OFF,ON"},                                        /* (1.2) */
-        {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"}, {"PLAYHEAD", "THEME,LINE"},   /* ((Skiff #27) id 19) */
+        {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
+        {"KEY VELOCITY", "DYNAMIC,SOFT,HARD,FIXED 64,FIXED 100,FIXED 127"}, {"PLAYHEAD", "THEME,LINE"},   /* ((Skiff #27) id 19) */
         {"RETURN", "SNAP,1 BEAT,1 BAR"}, {"KEEP SENDS", "OFF,ON"},   /* ((2.0, D 2A) id 20; (2.5) id 21) */
         {"GRID", "OFF,1 BAR,1/2,1/4,1/8,1/16,1/32,1/4T,1/8T,1/16T"}};   /* ((P3) id 22) */
-    static const int32_t DEF[20] = {-1, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 2, 0, 0};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[20] = {0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 0, 1, 1, 5};   /* DISPLAY CONTROL AUDIO SYSTEM (MIDI) TIMING */
-    static const uint8_t ID[20] = {0, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22};   /* (1, 7, 18: none here) */
+    static const int32_t DEF[20] = {-1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 2, 0, 0};   /* (COLOR: the default palette) */
+    static const uint8_t TAB[20] = {0, 0, 0, 1, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 1, 0, 1, 1, 5};   /* DISPLAY CONTROL AUDIO SYSTEM (MIDI) TIMING */
+    static const uint8_t ID[20] = {0, 2, 3, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22};   /* (1, 4, 7: none here) */
     static const char *const TABN[6] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM", "MIDI", "TIMING"};
     int bad = 0, ok = 1;
     uint32_t i, k, n;
@@ -974,7 +975,7 @@ static int menu_protocol(void)
     bad += check("MENU_DESC: 20 items (1.0.4's 12 in the menu's order less STYLE and FX LATCH, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, (Skiff #27) PLAYHEAD, (2.0) RETURN, (2.5) KEEP SENDS, (P3) GRID), ids 0, 2..6, 8..17, 19..22, names, defaults", ok);
     bad += check("MENU_DESC (1.0.5): after the names each item's tab, index and name (DISPLAY CONTROL AUDIO SYSTEM, GRID's TIMING)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
-        uint32_t m = menu_desc(3, &it), p = 14, q;
+        uint32_t m = menu_desc(2, &it), p = 14, q;
         for (q = 0; q < 1u + it.nnames; q++) { while (host_wire[p]) p++; p++; }   /* name, the names */
         ok = m > 10u && host_wire[p] == 0 && !strcmp((const char *)host_wire + p + 1, "DISPLAY") &&
              p + 1u + 8u == m + 6u - 1u;
@@ -1005,7 +1006,7 @@ static int menu_protocol(void)
     ok &= menu_set(1, 1) == 1u;                        /* ((Skiff U2) id 1, STYLE: retired, no such setting) */
     ok &= menu_set(2, 1) == 3 && (ui_prefs & PREF_LARGE);
     ok &= menu_set(3, 1) == 3 && (ui_prefs & PREF_ANIM_OFF);
-    ok &= menu_set(4, 0) == 3 && settings_leds == LEDS_OFF && menu_set(4, 1) == 3 && settings_leds == LEDS_DIM_LO;
+    ok &= menu_set(4, 0) == 1u && settings_leds == LEDS_DIM;   /* (SMK-37: no LEDS row, id 4 unknown) */
     ok &= menu_set(5, 3) == 3 && settings_hold == 3u;
     ok &= menu_set(6, 1) == 3 && (ui_prefs & PREF_ACCEL);
     ok &= menu_set(7, 1) == 1u;                        /* ((Skiff U2) id 7, FX LATCH: retired) */
@@ -1019,13 +1020,14 @@ static int menu_protocol(void)
     ok &= menu_set(16, 1) == 3 && (ui_rec_prefs & 0x40u) && click_mode == CLICK_ON && cin_bars == 2u;   /* (its own bit) */
     ok &= menu_set(17, 0) == 3 && scr_get() == 0u && menu_set(17, 9) == 3 && scr_get() == 4u &&   /* (clamped) */
           menu_set(17, 2) == 3 && scr_get() == 2u && ui_scr == 1u;
+    ok &= menu_set(18, 4) == 3 && smk_kv_mode == SMK_KV_F100;   /* (SMK-37) KEY VELOCITY FIXED 100 */
     ok &= menu_set(19, 1) == 3 && ui_ph_line == 1u;    /* ((Skiff #27) PLAYHEAD LINE) */
     favorites.factory[15][24] = 0xA5u;                  /* ((2.0) RETURN: a byte bank.c freed, a unit past its first */
     ok &= menu_set(20, 0) == 3 && ret_mode() == RET_SNAP;   /* boot; SNAP) */
     ok &= menu_set(21, 1) == 3 && (MIDI_BYTE & 32u);   /* ((2.5) KEEP SENDS ON: [15][17] bit 5) */
     ok &= menu_set(22, 4) == 3 && ui_grid == 4u;       /* ((P3) GRID 1/8) */
     for (i = 0; i < MENU_NI; i++) {                     /* MENU_DESC reads them back */
-        static const int32_t SET[20] = {2, 1, 1, 1, 3, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 0, 1, 4};
+        static const int32_t SET[20] = {2, 1, 1, 3, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 4, 1, 0, 1, 4};
         menu_desc(i, &it);
         ok &= it.value == SET[MENU_I(i)];
     }
@@ -1037,7 +1039,7 @@ static int menu_protocol(void)
     /* clamping: the reply carries the device's value */
     ok = menu_set(0, 50) == 3 && ed_rv(host_wire + 7) == (int32_t)NPALETTES - 1 && settings.palette == NPALETTES - 1u;
     ok &= menu_set(0, -5) == 3 && ed_rv(host_wire + 7) == 0 && settings.palette == 0u;
-    ok &= menu_set(4, 99) == 3 && ed_rv(host_wire + 7) == 3 && settings_leds == LEDS_INV;
+    ok &= menu_set(18, 99) == 3 && ed_rv(host_wire + 7) == 5 && smk_kv_mode == SMK_KV_F127;
     ok &= menu_set(5, 8191) == 3 && ed_rv(host_wire + 7) == 3 && settings_hold == 3u;
     ok &= menu_set(2, 7) == 3 && ed_rv(host_wire + 7) == 1 && (ui_prefs & PREF_LARGE);
     ok &= menu_set(14, 9) == 3 && ed_rv(host_wire + 7) == 2 && cin_bars == 2u;
@@ -1049,7 +1051,7 @@ static int menu_protocol(void)
         static uint8_t fav0[sizeof favorites], set0[sizeof settings];
         uint8_t hold0 = settings_hold, leds0 = settings_leds;
         memcpy(fav0, &favorites, sizeof favorites); memcpy(set0, &settings, sizeof settings);
-        ok = menu_set(18, 1) == 1 && host_wire[6] == 18 && ed_rv(host_wire + 7) == 1;
+        ok = menu_set(4, 1) == 1 && host_wire[6] == 4 && ed_rv(host_wire + 7) == 1;
         ok &= menu_set(126, -3) == 1 && host_wire[6] == 126 && ed_rv(host_wire + 7) == -3;
         ok &= menu_set(127, 0) == 1 && host_wire[6] == 127;
         ok &= !memcmp(fav0, &favorites, sizeof favorites) && !memcmp(set0, &settings, sizeof settings) &&

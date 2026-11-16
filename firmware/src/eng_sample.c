@@ -44,7 +44,6 @@ static uint32_t pow2_q16(int32_t d16)
 #include "../hal/fm1_xip.h"   /* relative: hostsim includes this file too */
 #define SMP_USER_SLOTS 3
 #define SMP_USER_SIZE 0x14000u
-#if BOARD_SMK37
 /* SMK-37 Pro: only USR1 has flash (FL_SLOT 0xC2000..0xD5FFF in USRFLASH, fm1_flash_map.h; the pattern pool has the
  * rest); USR2 and USR3 stay empty: never scanned, their erase / write refused (SMP_USER_HAS). Their offsets are the
  * pool's and the stock marker's sectors: never a slot */
@@ -55,12 +54,6 @@ static uint32_t pow2_q16(int32_t d16)
 #define SMP_SHOWN SMP_USER_FLASH_SLOTS               /* (SMK37_UX.md question 11: USR2, USR3 not offered) */
 #define SMP_PICK_MAX (SMP_NSETS + SMP_USER_FLASH_SLOTS - 1)   /* SAMPLE's SET, GRAIN's SOURCE: up to USR1 */
 _Static_assert(SMP_USER_BASE + SMP_USER_FLASH_SLOTS * SMP_USER_SIZE <= FL_SLOT_HI, "SMK: the user slot past FL_SLOT");
-#else
-#define SMP_USER_BASE 0xA0000u
-#define SMP_USER_HAS(k) 1
-#define SMP_SHOWN SMP_USER_SLOTS                     /* the slots offered (the editor's SMP_INFO) */
-#define SMP_PICK_MAX SMP_NALL - 1                    /* SAMPLE's SET, GRAIN's SOURCE: the last value */
-#endif
 #define SMP_USER_DATA 512u
 #define SMP_USER_MAGIC 0x504D5346u                  /* "FSMP" */
 #define SMP_NALL (SMP_NSETS + SMP_USER_SLOTS)

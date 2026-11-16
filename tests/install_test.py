@@ -6,7 +6,7 @@ The fake device is the one in web/test_web.mjs: identity on the handshake,
 then "device asks, host answers" reads of the logical image. Run from the repo root:
   python3 tests/install_test.py
 Also checks logical_image/product_of against web/fm1pkg.js (needs node and
-build/felucca.fwsc, skipped otherwise), and (BOARD_SMK37) the SMK-37 Pro identities and port names and the
+build/skiff-smk37.fwsc, skipped otherwise), and the SMK-37 Pro identities and port names and the
 20 / 36 block deinterleave (the stock SMK-37 Pro V016 from a directory named by SMK_STOCK_DIR, skipped when unset)."""
 import io
 import os
@@ -325,9 +325,9 @@ def errors():
 
 
 def against_js():
-    clean = ROOT / "build/felucca.fwsc"
+    clean = ROOT / "build/skiff-smk37.fwsc"
     if not shutil.which("node") or not clean.exists():
-        print("logical image vs fm1pkg.js: skipped (needs node and build/felucca.fwsc)")
+        print("logical image vs fm1pkg.js: skipped (needs node and build/skiff-smk37.fwsc)")
         return
     js = ("import { logicalImage, productOf } from %r; import { readFileSync } from 'node:fs';"
           "const p = readFileSync(process.argv[1]); process.stderr.write(productOf(p));"

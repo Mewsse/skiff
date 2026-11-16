@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * SMK-37 Pro port: Copyright (C) 2026 M. Geisler (genkigenki/makkuro) */
-/* The flash map: which ranges the RAM flash driver (fm1_flash.h) may erase / program, per board (BOARD_SMK37,
- * fm1_cc.h). Macros and compile-time checks only, so host tests can include it. */
+/* The flash map: which ranges the RAM flash driver (fm1_flash.h) may erase / program, for the SMK-37 Pro (fm1_cc.h). Macros and compile-time checks only, so host tests can include it. */
 #pragma once
 #include <stdint.h>
 #include "fm1_cc.h"
@@ -13,13 +12,8 @@
                                (uint32_t)(n) <= (hi) - (uint32_t)(off))
 /* the flash parts the storage accepts (JEDEC id, project.c persist_boot); else the unit runs without saving or updating.
  * (2.2, #96) 0xB36014: the UC25HQ80 of newer FM-1s, 1 MiB and the commands of the Puya P25Q80 (0x856014) */
-#if BOARD_SMK37
 #define FL_JEDEC_OK(id) ((id) == 0xEB6014u || (id) == 0x856014u || (id) == 0xB36014u)   /* the SMK-37's part, the FM-1's */
-#else
-#define FL_JEDEC_OK(id) ((id) == 0x856014u || (id) == 0xB36014u)   /* (as project.c's FM-1 check) */
-#endif
 
-#if BOARD_SMK37
 /* ---- SMK-37 Pro (hardware notes: github.com/genkigenki/fm1-to-smk37) ----
  *   0x00000-0x03FFF  head (SPL, isd_config)                                   NEVER
  *   0x04000-0x9CFFF  app area (the stock PRCT end)                            the update loader only (FL_APP)
@@ -99,28 +93,3 @@ _Static_assert(FL_DATA_HI <= FL_OTA_LO && FL_APP_HI <= FL_DATA_LO, "SMK: windows
                               FL_HITS(off, n, FL_USRRES_LO, FL_USRRES_HI) || (uint32_t)(off) >= FL_KEYMAC_LO || \
                               (uint32_t)(n) > FL_KEYMAC_LO - (uint32_t)(off))
 #define FL_GUARD(off, n) (FL_RANGE_OK(off, n) && !FL_PROTECTED(off, n))
-#else /* FM-1 */
-#define FL_PLAIN_LO     0x00093000u                /* the plain XIP window from the FM-1's VM start */
-#define FL_DATA_LO      0x00097000u                /* Felucca main store */
-#define FL_DATA_HI      0x000E0000u
-#define FL_GLOB_LO      0x000FC000u                /* Felucca superblock / globals */
-#define FL_GLOB_HI      0x000FF000u
-#define FL_OTA_LO       0x000E0000u                /* M-UPGRADE loader staging, ota.c */
-#define FL_OTA_HI       0x000E5000u
-#define FL_AUTO_LO      0x000E5000u                /* 1.2: the autosave (storage.c OBJ_AUTOSAVE), A/B, just above */
-#define FL_AUTO_HI      0x000E7000u                /* the OTA staging */
-#define FL_BANK_LO      0x000E7000u                /* Skiff: the pattern bank (bank.c), the VM area's last two */
-#define FL_BANK_HI      0x000E9000u                /* sectors; 0xE9000 is the package's BTIF (tools/fm1pkg_make.py) */
-#define FL_USR_LO       0x000EA000u                /* .. and its USR region, 18 sectors: the bank's other sectors */
-#define FL_USR_HI       0x000FC000u
-/* Felucca's own store (projects, user samples; settings; the autosave; Skiff's pattern bank) */
-#define FL_STORE_OK(off, n) (FL_IN(off, n, FL_DATA_LO, FL_DATA_HI) || FL_IN(off, n, FL_GLOB_LO, FL_GLOB_HI) || \
-                             FL_IN(off, n, FL_AUTO_LO, FL_AUTO_HI) || FL_IN(off, n, FL_BANK_LO, FL_BANK_HI) || \
-                             FL_IN(off, n, FL_USR_LO, FL_USR_HI))
-/* Where the RAM driver may erase / program. The app build allows only its own
- * data regions; the update loader (firmware/loader) defines its own window. */
-#ifndef FL_RANGE_OK
-#define FL_RANGE_OK(off, n) (FL_STORE_OK(off, n) || FL_IN(off, n, FL_OTA_LO, FL_OTA_HI))
-#endif
-#define FL_GUARD(off, n) FL_RANGE_OK(off, n)
-#endif /* BOARD_SMK37 */

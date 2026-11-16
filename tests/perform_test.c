@@ -364,10 +364,11 @@ static int test_slicer(void)
 static int test_keys(void)
 {
     int bad = 0;
-    uint32_t mo0, fx = 1u << 3, k = 9;              /* (a button bit for FX; key 9: a white key, D4) */
+    uint32_t mo0, fx = 1u << 14, k = 9;             /* (the FX button's bit on the SMK-37; key 9: a white key, D4) */
     song_setup();
     usb.config = 1;
-    mo_r = mo_w = 0;
+    mo_r = mo_w = mo.rt = 0;
+    memset(&mn, 0, sizeof mn);                      /* (no note owed to MIDI OUT: the TRS jack takes notes with no USB host too) */
     kb_mask = perf_mask = fx;
     fm1_in.buttons = fx;
     fm1_in.notes = 1u << k;
@@ -435,8 +436,8 @@ static int test_idle(void)
     if (pipe(fd) || (pid = fork()) < 0)
         return check("idle: fork", 0);
     if (!pid) {                                     /* the same state, FX held the whole time, no key */
-        kb_mask = perf_mask = 1u << 3;
-        fm1_in.buttons = 1u << 3;
+        kb_mask = perf_mask = 1u << 14;
+        fm1_in.buttons = 1u << 14;
         song_render(3u * FS, 0);
         close(fd[0]);
         if (write(fd[1], song_l, 3u * FS * 4u) < 0 || write(fd[1], song_r, 3u * FS * 4u) < 0)

@@ -89,11 +89,7 @@ static void theme_apply(void)                  /* settings.palette, and over it 
  * has none */
 #define CPU2_BYTE (favorites.factory[15][5])
 #define CPU2_SET (CPU2_BYTE & 1u)
-#if FELUCCA_CPU2 && !BOARD_SMK37 && !defined(FELUCCA_WEB)
-#define CPU2_DEFAULT 1u
-#else
 #define CPU2_DEFAULT 0u
-#endif
 #define PREVIEW_SET ((CPU2_BYTE >> 1) & 1u)            /* ((1.3) MENU > STEP PREVIEW ON) */
 /* (2.0, D 2A) MENU > CONTROL > RETURN: how MOMENTARY's values, the FX layer's macros and PERFORM's throws come back once
  * let go (mom_poll; throw.c thr_beats): SNAP, over 1 BEAT, over 1 BAR. A settings byte ([15][16]: zero, the default
@@ -128,12 +124,10 @@ static const char *const CLK_WHY[11] = {"", "ALREADY 320", "SYS MODE", "PLL2 NOT
 /* (Skiff 1.3) MENU > MIDI > T1..T6 CHANNEL: each track's MIDI channel as its distance up from the track's own
  * (seq.c trk_midi_ch), settings bytes ([15][6..11]: 0 = channels 1..6) */
 #define ui_mch(i) (favorites.factory[15][6 + (i)])
-#if BOARD_SMK37
 /* (SMK-37 Pro) settings bytes ([15][12..13]: 0 the defaults): MENU > KEY VELOCITY (SMK_KV_*,
  * 0 DYNAMIC) and MASTER's level / 4 + 1 (K1, smk_ui.c; 0: none kept, the power-on level) */
 #define SMK_KV_BYTE (favorites.factory[15][12])
 #define SMK_MASTER_BYTE (favorites.factory[15][13])
-#endif
 static const uint8_t *const mch_io = &ui_mch(0);
 /* (2.2) MENU > MIDI's own (seq.c MSET): [15][17] NOTES OUT (bits 0..1: ALL KEYS OFF), CLOCK OUT OFF (2), CC OUT ON
  * (3), THRU ON (4) (SKS1's midi, its rsv17 before: 0 in every older setting, the defaults); REMOTE's channel in CPU2_BYTE's bits 3..7;

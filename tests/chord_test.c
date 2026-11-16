@@ -25,7 +25,7 @@ static void reset(void)
 {
     ui_power_on();
     memset(kb_chn, 0, sizeof kb_chn); memset(mchord, 0, sizeof mchord); memset(chord_last, 0, sizeof chord_last);
-    fm1_in.notes = kb_prev = 0; mo_w = mo_r = 0; usb.config = 1;
+    fm1_in.notes = kb_prev = 0; mo_w = mo_r = mo.rt = 0; usb.config = 1;
     trk[0].p[P_VOICE] = V_POLY; trk[0].p[P_SCALE] = 1; trk[0].p[P_ROOT] = 0;   /* C major, POLY */
     events_block(CTL);
 }
@@ -188,7 +188,7 @@ static int keys(void)
     bad += check("its release ends exactly those (CHRD / VOIC changed meanwhile), MIDI OUT their note-offs",
                  !ngated(t) && mo_w == 6u && ((midi_out_q[5] >> 8) & 0xF0u) == 0x80u);
     t->p[P_CHRD] = CH_DIA3; t->p[P_VOIC] = VC_CLOSE;
-    mo_w = mo_r = 0;
+    mo_w = mo_r = mo.rt = 0;
     key_down(K_C4); key_down(K_E4);                                /* C E G and E G B: E and G shared */
     before = mo_w;
     bad += check("two chords: the shared notes sound once (C E G B)", ngated(t) == 4u && gate_note(t, 71) && before == 4u);

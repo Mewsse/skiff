@@ -61,11 +61,7 @@ static const char *const N_IBITS[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9
                                       "16", 0};
 static const char *const N_IRATE[] = {"689", "919", "1.1k", "1.4k", "1.8k", "2.2k", "2.8k", "3.7k", "4.4k", "5.5k",
                                       "7.4k", "8.8k", "11k", "15k", "22k", "44k", 0};
-#if BOARD_SMK37
 static const char *const N_CLOCK[] = {"INT", "USB"};   /* (SMK-37: no TRS MIDI IN; a saved TRS loads clamped, as USB) */
-#else
-static const char *const N_CLOCK[] = {"INT", "USB", "TRS"};
-#endif
 static const char *const N_MIDI_INPUT[] = {"USB", "TRS"};
 static const char *const N_ROUTE[] = {"CH1-" TRK_STR(NTRK), "SEL"};   /* MIDI IN (seq.c): 1..NTRK -> parts, the rest
                                                                          * ignored / all -> selected */
@@ -286,7 +282,7 @@ static const param_desc_t *param_desc_of(uint32_t e, uint32_t id)
  * stands for */
 static int32_t enum_orig(const param_desc_t *d, int32_t v)
 {
-#if BOARD_SMK37 && FELUCCA_SLICE
+#if FELUCCA_SLICE
     if (d->names == N_SLC_SRC && (v == 2 || v == 3))  /* (SMK-37: USR2, USR3 have no flash; the knob steps over them) */
         return 1;
 #endif

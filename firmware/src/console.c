@@ -138,7 +138,7 @@ static void con_memr(const char *p)
  * SMK-37's, room in its slot) adds dbg, inp, params, flr and status's USB / MIDI / UART / battery lines: 2.5's features
  * left no room for them in the FM-1's dev build. A release has no console at all (FELUCCA_CDC=0) */
 #ifndef FELUCCA_CON_FULL
-#define FELUCCA_CON_FULL BOARD_SMK37
+#define FELUCCA_CON_FULL 1
 #endif
 #if FELUCCA_FLASH && FELUCCA_CON_FULL
 static void con_flr(const char *p)                  /* flash read over SPI (no XIP decryption) */
@@ -146,13 +146,8 @@ static void con_flr(const char *p)                  /* flash read over SPI (no X
     static uint8_t b[256];
     int ok, ok2;
     uint32_t a = con_num(&p, &ok), n = con_num(&p, &ok2), i;
-#if BOARD_SMK37
     if (!ok || a < FL_PLAIN_LO || a >= 0x100000u) {
         con_puts("usage: flr OFFSET [LEN<=256]   (0x9D000..0xFFFFF)\r\n");
-#else
-    if (!ok || a < 0x93000u || a >= 0x100000u) {
-        con_puts("usage: flr OFFSET [LEN<=256]   (0x93000..0xFFFFF)\r\n");
-#endif
         return;
     }
     if (!ok2 || !n)
@@ -293,67 +288,8 @@ static void con_dbg(void)
  * bits of the 595 shift it spans), encoder transitions */
 static void con_inp(void)
 {
-#if BOARD_SMK37
     con_kv("timer_irqs", (int32_t)felucca_dbg.timer_irqs);      /* (SMK-37 Pro: no scan statistics; `smk`) */
     con_kv("nested", (int32_t)felucca_dbg.nested);
-#else
-    static uint32_t t_last;
-    uint32_t now = fm1_ticks(), win = now - t_last, i, k;
-    uint32_t win_us = win / FM1_TICKS_PER_US;
-    t_last = now;
-    con_kv("window_ms", (int32_t)(win_us / 1000u));
-    con_kv("ticks_per_s", (int32_t)(win_us >= 1000u ? fm1_in_stat.ticks * 1000u / (win_us / 1000u) : 0u));
-    con_kv("gap_max_us", (int32_t)(fm1_in_stat.gap_max / FM1_TICKS_PER_US));
-    con_puts("gap_hist <.15 .3 .6 1.2 2.4 4.8 9.6 more ms:");
-    for (i = 0; i < FM1_GAP_BINS; i++) {
-        con_putc(' ');
-        con_dec((int32_t)fm1_in_stat.gap_hist[i]);
-    }
-    con_puts("\r\n");
-    con_kv("tick_cost_avg_ns", (int32_t)(fm1_in_stat.ticks ? fm1_in_stat.cost_sum / fm1_in_stat.ticks * 1000u / FM1_TICKS_PER_US : 0u));
-    con_kv("tick_cost_max_us", (int32_t)(fm1_in_stat.cost_max / FM1_TICKS_PER_US));
-    con_kv("tick_cpu_permille", (int32_t)(win >= 1000u ? fm1_in_stat.cost_sum / (win / 1000u) : 0u));
-    con_kv("dim_pulse_ns", (int32_t)(fm1_in_stat.dim_n ? fm1_in_stat.dim_sum / fm1_in_stat.dim_n * 1000u / FM1_TICKS_PER_US : 0u));
-    con_kv("dim_bits", (int32_t)fm1__dim_k);
-    con_puts("led_on_permille:");
-    for (i = 0; i < FM1_NCOL; i++) {
-        con_putc(' ');
-        con_dec((int32_t)(win >= 1000u ? fm1_in_stat.on[i] / (win / 1000u) : 0u));
-    }
-    con_puts("\r\nled_on_max_us:");
-    for (i = 0; i < FM1_NCOL; i++) {
-        con_putc(' ');
-        con_dec((int32_t)(fm1_in_stat.on_max[i] / FM1_TICKS_PER_US));
-    }
-    con_puts("\r\nenc moves/lost/detent state:");
-    for (k = 0; k < FM1_NENC; k++) {
-        con_putc(' ');
-        con_dec((int32_t)fm1_in_stat.enc_moves[k]);
-        con_putc('/');
-        con_dec((int32_t)fm1_in_stat.enc_lost[k]);
-        con_putc('/');
-        con_dec(fm1_in.enc_rest[k]);
-    }
-    con_puts("\r\n");
-    {   /* note keys, from the first scan that saw the contact (us): debounced press, note-on, DAC out */
-        uint32_t n = fm1_in_stat.press_n, m = fm1_in_stat.kb_n;
-        con_kv("key_presses", (int32_t)n);
-        con_kv("key_press_avg_us", (int32_t)(n ? fm1_in_stat.press_sum / n / FM1_TICKS_PER_US : 0u));
-        con_kv("key_press_max_us", (int32_t)(fm1_in_stat.press_max / FM1_TICKS_PER_US));
-        con_kv("key_notes", (int32_t)m);
-        con_kv("key_noteon_avg_us", (int32_t)(m ? fm1_in_stat.kb_sum / m / FM1_TICKS_PER_US : 0u));
-        con_kv("key_noteon_max_us", (int32_t)(fm1_in_stat.kb_max / FM1_TICKS_PER_US));
-        con_kv("key_dac_avg_us", (int32_t)(m ? fm1_in_stat.dac_sum / m / FM1_TICKS_PER_US : 0u));
-        con_kv("key_dac_max_us", (int32_t)(fm1_in_stat.dac_max / FM1_TICKS_PER_US));
-    }
-    con_kv("timer_irqs", (int32_t)felucca_dbg.timer_irqs);
-    con_kv("nested", (int32_t)felucca_dbg.nested);
-    {
-        uint32_t k2 = fm1__lock();
-        memset((void *)&fm1_in_stat.gap_max, 0, sizeof fm1_in_stat - sizeof fm1_in_stat.last);
-        fm1__unlock(k2);
-    }
-#endif
 }
 #endif
 
@@ -387,7 +323,6 @@ static void con_params(void)
 }
 #endif
 
-#if BOARD_SMK37
 /* (SMK-37 Pro bring-up, after genkigenki's layer) what the inputs read (smk_input.h), the store's owner tag and the
  * unit's calibration record (storage.c, smk_input.h) */
 static void con_smk(void)
@@ -457,7 +392,6 @@ static void con_padtest(void)
     padled_set(11, 40, 40, 40);
     con_puts("bottom row from the left: red green blue white\r\n");
 }
-#endif
 
 static void con_exec(const char *p)
 {
@@ -480,14 +414,12 @@ static void con_exec(const char *p)
     else if (con_word(&p, "params"))
         con_params();
 #endif
-#if BOARD_SMK37
     else if (con_word(&p, "smk"))
         con_smk();
     else if (con_word(&p, "padtest"))
         con_padtest();
     else if (con_word(&p, "leds"))
         con_leds();
-#endif
     else if (con_word(&p, "memr"))
         con_memr(p);
 #if FELUCCA_FLASH && FELUCCA_CON_FULL

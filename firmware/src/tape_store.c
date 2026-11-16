@@ -65,19 +65,11 @@ typedef struct {
     tape_it_t it;
 } ts_src_t;
 
-#if BOARD_SMK37
 /* (SMK-37 Pro) twenty sectors in a row in USRFLASH, after the user sample slot (fm1_flash_map.h FL_BANK); the first
  * erase there releases the stock mapping's marker (storage.c st_stock_release) */
 _Static_assert(FL_BANK_HI - FL_BANK_LO == TS_NSECT * 0x1000u && FL_BANK_LO >= FL_SMP_LO && FL_BANK_HI <= FL_SMP_HI,
                "SMK: the tape store's sectors");
 static uint32_t ts_sector(uint32_t i) { return FL_BANK_LO + i % TS_NSECT * 0x1000u; }
-#else
-static uint32_t ts_sector(uint32_t i)
-{
-    i %= TS_NSECT;
-    return i < 2u ? 0xE7000u + i * 0x1000u : 0xEA000u + (i - 2u) * 0x1000u;
-}
-#endif
 
 #if FELUCCA_FLASH
 #define TS_ON flash_ok
@@ -89,11 +81,7 @@ static int ts_prog(uint32_t off, const void *src, uint32_t n) { return st_prog(o
 static uint8_t ts_ram[TS_NSECT][0x1000];
 static uint8_t *ts_at(uint32_t off)
 {
-#if BOARD_SMK37
     uint32_t i = (off - FL_BANK_LO) >> 12;
-#else
-    uint32_t i = off < 0xEA000u ? (off - 0xE7000u) >> 12 : ((off - 0xEA000u) >> 12) + 2u;
-#endif
     return &ts_ram[i % TS_NSECT][off & 0xFFFu];
 }
 static int ts_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, ts_at(off), n); return 0; }

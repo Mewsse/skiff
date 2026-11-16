@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Skiff on the SMK-37 Pro (BOARD_SMK37): the controls the FM-1 has no counterpart for, as design/SMK37_UX.md has them
+/* Skiff on the SMK-37 Pro: the controls the FM-1 has no counterpart for, as design/SMK37_UX.md has them
  * (picked 2026-10-19, design/mockups/smk37_*.png):
  *   pads C   always a grid, never a second keyboard: where the FM-1's keys show a map of their own (a layer, the DRUM
  *            grid, NAME, SLICES; or a layer's button held) the pads are the 16 white keys in text order (smk_input.h),

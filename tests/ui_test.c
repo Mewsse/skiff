@@ -30,7 +30,7 @@
  *   SCREEN OFF (1.1.5): MENU > DISPLAY > SCREEN OFF against a simulated clock and the panel's commands (lcd_power):
  *              dark after the time, nothing drawn, any input wakes it (SLPOUT, 120 ms, redraw, DISPON) and is
  *              swallowed; dialogs / count-in / UPDATE MODE keep it on; saved; the sound bit for bit while dark.
- * Built and run by tests/run_tests.sh. */
+ * Built and run by tests/run_tests.sh. The SMK-37 Pro HAL is stood in for (hal/smk_pads.h as it is). */
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1                                    /* (as src/felucca.c: the console built in, MENU > USB SERIAL) */
 #endif
@@ -38,31 +38,66 @@
 #include <stdint.h>
 static uint32_t host_slots[3u * 0x14000u / 4u];          /* USR1..3 (zero: empty), as the flash at 0xA0000 */
 #define SMP_USER_XIP(k) ((const uint8_t *)host_slots + (k) * SMP_USER_SIZE)
+/* ---------------------------------------------------------------------- the SMK-37's input, stood in --- */
+#include "../firmware/hal/smk_pads.h"            /* (as it is: the tables, queues and curves) */
+#define HOST_FM1_IN 1                             /* (hostsim.c: this fm1_in, the SMK's fields the UI reads) */
+static struct {
+    volatile uint32_t notes, buttons, virt, vtap, vack;   /* ((2.2) REMOTE: the HAL's virtual buttons) */
+    uint8_t key_vel[37];
+    uint8_t fader[4];
+    uint16_t wheel[2], pedal, batt;
+    uint32_t frames;
+} fm1_in;
+#define HOST_UT 512u                              /* what goes out of the TRS jack (hal/smk_uart_tx.h) */
+static uint8_t host_ut[HOST_UT];
+static uint32_t host_ut_n;
+static void smk_uart_tx_put(uint32_t b)
+{
+    if (host_ut_n < HOST_UT)
+        host_ut[host_ut_n] = (uint8_t)b;
+    host_ut_n++;
+}
+static void smk_uart_tx_rt(uint32_t b) { smk_uart_tx_put(b); }   /* ((2.2) the clock: here in line with the rest) */
+#define SMK_UT_TX_RING 128u
+static uint8_t smk_ut_w, smk_ut_r;                /* ((2.2) usb.c mo_trs: the UART's ring, never full here) */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
+/* (2.2) MIDI OUT's events to the TRS jack as TIMER5 sends them (usb.c mo_trs; all due here: no times in the host),
+ * USB's taken as by a host reading */
+static void trs(void) { mo_trs(mo.tick + 0x10000000u); mo_r = mo_w; }
 
 /* ------------------------------------------------------------ HAL stubs --- */
-#define FM1_NCOL 11u
+#define FM1_NCOL 16u
+#define FM1_NBTN 18u
+#define FM1_NENC 8u
 static const int8_t FM1_KEYMAP[6][FM1_NCOL];
 static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_breath[FM1_NCOL], fm1_led_mid[FM1_NCOL];
 static uint32_t host_dim_lo;                      /* hal/fm1_input.h: the glow MENU > LEDS asked for (1: DIM LO) */
 static void fm1_led_dim_level(uint32_t lo) { host_dim_lo = lo; }
 static int host_anim;                             /* hal/fm1_input.h: the power-on sweep running (it has the LEDs) */
 static int fm1_led_anim_on(void) { return host_anim; }
+static uint8_t host_led[SMK_NLED];               /* the button LEDs (smk_input.h fm1_led_key) */
+static void fm1_led_key(uint32_t id, int on) { if (id < SMK_NLED) host_led[id] = (uint8_t)(on != 0); }
+static uint32_t host_pad[SMK_NPAD];               /* the pads' colours, 0xRRGGBB (lcd.c padled_set) */
+static void padled_set(uint32_t pad, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (pad < SMK_NPAD)
+        host_pad[pad] = (uint32_t)r << 16 | (uint32_t)g << 8 | b;
+}
 #define FM1_TICKS_PER_US 1u
 static uint32_t host_ticks, host_pressed, host_notes;
-static int32_t host_enc[7];
+static int32_t host_enc[8];
 static uint32_t fm1_ticks(void) { return host_ticks; }
 static uint32_t fm1_input_edges(int x) { uint32_t p = host_pressed; (void)x; host_pressed = 0; return p; }
 static uint32_t fm1_input_note_edges(void) { uint32_t n = host_notes; host_notes = 0; return n; }
 /* host_enc_late: detents the TIMER5 scan counts just after a read (#102: while ui_input runs); the next read has them */
-static int32_t host_enc_late[7];
+static int32_t host_enc_late[8];
 static int32_t fm1_enc_take(uint32_t e)
 {
-    int32_t s = host_enc[e % 7u];
-    host_enc[e % 7u] = host_enc_late[e % 7u];
-    host_enc_late[e % 7u] = 0;
+    int32_t s = host_enc[e % 8u];
+    host_enc[e % 8u] = host_enc_late[e % 8u];
+    host_enc_late[e % 8u] = 0;
     return s;
 }
 static void (*host_wdt_hook)(void);                /* (a test's: time passing in a blocking loop, as panel_setup's) */
@@ -125,6 +160,7 @@ static struct { uint32_t stage; } felucca_dbg;
 #include "../firmware/src/project.c"
 #define TS_RAM 1                                  /* ((Skiff P10) the tape store's sectors in RAM: no flash here) */
 #include "../firmware/src/tape_store.c"
+#include "../firmware/src/smk_ui.c"
 #include "phrases.h"                              /* (test material: the phrases the firmware no longer ships) */
 
 static int check(const char *what, int ok)
@@ -219,7 +255,17 @@ static void ui_power_on(void)
     memset(&lys, 0, sizeof lys);
     perf_k[0] = perf_k[1] = perf_k[2] = perf_k[3] = 0;
     settings_hold = HOLD_DEF;
-    fm1_in.buttons = fm1_in.notes = 0;
+    memset((void *)&fm1_in, 0, sizeof fm1_in);
+    fm1_in.frames = 1000u;                        /* (the SMK's readings settled) */
+    memset(host_led, 0, sizeof host_led);
+    memset(host_pad, 0, sizeof host_pad);
+    smk_padq_r = smk_padq_w = smk_extq_r = smk_extq_w = 0;
+    smk_fbank = 0;
+    memset(smk_fd, 0xFF, sizeof smk_fd);
+    smk_kv_mode = SMK_KV_DYN;
+    smk_master = 724;
+    smk_sh_t0 = 0;
+    last_note = 60;
     memset(&motion, 0, sizeof motion);                  /* (main.c: no motion at power-on) */
     memset(motion_active, 0, sizeof motion_active);
     memset(motion_locked, 0, sizeof motion_locked);
@@ -238,8 +284,11 @@ static void frame(void)
 {
     host_ticks += 16000u;
     fm1_ms += 16u;
+    fm1_in.frames += 10u;
     ui_cpu = (uint8_t)(song.cpu_q8 * 100u / 256u);   /* (main.c: the MENU's load, taken at each frame's start) */
+    mo_r = mo.rt = mo_w;                          /* (the host and the TRS jack have taken what was queued) */
     ui_input();
+    smk_ui_frame();
     ui_draw();
 }
 static void press(uint32_t label)                 /* a tap: down, a frame, up, a frame */
@@ -526,10 +575,10 @@ static int test_sound_loads(void)
                      str_eq(sd->names[1], "PIANO") && enum_step(sd, 0, 1) == 2 && enum_step(sd, 2, 1) == 0 &&
                      enum_step(sd, 1, 2) == 2 && enum_orig(sd, 1) == 0 && enum_orig(sd, 5) == 5 &&
                      enum_orig(&ENGINES[8]->edit[0], 1) == 0);
-        bad += check("SAMPLE / GRAIN SET 4 (PERC, retired): a PIANO alias, knobs skip it, USR1..3 stay 5..7",
+        bad += check("SAMPLE / GRAIN SET 4 (PERC, retired): a PIANO alias, knobs skip it, USR1 stays 5 (USR2, USR3 not offered)",
                      str_eq(sd->names[SMP_SET_PERC], "PIANO") && enum_orig(sd, SMP_SET_PERC) == 0 &&
                      enum_step(sd, 3, 4) == 5 && enum_step(sd, 5, 4) == 3 && str_eq(sd->names[5], "USR1") &&
-                     str_eq(sd->names[7], "USR3") && sd->max == 7 &&
+                     sd->max == 4 + SMP_SHOWN &&
                      enum_orig(&ENGINES[8]->edit[0], SMP_SET_PERC) == 0 && SMP_SETS[SMP_SET_PERC].z0 == SMP_SETS[0].z0);
     }
 #if FELUCCA_LEGACY                             /* ((2.0) the converter's: 2.0 reads no record of before) */
@@ -1584,7 +1633,7 @@ static int test_menu_tabs(void)
                  "tab gaps constant (S, LARGE)",
                  ok && MTAB_COUNT == 6u && str_eq(MTAB_NAME[0], "DISPLAY") && str_eq(MTAB_NAME[MTAB_MIDI], "MIDI") &&
                  str_eq(MTAB_NAME[MTAB_TIMING], "TIMING") && mtab_rows(MTAB_TIMING) == 1u && MI_TAB[MI_GRID] == MTAB_TIMING &&
-                 mtab_rows(MTAB_DISPLAY) == 7u && mtab_rows(MTAB_CONTROL) == 7u && mtab_rows(MTAB_AUDIO) == 6u &&   /* (#27; (2.0) RETURN; (2.5) KEEP SENDS) */
+                 mtab_rows(MTAB_DISPLAY) == 6u && mtab_rows(MTAB_CONTROL) == 8u && mtab_rows(MTAB_AUDIO) == 6u &&   /* (#27; (2.0) RETURN; (2.5) KEEP SENDS; SMK-37: KEY VELOCITY, no LEDS) */
                  mtab_rows(MTAB_SYSTEM) == 6u + FELUCCA_CDC && mtab_rows(MTAB_MIDI) == 16u);   /* ((Skiff) SYSTEM: CPU
                                                          * CLOCK; (Skiff 2.0) USB SERIAL with the console only; (2.2)
                                                          * MIDI: CLOCK OUT, AUTO CHANNEL, NOTES OUT, CC OUT, THRU, REMOTE) */
@@ -1592,7 +1641,7 @@ static int test_menu_tabs(void)
     ui_power_on();
     hold(B_HOME);
     ok = ui.menu == 1 && ui.menu_sel == MI_COLOR && menu_tab() == MTAB_DISPLAY;
-    for (i = 0; i < 6u; i++) turn(EN_PRESET, 1);       /* ((Skiff #27) PLAYHEAD after COLOR: DISPLAY's seven scroll) */
+    for (i = 0; i < 5u; i++) turn(EN_PRESET, 1);       /* ((Skiff #27) PLAYHEAD after COLOR: DISPLAY's six scroll) */
     ok &= ui.menu_sel == MI_HINTS;
     turn(EN_PRESET, 1); ok &= ui.menu_sel == MI_COLOR;  /* (wraps within the tab) */
     turn(EN_PRESET, -1); ok &= ui.menu_sel == MI_HINTS;
@@ -1908,7 +1957,7 @@ static int test_information(void)
     menu_close();
     ui.msg_t = 0;
     usb.config = 1; usb.suspended = 0;
-    song.batt_raw = 530;
+    song.batt_raw = 529;
     ui.force = 1; draw_head(); ui.force = 0;
     memcpy(battery, host_screen, sizeof battery);
     uint32_t signature = ui.head_sig;
@@ -1921,9 +1970,9 @@ static int test_information(void)
     bad += check("USB suspension restores the battery outline and measured level",
                  batt_shown() == 0 && ui.head_sig != signature && host_screen[6 * 240 + 217] != 0);
     usb.config = 0; usb.suspended = 0;
-    song.batt_raw = 531; int levels = batt_shown() == 1;
-    song.batt_raw = 561; levels &= batt_shown() == 2;
-    song.batt_raw = 591; levels &= batt_shown() == 3;
+    song.batt_raw = 530; int levels = batt_shown() == 1;     /* (the SMK's thresholds: 530 / 560 / 602) */
+    song.batt_raw = 560; levels &= batt_shown() == 2;
+    song.batt_raw = 602; levels &= batt_shown() == 3;
     bad += check("battery operation retains all three ADC level thresholds", levels);
     {   /* (#5) the battery at every level, not only when low or on USB: its icon (THEME) in its cell */
         static const uint16_t RAW[2] = {561, 600};
@@ -2134,9 +2183,9 @@ static int test_presets_knob(void)
     turn(EN_PRESET, -5);
     mode_ok &= song.g[G_DMODE] == DM_MONO;
     {
-        char kb[32];                                 /* (its corner's key, the FM-1's name: the SMK-37's says K4) */
+        char kb[32];                                 /* (its corner's key: the SMK-37's name is K4) */
         kh_plain(kb, sizeof kb, KC_PRESETS, "MODE");
-        mode_ok &= str_eq(kb, "PRESETS: MODE");
+        mode_ok &= str_eq(kb, "K4: MODE");
     }
     bad += check("(2.5) PRESETS on GLO > DELAY and FX > DELAY: the delay's MODE (MONO STEREO PING, to its ends); the sound "
                  "and the steps stay", mode_ok && n_mode == 2u);
@@ -2281,26 +2330,10 @@ static int test_product_ux(void)
         bad += check("MOTION: CLEAR takes the icon off every card", ok && id < P_COUNT);
     }
     ui_power_on(); ui_leds();
-    memset(led_pos, 0xFF, sizeof led_pos);
-    led_pos[panel.btn[B_PLAY]] = 1; led_pos[panel.btn[B_REC]] = 2;
+    led_pos_init();
     song.playing = song.rec = 1; ok = 1;
-    for (i = 0; i < 120u; i++) { fm1_ms += 17; ui_leds(); ok &= (fm1_led[0] & 6u) == 4u && (fm1_led[8] & 2u); }
+    for (i = 0; i < 120u; i++) { fm1_ms += 17; ui_leds(); ok &= host_led[panel.btn[B_REC]] && host_led[LED_PLAY_GREEN]; }
     bad += check("PLAY's green and REC LEDs stay lit across time and audio block phase", ok);
-    {   /* the power-on sweep (hal/fm1_input.h fm1_led_anim_on) has the LEDs: the UI writes none of them while it runs,
-         * all of its own picture on the next frame after */
-        uint8_t l0[FM1_NCOL], d0[FM1_NCOL];
-        memset(fm1_led, 0x5A, sizeof fm1_led);
-        memset(fm1_led_dim, 0xA5, sizeof fm1_led_dim);
-        memcpy(l0, fm1_led, sizeof l0);
-        memcpy(d0, fm1_led_dim, sizeof d0);
-        host_anim = 1;
-        ui_leds();
-        ok = !memcmp(l0, fm1_led, sizeof l0) && !memcmp(d0, fm1_led_dim, sizeof d0);
-        host_anim = 0;
-        ui_leds();
-        ok &= (fm1_led[0] & 6u) == 4u && (fm1_led[8] & 2u) && fm1_led[1] != 0x5A;
-        bad += check("the power-on LED sweep: the UI leaves the LEDs alone while it runs, takes them after", ok);
-    }
     led_pos_init();
     ok = 1;
     for (p = 0; p < NPALETTES; p++) for (b = 0; b < 1u; b++) {
@@ -2422,38 +2455,23 @@ static int test_layer(void)
         settings_export(&p); settings_hold = HOLD_DEF;
         bad += check("  HOLD is saved with the settings and read back", settings_import(&p, sizeof p) && settings_hold == 3u);
     }
-    /* the LEDS setting: KNOB 1 / OCT+ up to INV, left / OCT- down to OFF; saved in the retired zoom field */
+    /* a setting changed from elsewhere (the editor's MENU_SET: menu_put) while the MENU is shown: redrawn */
     ui_power_on();
-    hold(B_HOME); ui.menu_sel = MI_LEDS;
-    ok = settings_leds == LEDS_DIM;
-    turn(EN_K1, 1); ok &= settings_leds == LEDS_INV;
-    turn(EN_K1, 1); ok &= settings_leds == LEDS_INV;
-    turn(EN_K1, -1); ok &= settings_leds == LEDS_DIM;
-    turn(EN_K1, -1); ok &= settings_leds == LEDS_DIM_LO;
-    turn(EN_K1, -1); ok &= settings_leds == LEDS_OFF;
-    turn(EN_K1, -1); ok &= settings_leds == LEDS_OFF;
-    press(B_OCTUP); ok &= settings_leds == LEDS_DIM_LO && ui.menu == 1u;
-    press(B_OCTUP); ok &= settings_leds == LEDS_DIM;
-    press(B_OCTUP); ok &= settings_leds == LEDS_INV;
-    press(B_OCTUP); ok &= settings_leds == LEDS_INV && ui.menu == 1u;   /* (stops at the end) */
-    for (k = 0; k < 4u; k++) press(B_OCTDN);
-    ok &= settings_leds == LEDS_OFF && ui.menu == 1u;
-    ok &= !strcmp(LEDS_NAME[LEDS_OFF], "OFF") && !strcmp(LEDS_NAME[LEDS_DIM_LO], "DIM LO") &&
-          !strcmp(LEDS_NAME[LEDS_DIM], "DIM HI") && !strcmp(LEDS_NAME[LEDS_INV], "INV");
-    {   /* a setting changed from elsewhere (the editor's MENU_SET: menu_put) while the MENU is shown: redrawn */
+    hold(B_HOME); ui.menu_sel = MI_HINTS;
+    {
         static uint16_t before[240 * 240];
+        uint32_t hints = menu_get(MI_HINTS);
         frame();
         memcpy(before, host_screen, sizeof before);
-        menu_put(MI_LEDS, 3);                          /* (OFF -> INV, the row shown) */
+        menu_put(MI_HINTS, hints ^ 1u);
         frame();
-        ok &= settings_leds == LEDS_INV && memcmp(before, host_screen, sizeof before) && menu_get(MI_LEDS) == 3u;
-        menu_put(MI_LEDS, 0);
+        ok = memcmp(before, host_screen, sizeof before) && menu_get(MI_HINTS) == (hints ^ 1u);
+        menu_put(MI_HINTS, hints);
         frame();
         ok &= !memcmp(before, host_screen, sizeof before);
     }
     hold(B_HOME);
-    bad += check("menu LEDS: DIM HI by default; KNOB 1 OFF < DIM LO < DIM HI < INV (stops at the ends), OCT+ / OCT- the same; "
-                 "a change from the editor redraws the shown MENU", ok && !ui.menu);
+    bad += check("menu: a change from the editor redraws the shown MENU (HINTS)", ok && !ui.menu);
     {
         sks_t p = {0};
         uint32_t m;
@@ -4863,148 +4881,7 @@ static int led_of(const uint8_t *l, uint32_t id)
     uint8_t q = led_pos[id];
     return q != 0xFF && ((l[q >> 3] >> (q & 7u)) & 1u);
 }
-static int test_breath(void)
-{
-    static const uint8_t LB[4] = {B_FX, B_GLO, B_SCL, B_EDIT};
-    static const uint8_t LL[4] = {LAYER_FX, LAYER_GLO, LAYER_SCL, LAYER_EDIT};
-    static const uint8_t MODES[4] = {LEDS_OFF, LEDS_DIM_LO, LEDS_DIM, LEDS_INV};
-    int bad = 0, ok = 1, okl = 1, okm = 1, oko = 1;
-    uint32_t i, m, lk, t, held;
-    ui_power_on();
-    ui_leds();
-    for (i = 0; i < 41u; i++)                           /* (the stub key map has none: 4 LEDs a column) */
-        led_pos[i] = (uint8_t)((i / 4u) << 3 | (1u + i % 4u));
-    for (i = 0; i < 4u; i++)
-        for (lk = 0; lk < 2u; lk++)
-            for (m = 0; m < 4u; m++) {
-                uint32_t br0 = 0, lit0 = 0, want_br, want_lit, hk = LL[i] == LAYER_GLO ? white(1) : white(2);
-                ui_power_on();
-                settings_leds = MODES[m];
-                go_title("ENV"); frame();
-                if (lk) {                                   /* locked (#83), then a key held */
-                    shift_lock(LB[i]); frames(100);
-                    okl &= ui.lock == LL[i];
-                } else {
-                    btn_down(LB[i]);
-                }
-                key_down(hk); frame();
-                okl &= ui.layer == LL[i];
-                want_lit = layer_leds(&want_br);
-                held = LL[i] == LAYER_FX || LL[i] == LAYER_GLO;  /* (HOLD keys: lit while held) */
-                for (t = 0; t < 8u; t++) {                  /* 0 .. 1.75 s: the same picture */
-                    fm1_ms += 250u;
-                    ui_leds();
-                    if (!t) {
-                        br0 = breath_keys();
-                        lit0 = lit_keys(fm1_led);
-                    }
-                    ok &= breath_keys() == br0 && lit_keys(fm1_led) == lit0 && !lit_keys(fm1_led_dim) &&
-                          led_of(fm1_led_breath, panel.btn[LB[i]]) && !led_of(fm1_led, panel.btn[LB[i]]) &&
-                          !led_of(fm1_led_dim, panel.btn[LB[i]]);
-                }
-                ok &= br0 == want_br && lit0 == want_lit && br0 && !(br0 & lit0);
-                ok &= !held || (((lit0 >> hk) & 1u) && !((br0 >> hk) & 1u));   /* held: lit, not breathing */
-                okm &= host_dim_lo == (MODES[m] == LEDS_DIM_LO);
-                key_up(hk); frame();
-                if (lk)
-                    press(LB[i]);
-                else
-                    btn_up(LB[i]);
-                frames(64);
-                ui_leds();
-                for (t = 0; t < FM1_NCOL; t++)
-                    okl &= !ui.layer && !fm1_led_breath[t];
-            }
-    settings_leds = LEDS_DIM;
-    bad += check("#119 FX GLO SCL EDIT, held and locked, every LEDS mode: the keys that can be pressed breathe", ok);
-    bad += check("  ..held / in effect lit, never the glow, the layer's button breathes, steady over time", ok);
-    bad += check("  ..closed: nothing breathes", okl);
-    bad += check("  ..the breath's peak follows LEDS (DIM LO ~30 % of lit, else ~60 %)", okm);
-    /* OCT+ in a dialog: breathing, OCT- lit, in every mode */
-    for (m = 0; m < 4u; m++) {
-        ui_power_on();
-        settings_leds = MODES[m];
-        go_title("ENV"); frame();
-        ui.confirm = CF_CLEAR_SEQ;
-        for (t = 0; t < 4u; t++) {
-            fm1_ms += 250u;
-            ui_leds();
-            oko &= led_of(fm1_led_breath, panel.btn[B_OCTUP]) && !led_of(fm1_led, panel.btn[B_OCTUP]) &&
-                   !led_of(fm1_led_dim, panel.btn[B_OCTUP]) && led_of(fm1_led, panel.btn[B_OCTDN]) ==
-                   (MODES[m] != LEDS_INV) && !led_of(fm1_led_breath, panel.btn[B_OCTDN]);
-        }
-        ui.confirm = 0;
-        ui_leds();
-        oko &= !led_of(fm1_led_breath, panel.btn[B_OCTUP]);
-    }
-    settings_leds = LEDS_DIM;
-    led_pos_init();
-    bad += check("#119 a dialog: OCT+ breathes (not lit, not the glow), OCT- lit (INV: dark), every LEDS mode", oko);
-    ui_power_on();
-    return bad;
-}
 
-/* #35: every idle button and key glows dim, the active ones are lit; a map of the keys' own stays lit / dark */
-static int test_idle_glow(void)
-{
-    int bad = 0, ok;
-    ui_power_on();
-    ui_leds();
-    memset(led_pos, 0xFF, sizeof led_pos);
-    led_pos[panel.btn[B_HOME]] = 0u << 3 | 1u;
-    led_pos[panel.btn[B_ENV]] = 0u << 3 | 2u;
-    led_pos[panel.btn[B_PLAY]] = 0u << 3 | 3u;
-    led_pos[14u + 0u] = 1u << 3 | 1u;              /* keys 1 and 2 */
-    led_pos[14u + 1u] = 1u << 3 | 2u;
-    go_home();
-    ui_leds();
-    bad += check("HOME: its button lit, ENV and PLAY (stopped) glow, the keys glow, none lit",
-                 fm1_led[0] == 2u && fm1_led_dim[0] == 14u && fm1_led[1] == 0u && fm1_led_dim[1] == 6u);
-    fm1_in.notes = 1u;
-    song.playing = 1;
-    ui_leds();
-    ok = fm1_led[0] == 2u && (fm1_led_dim[0] & 8u) == 0u && fm1_led[8] == 2u && fm1_led[1] == 2u && fm1_led_dim[1] == 6u;
-    fm1_in.notes = 0;
-    song.playing = 0;
-    bad += check("a key held lit over the glow; PLAY running: its green, its own LED dark", ok);
-    ui.layer = 1;
-    ui_leds();
-    ok = fm1_led_dim[1] == 0u && fm1_led_dim[0] == 14u;
-    ui.layer = 0;
-    ui_leds();
-    ok &= fm1_led_dim[1] == 6u;
-    bad += check("a layer's map: the keys lit or dark (no glow), the buttons still glow", ok);
-    /* MENU > LEDS INV: the active ones dark, the idle ones lit (stock), no glow; a breath as in DIM (#119); a map
-     * of the keys' own as in DIM */
-    settings_leds = LEDS_INV;
-    ui_leds();
-    ok = fm1_led[0] == 12u && fm1_led_dim[0] == 0u && fm1_led[1] == 6u && fm1_led_dim[1] == 0u;   /* HOME dark */
-    fm1_in.notes = 1u;
-    song.playing = 1;
-    ui_leds();
-    ok &= fm1_led[0] == 4u && fm1_led_dim[0] == 0u && fm1_led[1] == 4u && fm1_led_dim[1] == 0u && fm1_led[8] == 2u;   /* PLAY, key 1 dark; green */
-    fm1_in.notes = 0;
-    song.playing = 0;
-    bad += check("LEDS INV: the page's button, PLAY running and a key held go dark, the rest lit, no glow", ok);
-    ui.layer = 1;
-    led_pos[panel.btn[layer_btn()]] = 0u << 3 | 4u;   /* the layer's button */
-    {
-        uint32_t seen = 0, t;
-        for (t = 0; t < 4u; t++) {                  /* the layer's button breathes: never lit (inverted), never the glow */
-            fm1_ms = t * 250u;
-            ui_leds();
-            seen |= ((fm1_led[0] >> 4) & 1u ? 1u : 2u) | ((fm1_led_dim[0] >> 4) & 1u ? 4u : 0u) |
-                    ((fm1_led_breath[0] >> 4) & 1u ? 8u : 0u);
-        }
-        ok = seen == 10u && fm1_led_dim[1] == 0u && fm1_led[1] == (uint8_t)((layer_leds(0) & 3u) << 1);
-    }
-    ui.layer = 0;
-    fm1_ms = 0;
-    bad += check("LEDS INV: the layer's button breathes (not inverted); a layer's map stays lit / dark as in DIM", ok);
-    settings_leds = LEDS_DIM;
-    led_pos_init();
-    return bad;
-}
 
 /* "On the step sequencer all the LEDs go out": SEQ > STEP, the piano roll and the DRUM grid, stopped and playing,
  * in every LEDS mode, with the LEDs where the hardware has them (hal/fm1_input.h FM1_KEYMAP). The buttons keep
@@ -5019,151 +4896,6 @@ static uint32_t step_keys(uint32_t steps)
         if (!key_black(k) && key_place(k) < 16u && ((steps >> key_place(k)) & 1u))
             m |= 1u << k;
     return m;
-}
-static int test_step_leds(void)
-{
-    static const int8_t MAP[6][FM1_NCOL] = {     /* (hal/fm1_input.h FM1_KEYMAP; the host stub is zero) */
-        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-        { 5, 11,  4, 10,  3,  9,  2,  8, -1, -1, -1},
-        {34, 35, 36, 37, 38, 40, 39, 13,  7,  6, 12},
-        {23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33},
-        { 0,  1, 15, 14, 17, 16, 19, 18, 20, 21, 22},
-        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-    };
-    static const uint8_t MODES[LEDS_COUNT] = {LEDS_OFF, LEDS_DIM_LO, LEDS_DIM, LEDS_INV};
-    int bad = 0;
-    uint32_t id, p, r, mi, drum, run, k;
-    ui_power_on();
-    ui_leds();
-    for (id = 0; id < 41u; id++) {
-        led_pos[id] = 0xFF;
-        for (p = 0; p < FM1_NCOL; p++)
-            for (r = 1; r < 5u; r++)
-                if (MAP[r][p] == (int8_t)id)
-                    led_pos[id] = (uint8_t)(p << 3 | r);
-    }
-    for (drum = 0; drum < 2u; drum++)
-        for (run = 0; run < 2u; run++)
-            for (mi = 0; mi < LEDS_COUNT; mi++) {
-                uint32_t m = MODES[mi], glow = m == LEDS_DIM || m == LEDS_DIM_LO, keys_lit = 0, keys_dim = 0, btn_bad = 0;
-                uint32_t want_dim = 0, kc, keys;
-                char what[128];
-                ui_power_on();
-                sel_set(0);
-                if (drum) {
-                    set_engine_of(TSEL, ENGI_DRUM);
-                    TSEL->engine = TSEL->eng_req;
-                    TSEL->p[P_SLEN] = 16;
-                    TSEL->step[2] = (step_t){.hit = 1u << DV_KICK, .time = ST_NOTE};   /* one hit, on step 3 */
-                } else {
-                    TSEL->step[0] = (step_t){.note = {60}, .n = 1, .time = ST_NOTE};   /* C4 on step 1 */
-                }
-                TSEL->seq_active = 1;
-                settings_leds = (uint8_t)m;
-                open_family(FAM_SEQ);
-                frame();
-                for (k = 0; k < NPAGES && cur_page()->graph != GR_ROLL; k++) {   /* ((2.0) NOTES: a drum
-                                                         * track's grid) */
-                    open_family(FAM_SEQ);
-                    frame();
-                }
-                if (run) {
-                    seq_start();
-                    events_block(CTL);
-                }
-                ui_leds();
-                for (k = 0; k < NB; k++) {                  /* a button: lit if active, else glow / dark / lit */
-                    uint8_t q = led_pos[panel.btn[k]];
-                    uint32_t lit = (fm1_led[q >> 3] >> (q & 7u)) & 1u, dim = (fm1_led_dim[q >> 3] >> (q & 7u)) & 1u;
-                    int active = k == B_SEQ || (k == B_PLAY && run);
-                    btn_bad += m == LEDS_INV ? lit == (uint32_t)active || dim :
-                               active ? (k == B_PLAY ? lit || dim : !lit) : lit || dim != glow;
-                }
-                keys = key_leds(0);
-                for (k = 0; k < 27u; k++) {
-                    uint8_t q = led_pos[14u + k];
-                    keys_lit += (fm1_led[q >> 3] >> (q & 7u)) & 1u;
-                    keys_dim += ((fm1_led_dim[q >> 3] & ~fm1_led[q >> 3]) >> (q & 7u)) & 1u;
-                }
-                kc = (uint32_t)__builtin_popcount(keys);
-                if (glow)
-                    want_dim = (uint32_t)__builtin_popcount((drum ? grid_glow() : 0x7FFFFFFu) & ~keys);
-                else if (drum)                              /* (OFF, INV: the grid's beats alone glow) */
-                    want_dim = (uint32_t)__builtin_popcount(grid_beats() & ~keys);
-                snprintf(what, sizeof what, "STEP %s, %s, LEDS %s: buttons and keys as the mode says (%u lit, %u glow)",
-                         drum ? "DRUM grid" : "piano roll", run ? "playing" : "stopped", LEDS_NAME[m],
-                         (unsigned)keys_lit, (unsigned)keys_dim);
-                bad += check(what, !btn_bad && host_dim_lo == (m == LEDS_DIM_LO) &&
-                                       grid_on() == (int)drum && (!run || kc) &&
-                                       keys_dim == want_dim && keys_lit == (m == LEDS_INV && !drum ? 27u - kc : kc) &&
-                                       (!glow || keys_lit + keys_dim >= 25u) &&
-                                       ((fm1_led[LED_PLAY_GREEN >> 3] >> (LED_PLAY_GREEN & 7u)) & 1u) == run);
-                bad += check("  the mid level: the grid's beats in DIM HI / LO only, never a lit key",
-                             lit_keys(fm1_led_mid) == (glow && drum ? grid_beats() & ~keys : 0u) &&
-                             !(lit_keys(fm1_led_mid) & lit_keys(fm1_led)));
-                if (run) {
-                    transport_req = 2;
-                    events_block(CTL);
-                }
-            }
-    {   /* the DRUM grid's beats (ui_input.c grid_beats): "5111 5111 5111 5111", the first step of each four brighter
-         * where no hit shows, the hits lit and the playhead as before; LEN cuts them, a page shows its own; groups of
-         * four whatever LEN / DIV; DIM HI / LO: fm1_led_mid over the glow, OFF / INV: the glow alone */
-        uint32_t want, beats, keys, kick = 1u << DV_KICK, ok = 1, mi;
-        for (mi = 0; mi < LEDS_COUNT; mi++) {
-            uint32_t m = MODES[mi], glow = m == LEDS_DIM || m == LEDS_DIM_LO;
-            char what[128];
-            ui_power_on();
-            sel_set(0);
-            set_engine_of(TSEL, ENGI_DRUM);
-            TSEL->engine = TSEL->eng_req;
-            TSEL->p[P_SLEN] = 16;
-            TSEL->step[4] = (step_t){.hit = kick, .time = ST_NOTE};   /* a kick on step 5 (a beat) and on step 3 */
-            TSEL->step[2] = (step_t){.hit = kick, .time = ST_NOTE};
-            TSEL->seq_active = 1;
-            settings_leds = (uint8_t)m;
-            open_family(FAM_SEQ);
-            frame();
-            for (k = 0; k < NPAGES && cur_page()->graph != GR_ROLL; k++) {
-                open_family(FAM_SEQ);
-                frame();
-            }
-            ui.lane = 0;
-            ui_leds();
-            keys = key_leds(0);
-            beats = grid_beats();
-            want = step_keys(1u << 0 | 1u << 8 | 1u << 12);   /* steps 1, 9, 13 (5 holds a hit: lit) */
-            ok = beats == want && (keys & step_keys(1u << 4 | 1u << 2)) == step_keys(1u << 4 | 1u << 2) &&
-                 lit_keys(fm1_led_mid) == (glow ? want : 0u) && (lit_keys(fm1_led_dim) & want) == want &&
-                 (glow || !(lit_keys(fm1_led_dim) & ~want)) && host_dim_lo == (m == LEDS_DIM_LO);
-            snprintf(what, sizeof what, "DRUM grid beats, LEDS %s: steps 1 9 13 %s, the hits 3 5 lit", LEDS_NAME[m],
-                     glow ? "at the mid level over the glow" : "glow (nothing else does)");
-            bad += check(what, ok);
-            if (m != LEDS_DIM)
-                continue;
-            ui.lane = 1;                                /* another lane: none of its hits there, 1 5 9 13 */
-            ok = grid_beats() == step_keys(0x1111u);
-            ui.lane = 0;
-            TSEL->p[P_SLEN] = 12;                       /* LEN 12 (3/4): 1 5 9; 13 is past it */
-            ok &= grid_beats() == step_keys(1u << 0 | 1u << 8);
-            TSEL->p[P_SLEN] = 16; TSEL->p[P_SDIV] = 4;  /* (DIV changes nothing: steps are counted) */
-            ok &= grid_beats() == want;
-            song.playing = 1; TSEL->seq_idx = 8;        /* the playhead on step 9: it lights it, no mid there */
-            ui_leds();
-            ok &= grid_beats() == step_keys(1u << 0 | 1u << 12) && (lit_keys(fm1_led) & step_keys(1u << 8)) &&
-                  !(lit_keys(fm1_led_mid) & step_keys(1u << 8));
-            song.playing = 0;
-            TSEL->p[P_SLEN] = 32;                       /* page 2: its own steps 17 21 25 29 */
-            TSEL->step[20] = (step_t){.hit = kick, .time = ST_NOTE};
-            ui.bank = 1; ui.cursor = 16;
-            ok &= grid_beats() == step_keys(1u << 0 | 1u << 8 | 1u << 12);
-            bad += check("  another lane, LEN 12, DIV, the playhead, page 2: the beats as the steps show", ok);
-        }
-    }
-    settings_leds = LEDS_DIM;
-    led_pos_init();
-    ui_power_on();
-    return bad;
 }
 
 /* Discussion #127 (1.2): MENU > SCALE LEDS ON, outside the keys' own maps the keys of the selected track's scale glow
@@ -5371,7 +5103,7 @@ static int test_screen_off(void)
 
     ui_power_on();                                    /* in the MENU: OCT+ / a knob step it */
     hold(B_HOME);
-    for (i = 0; i < 5u; i++) turn(EN_PRESET, 1);       /* ((Skiff #27) past PLAYHEAD) */
+    for (i = 0; i < 4u; i++) turn(EN_PRESET, 1);       /* ((Skiff #27) past PLAYHEAD; no LEDS row) */
     ok = ui.menu == 1 && ui.menu_sel == MI_SCROFF;
     press(B_OCTUP); ok &= scr_get() == 4u;
     press(B_OCTUP); ok &= scr_get() == 4u;           /* (stops at the end) */
@@ -5392,123 +5124,6 @@ static int test_screen_off(void)
     return bad;
 }
 
-static int test_scale_leds(void)
-{
-    static const int8_t MAP[6][FM1_NCOL] = {     /* (hal/fm1_input.h FM1_KEYMAP; the host stub is zero) */
-        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-        { 5, 11,  4, 10,  3,  9,  2,  8, -1, -1, -1},
-        {34, 35, 36, 37, 38, 40, 39, 13,  7,  6, 12},
-        {23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33},
-        { 0,  1, 15, 14, 17, 16, 19, 18, 20, 21, 22},
-        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-    };
-    static const uint8_t MODES[LEDS_COUNT] = {LEDS_OFF, LEDS_DIM_LO, LEDS_DIM, LEDS_INV};
-    const uint32_t ALL = 0x7FFFFFFu, C_KEYS = 1u << 7 | 1u << 19;
-    int bad = 0, ok;
-    uint32_t id, p, r, k, mi, root = 0, sc, white = 0;
-    track_t *t;
-    ui_power_on();
-    for (id = 0; id < 41u; id++) {
-        led_pos[id] = 0xFF;
-        for (p = 0; p < FM1_NCOL; p++)
-            for (r = 1; r < 5u; r++)
-                if (MAP[r][p] == (int8_t)id)
-                    led_pos[id] = (uint8_t)(p << 3 | r);
-    }
-    for (k = 0; k < 27u; k++)
-        white |= (uint32_t)!key_black(k) << k;
-    sel_set(0);
-    t = TSEL;
-    t->p[P_SCALE] = 1;                                  /* C major */
-    t->p[P_ROOT] = 0;
-    settings_leds = LEDS_DIM;
-    ui_leds();
-    ok = !menu_get(MI_SCLLED) && str_eq(MI_NAME[MI_SCLLED], "SCALE LEDS") && MI_TAB[MI_SCLLED] == MTAB_CONTROL &&
-         !scale_leds(&root) && lit_keys(fm1_led_dim) == ALL && !lit_keys(fm1_led_mid);
-    bad += check("#127 SCALE LEDS OFF (the default): every key glows as before", ok);
-    menu_put(MI_SCLLED, menu_step(MI_SCLLED, 1));
-    ok = menu_get(MI_SCLLED) == 1u && (ui_rec_prefs & 0x40u) && !ui_prefs && str_eq(menu_vname(MI_SCLLED, 1), "ON");
-    sc = scale_leds(&root);
-    bad += check("#127 MENU > CONTROL > SCALE LEDS ON (a bit of its own); C major: the white keys, the root C4 C5",
-                 ok && sc == white && root == C_KEYS);
-    for (mi = 0; mi < LEDS_COUNT; mi++) {
-        uint32_t m = MODES[mi], held = 1u << 1 | 1u << 7;   /* F#3 (out of the scale) and C4 (the root) held */
-        char what[128];
-        settings_leds = (uint8_t)m;
-        fm1_in.notes = 0;
-        ui_leds();
-        if (m == LEDS_INV)
-            ok = lit_keys(fm1_led) == C_KEYS && lit_keys(fm1_led_mid) == (white & ~C_KEYS) &&
-                 lit_keys(fm1_led_dim) == (ALL & ~white);
-        else
-            ok = !lit_keys(fm1_led) && lit_keys(fm1_led_dim) == white && lit_keys(fm1_led_mid) == C_KEYS;
-        fm1_in.notes = held;
-        ui_leds();
-        if (m == LEDS_INV)
-            ok &= lit_keys(fm1_led) == (C_KEYS & ~held) && !(lit_keys(fm1_led_mid) & held) &&
-                  !(lit_keys(fm1_led_dim) & held) && lit_keys(fm1_led_mid) == (white & ~C_KEYS);
-        else
-            ok &= lit_keys(fm1_led) == held && lit_keys(fm1_led_dim) == white && lit_keys(fm1_led_mid) == C_KEYS;
-        snprintf(what, sizeof what, "#127 LEDS %s: %s; the keys held %s", LEDS_NAME[m],
-                 m == LEDS_INV ? "root lit, the scale mid, the others glow" : "the scale glows, the root brighter",
-                 m == LEDS_INV ? "dark" : "lit over it");
-        bad += check(what, ok);
-    }
-    fm1_in.notes = 0;
-    settings_leds = LEDS_DIM;
-    t->p[P_ROOT] = 2;                                   /* D major: F# and C# in, F and C out, D the root */
-    sc = scale_leds(&root);
-    ok = (sc >> 1 & 1u) && (sc >> 8 & 1u) && !(sc & 1u) && !(sc >> 7 & 1u) && root == (1u << 9 | 1u << 21) &&
-         __builtin_popcount(sc) == 16;
-    t->p[P_ROOT] = 0;
-    t->p[P_TRANS] = 2;                                  /* C major, TRN +2: F3 plays G3 (in), A#3 plays C4 (the root) */
-    sc = scale_leds(&root);
-    ok &= (sc & 1u) && !(sc >> 1 & 1u) && root == (1u << 5 | 1u << 17);
-    t->p[P_TRANS] = 0;
-    bad += check("#127 the keys as they play: ROOT D, TRN +2", ok);
-    t->p[P_QUANT] = QN_SNAP;                            /* SNAP: the keys' own notes (the others round down) */
-    sc = scale_leds(&root);
-    ok = sc == white && root == C_KEYS;
-    t->p[P_QUANT] = QN_WHITE;                           /* WHITE, PEN: every white key; a root every 5 white keys */
-    t->p[P_SCALE] = 5;
-    sc = scale_leds(&root);
-    ok &= sc == white && root == (1u << 7 | 1u << 16 | 1u << 24);
-    ui_leds();
-    ok &= lit_keys(fm1_led_dim) == white && lit_keys(fm1_led_mid) == root;
-    t->p[P_QUANT] = QN_OFF;
-    t->p[P_SCALE] = 0;                                  /* CHR: every key, the C keys brighter */
-    sc = scale_leds(&root);
-    ok &= sc == ALL && root == C_KEYS;
-    bad += check("#127 QNT SNAP: the keys of the scale; QNT WHITE: all the white keys, its roots; CHR: every key", ok);
-    t->p[P_SCALE] = 1;
-    ui.layer = LAYER_SCL;                               /* a layer: its own map, no scale glow under it */
-    ui_leds();
-    ok = !lit_keys(fm1_led_mid) && !lit_keys(fm1_led_dim);
-    ui.layer = 0;
-    set_engine_of(t, ENGI_DRUM);
-    t->engine = t->eng_req;
-    sc = scale_leds(&root);
-    ui_leds();
-    ok &= !sc && !root && lit_keys(fm1_led_dim) == ALL && !lit_keys(fm1_led_mid);
-    open_family(FAM_SEQ);
-    frame();
-    for (k = 0; k < NPAGES && cur_page()->graph != GR_ROLL; k++) {
-        open_family(FAM_SEQ);
-        frame();
-    }
-    ui_leds();
-    ok &= grid_on() && lit_keys(fm1_led_dim) == grid_glow() &&
-          lit_keys(fm1_led_mid) == (grid_beats() & ~key_leds(0));
-    bad += check("#127 a layer, a DRUM track (its keys as before) and the DRUM grid keep their own LEDs", ok);
-    menu_put(MI_SCLLED, 0);
-    ok = !(ui_rec_prefs & 0x40u) && !scale_leds(&root);
-    bad += check("#127 SCALE LEDS OFF again: the bit clears", ok);
-    ui_rec_prefs = 0;
-    settings_leds = LEDS_DIM;
-    led_pos_init();
-    ui_power_on();
-    return bad;
-}
 
 /* #37: QNT SEQ on the SCL page: the keys as SNAP, the sequence snapped as it plays, saved with the project */
 static int test_seq_quant(void)
@@ -7187,15 +6802,15 @@ static int test_click_menu(void)
         uint16_t now0 = px_at(16, CI_Y + 4), next0 = px_at(16 + 56, CI_Y + 4);
         ok &= now0 != next0;                            /* the first beat's cell lit, the next not */
         ui_leds();
-        ok &= (fm1_led[8] & 2u) != 0u;                  /* PLAY's green: on the beat */
+        ok &= host_led[LED_PLAY_GREEN] != 0u;           /* PLAY's green: on the beat */
         for (i = 0; i < 400u; i++) events_block(CTL);    /* (~0.3 s: past the first quarter of the beat) */
         ui_leds();
-        ok &= !(fm1_led[8] & 2u);
+        ok &= !host_led[LED_PLAY_GREEN];
         cin_beat();
         frame();
         ok &= cin_left == 3u && px_at(16 + 56, CI_Y + 4) == now0 && px_at(16, CI_Y + 4) == next0;   /* the cell moved */
         ui_leds();
-        ok &= (fm1_led[8] & 2u) != 0u;
+        ok &= host_led[LED_PLAY_GREEN] != 0u;
     }
     bad += check("count-in from the UI: REC on STEP arms, PLAY counts in (STEP entry paused); 4 3 2 1 on screen; PLAY's green on the beats", ok);
     press(B_PLAY);
@@ -8887,7 +8502,7 @@ static int test_style(void)
     ui_power_on();
     for (i = 0; i < MI_COUNT; i++)
         ok &= !str_eq(MI_NAME[i], "STYLE");
-    ok &= mtab_rows(MTAB_DISPLAY) == 7u && MI_LARGE == MI_PHEAD + 1u;   /* ((U4) HINTS, (#27) PLAYHEAD) */
+    ok &= mtab_rows(MTAB_DISPLAY) == 6u && MI_LARGE == MI_PHEAD + 1u;   /* ((U4) HINTS, (#27) PLAYHEAD) */
     p.magic = SKS_MAGIC; p.panel = panel;
     settings_export(&p);
     for (i = 0; i < 4u; i++) {
@@ -9236,8 +8851,8 @@ static int test_free_hint(void)
     ok = !ui.msg_t && !(layer_seen & 1u);
     free_note(TSEL, 67u, 100u); free_note(TSEL, 67u, 0u);
     frame();
-    ok &= msg_is("SHIFT + SAVE: FREE TAKE") && (layer_seen & 1u);
-    bad += check("(2.5) 7 notes played stopped: nothing; the 8th: SHIFT + SAVE: FREE TAKE, once seen", ok);
+    ok &= msg_is("SHIFT + BT: FREE TAKE") && (layer_seen & 1u);                /* (the SMK's SAVE: BT) */
+    bad += check("(2.5) 7 notes played stopped: nothing; the 8th: SHIFT + BT: FREE TAKE, once seen", ok);
     ui.msg_t = 0;
     free_n0 = free_n;
     for (i = 0; i < 9u; i++) { free_note(TSEL, 60u, 100u); free_note(TSEL, 60u, 0u); }
@@ -9692,10 +9307,6 @@ int main(void)
     bad += test_cursor_step_leds();
     bad += test_midi_leds();
     bad += test_seq_quant();
-    bad += test_idle_glow();
-    bad += test_breath();
-    bad += test_step_leds();
-    bad += test_scale_leds();
     bad += test_screen_off();
     bad += test_playhead_line();
     bad += test_fm6_charts();

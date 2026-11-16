@@ -13,11 +13,7 @@ enum { ED_MENU_DESC = 72, ED_MENU_SET };
 enum { EDM_ENUM, EDM_INT };                            /* kind: names follow; or a unit (none yet) */
 static const uint8_t ED_MENU[][2] = {
     {MI_COLOR, 0}, {MI_LARGE, 2},              /* ((Skiff U2) id 1, STYLE, retired) */
-#if BOARD_SMK37
     {MI_ANIM, 3}, {MI_HOLD, 5}, {MI_ACCEL, 6},         /* (SMK-37: no LEDS row) */
-#else
-    {MI_ANIM, 3}, {MI_LEDS, 4}, {MI_HOLD, 5}, {MI_ACCEL, 6},
-#endif
     {MI_BPMLOCK, 8},                   /* ((Skiff U2) id 7, FX LATCH, retired) */
     {MI_LOWCUT, 9}, {MI_USB, 10},
 #if FELUCCA_CDC
@@ -27,9 +23,7 @@ static const uint8_t ED_MENU[][2] = {
     {MI_RESTORE, 15},                                  /* 1.2 (Discussion #130), a row of SYSTEM */
     {MI_SCLLED, 16},                                   /* 1.2 (Discussion #127), a row of CONTROL */
     {MI_SCROFF, 17},                                   /* 1.1.5, a row of DISPLAY */
-#if BOARD_SMK37
     {MI_KVEL, 18},                                     /* (SMK-37) KEY VELOCITY, a row of CONTROL */
-#endif
     {MI_PHEAD, 19},                                    /* (Skiff #27) PLAYHEAD, a row of DISPLAY */
     {MI_RETURN, 20},                                   /* (2.0, D 2A) RETURN, a row of CONTROL */
     {MI_KEEPS, 21},                                    /* (2.5) KEEP SENDS, a row of CONTROL */

@@ -26,7 +26,6 @@
  *   ota_show(step, code)       progress / result for the screen
  *   ota_commit(parm)           write RAM record + reset (never returns on hardware)
  */
-#if BOARD_SMK37
 /* SMK-37 Pro (after genkigenki's SMK-37 layer): the last 5 sectors of the stock VM (0xBB000..0xBFFFF, FL_OTA in
  * fm1_flash_map.h), below BTIF / USRTRIM 0xC0000..0xC1FFF; the update loader drops records only below 0xC0000 */
 #define OTA_AREA 0x000BB000u                     /* staged loader, 5 x 4 KiB */
@@ -40,16 +39,6 @@
 #define OTA_PARM_ID "ota-" SMK_MODEL "_016"       /* the stock app's record identity (Pro 18 B, Elite 20 B) */
 #define OTA_FL_V16 OTA_FL_LEN                    /* (no other official size here) */
 _Static_assert(OTA_AREA + OTA_AREA_LEN <= 0xC0000u && OTA_AREA >= 0x9D000u, "SMK: OTA area outside the VM");
-#else
-#define OTA_AREA 0x000E0000u                     /* staged loader, 5 x 4 KiB */
-#define OTA_AREA_LEN 0x5000u
-#define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xE4F00 = 4K boundary - 256: SPL scan */
-#define OTA_FL_LEN 0x93000u                      /* flash.bin = [0, the PRCT end): the head and this board's app area,
-                                                  * the size the update loader writes (ldr_core.c LDR_APP_HI) */
-#define OTA_PARM_ID "ota-FM-1_015"
-#define OTA_FL_V16 0xA9000u                      /* ((2.0.2, #64) M-VAVE's V16, FM-1_016: its PRCT reaches 0xA9000 (DX7.bin
-                                                  * in it); the same official loader as V15's writes it */
-#endif
 #define OTA_LDR_HCRC 0xEBAAu                     /* official update loader (usb_hid_ota.bin) */
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
@@ -180,7 +169,7 @@ static uint32_t ota_take(void)
 }
 
 /* main loop, outside a session: answer handshakes */
-#if BOARD_SMK37 && defined(FELUCCA_LOADER)
+#if defined(FELUCCA_LOADER)
 static void ota_reply_info(void);                /* (SMK loader, loader.c) 0x7B its start record, 0x7C the clocks */
 static void ota_reply_clocks(void);
 #endif
@@ -189,7 +178,7 @@ static void ota_service(void)
     uint32_t d = ota_take();
     if (d == 7u && ota_dec[2] == 0x11)
         ota_reply_identity();
-#if BOARD_SMK37 && defined(FELUCCA_LOADER)
+#if defined(FELUCCA_LOADER)
     else if (d == 7u && ota_dec[2] == 0x7Bu)
         ota_reply_info();
     else if (d == 7u && ota_dec[2] == 0x7Cu)
@@ -290,7 +279,7 @@ static int ota_ufw(uint8_t *hdr, uint32_t *fl_off, uint32_t *fl_len, uint32_t *o
     return 0;
 }
 
-#if BOARD_SMK37 && !defined(FELUCCA_LOADER)
+#if !defined(FELUCCA_LOADER)
 /* (SMK-37 Pro) for M-VAVE's own package the app stages ITS OWN loader, not the package's: M-VAVE's loader, staged by
  * Skiff, erased BTIF and USRTRIM (the key calibration) on the unit (SMK37.md). Ours writes the official flash.bin's app
  * area as it writes Skiff's (0x4000..0x9CFFF, the head checked equal here first, header last, FL_GUARD) and ignores

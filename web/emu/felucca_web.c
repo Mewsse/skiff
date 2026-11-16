@@ -5,19 +5,19 @@
  * (GPL-3.0), a Felucca fork. */
 /* Felucca in the browser: the firmware's sources, as the host tests build them (tests/hostsim.c: libc,
  * engines, voices, FX, sequencer; then the UI, main.c, storage and projects, in src/felucca.c's order),
- * compiled to WebAssembly and run in an AudioWorklet against a simulated FM-1:
+ * compiled to WebAssembly and run against a simulated SMK-37 Pro (web/emu/emu_test.mjs, the editor's Screen tab copy):
  *   - the device clock: TIMER4 ticks (24 MHz) and fm1_ms advance with the audio the worklet asks for; the
  *     audio ISR (audio.c fm1_alnk0_irq, the real one) renders each I2S half (HALF_FRAMES) as the DMA would
  *     ask for it, and the main loop (main.c's, below in web_frame) runs every 15 ms, with ui_input on every
  *     millisecond in between as main.c's wait loop calls it;
  *   - the panel: buttons and encoders by their printed labels (panel.c's table maps them to the matrix),
- *     the keys as fm1_in.notes, the LEDs read back from fm1_led / fm1_led_dim through the key matrix;
+ *     the keys as fm1_in.notes;
  *   - the screen: lcd_fill / lcd_blit into a 240 x 240 RGB565 frame (the panel's byte order);
  *   - the flash: a 1 MiB NOR image behind storage.c's hooks (settings, projects, user presets, the user
  *     sample slots read through it as XIP); the page keeps its storage sectors and gives them back at boot.
  * Not here: USB (MIDI, audio, the editor, updates), TRS MIDI, the serial console, the battery (full), the
  * crash / UBOOT paths. Nothing of the firmware changes for this file.
- *   web/emu/build.sh  ->  build/emu/{felucca.wasm, worklet.js, index.html} */
+ *   web/emu/build.sh  ->  build/emu/felucca.wasm */
 #include <stdint.h>
 
 #define FELUCCA_WEB 1
@@ -34,8 +34,7 @@
 
 static uint8_t nor[0x100000];            /* the SPI NOR (erased: 0xFF) */
 #define SMP_USER_XIP(k) ((const uint8_t *)nor + SMP_USER_BASE + (k) * SMP_USER_SIZE)   /* eng_sample.c */
-#if BOARD_SMK37
-/* ((Skiff Studio) -DBOARD_SMK37=1: the SMK-37 Pro, for the cast's copy of one (felucca_cast_smk.wasm): its input as
+/* ((Skiff Studio) the SMK-37 Pro, for the cast's copy of one (felucca_cast_smk.wasm): its input as
  * smk_ui.c reads it (hal/smk_pads.h as it is; the faders, the wheels, the pedal the cast's A sets), its 18 buttons and
  * 8 knobs (K1 the MASTER: fm1_adc_read), no TRS jack, no pad LEDs) */
 #include "../../firmware/hal/smk_pads.h"
@@ -55,7 +54,6 @@ static void smk_uart_tx_tick(void) {}
 static uint8_t smk_ut_w, smk_ut_r;
 #define FM1_NBTN 18u
 #define FM1_NENC 8u
-#endif
 #ifndef FM1_NENC
 #define FM1_NENC 7u
 #endif
@@ -82,46 +80,10 @@ void isr_alnk0(void) {}
 #include "../../firmware/src/audio.c"
 
 /* ------------------------------------------------------------ the panel --- */
-#define FM1_NCOL 11u
-static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {      /* as hal/fm1_input.h: key id at (column, row bit) */
-    {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-    { 5, 11,  4, 10,  3,  9,  2,  8, -1, -1, -1},
-    {34, 35, 36, 37, 38, 40, 39, 13,  7,  6, 12},
-    {23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33},
-    { 0,  1, 15, 14, 17, 16, 19, 18, 20, 21, 22},
-    {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-};
-static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_breath[FM1_NCOL], fm1_led_mid[FM1_NCOL];
-static uint32_t web_dim_lo;
-static void fm1_led_dim_level(uint32_t lo) { web_dim_lo = lo; }
-/* the power-on LED sweep (hal/fm1_input.h fm1_led_anim_start, the picture hal/fm1_led_anim.h): its frame from the
- * clock (a scan frame 1.1 ms), the page draws each LED's level (web_anim_levels); at its end, or on a key or a button
- * down, the last picture (the glow everywhere, or dark) and the UI's LEDs from the next frame, as the scan does */
-#include "../../firmware/hal/fm1_led_anim.h"
-static uint32_t web_anim_t0, web_anim_glow, web_anim_run;
-static uint32_t web_anim_frame(void) { return (web_ticks - web_anim_t0) / (1100u * FM1_TICKS_PER_US); }
-static void fm1_led_anim_start(uint32_t glow)
-{
-    memset(fm1_led, 0, sizeof fm1_led);
-    memset(fm1_led_dim, 0, sizeof fm1_led_dim);
-    memset(fm1_led_breath, 0, sizeof fm1_led_breath);
-    memset(fm1_led_mid, 0, sizeof fm1_led_mid);
-    web_anim_t0 = web_ticks;
-    web_anim_glow = glow != 0u;
-    web_anim_run = 1;
-}
-static int fm1_led_anim_on(void)
-{
-    if (web_anim_run && (web_anim_frame() >= FM1_ANIM_FRAMES || fm1_in.notes || fm1_in.buttons)) {
-        uint32_t c, r;
-        web_anim_run = 0;
-        for (c = 0; c < FM1_NCOL; c++)
-            for (r = 1; r < 5u; r++)
-                if (web_anim_glow && FM1_KEYMAP[r][c] >= 0)
-                    fm1_led_dim[c] |= (uint8_t)(1u << r);
-    }
-    return (int)web_anim_run;
-}
+#define FM1_NCOL 16u
+static void fm1_led_dim_level(uint32_t lo) { (void)lo; }
+static void fm1_led_anim_start(uint32_t glow) { (void)glow; }   /* (the SMK-37 has no power-on sweep) */
+static int fm1_led_anim_on(void) { return 0; }
 static uint32_t web_pressed, web_released, web_notes_pressed;
 static int32_t web_enc_steps[FM1_NENC];
 static uint32_t fm1_input_edges(uint32_t *released)
@@ -182,13 +144,11 @@ static void lcd_power(uint32_t s)              /* MENU > SCREEN OFF (lcd.c): off
 }
 static void lcd_wake_now(void) {}
 static void lcd_init(void) {}
-#if BOARD_SMK37
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }   /* (the SMK's button LEDs, pads: not shown) */
 static void padled_set(uint32_t pad, uint8_t r, uint8_t g, uint8_t b) { (void)pad; (void)r; (void)g; (void)b; }
 static void padled_flush(void) {}
 #define SMK_TRIM_FLASH 0xC1000u                     /* (main.c: the velocity curves; the copy gets the velocities) */
 static int smk_trim_load(const uint8_t *rec) { (void)rec; return 0; }
-#endif
 
 #include "../../firmware/src/gfx.c"
 #include "../../firmware/src/panel.c"
@@ -254,7 +214,6 @@ uint32_t _pool_start[1], _pool_end[1], _rt_start[1], _rt_end[1], _rt_load[1], _r
 static uint32_t web_master_adc = 700;   /* MASTER, 0..1023 as the ADC reads it */
 static int32_t web_batt_adc = 620;      /* the battery's reading ((Skiff Studio) the cast's copy: the unit's) */
 enum { FM1_ADC_BATT = 3, FM1_ADC_MASTER = 4 };
-#if BOARD_SMK37
 static int32_t fm1_adc_read(uint32_t ch)            /* (K1's virtual pot: the cast's F tells its level) */
 {
     if (ch == FM1_ADC_MASTER)
@@ -262,9 +221,6 @@ static int32_t fm1_adc_read(uint32_t ch)            /* (K1's virtual pot: the ca
     return web_batt_adc;
 }
 #include "../../firmware/src/smk_ui.c"
-#else
-static int32_t fm1_adc_read(uint32_t ch) { return ch == FM1_ADC_MASTER ? (int32_t)web_master_adc : web_batt_adc; }
-#endif
 static void fm1_adc_init(void) {}
 static void fm1_timer5_ack(void) {}
 static void fm1_timer5_start(void (*isr)(void), uint32_t prio) { (void)isr; (void)prio; }
@@ -372,9 +328,7 @@ static void web_power_on(void)
     fm1_adc_init();
     panel_init();
     felucca_init();
-#if BOARD_SMK37
     smk_ui_boot();                        /* main.c: MASTER where it was left, KEY VELOCITY */
-#endif
     master_boot();                        /* main.c (#137): the pot's level from the first block */
     kb_boot_hold = 1;                     /* main.c (#137): the keys silent under the splash */
     audio_init();
@@ -399,9 +353,7 @@ static void web_frame(void)
     ui_cpu = (uint8_t)(song.cpu_q8 * 100u / 256u);   /* (main.c: the MENU's load, one value a frame) */
     felucca_dbg.ui_frames++;
     ui_input();
-#if BOARD_SMK37
     smk_ui_frame();
-#endif
     settings_poll();
     autosave_poll();
     ui_leds();
@@ -548,54 +500,6 @@ EXPORT uint32_t web_midi(uint32_t status, uint32_t d1, uint32_t d2)
     if (status < 0x80u || status >= 0xF0u)
         return 1;
     return (uint32_t)midi_enqueue((status >> 4) | status << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24, 1);
-}
-
-/* the LEDs: bit b = the button labelled b lit (bit 14: PLAY's green), keys bit k; the dim glow and the breath alike */
-static uint32_t led_on(const uint8_t *l, uint32_t id)
-{
-    uint32_t c, r;
-    for (c = 0; c < FM1_NCOL; c++)
-        for (r = 1; r < 5u; r++)
-            if (FM1_KEYMAP[r][c] == (int8_t)id)
-                return (l[c] >> r) & 1u;
-    return 0;
-}
-static uint32_t led_buttons(const uint8_t *l)
-{
-    uint32_t b, m = 0;
-    for (b = 0; b < NB; b++)
-        m |= led_on(l, panel.btn[b]) << b;
-    return m;
-}
-static uint32_t led_keys(const uint8_t *l)
-{
-    uint32_t k, m = 0;
-    for (k = 0; k < 27u; k++)
-        m |= led_on(l, 14u + k) << k;
-    return m;
-}
-EXPORT uint32_t web_lit_buttons(void)
-{
-    return led_buttons(fm1_led) | ((fm1_led[LED_PLAY_GREEN >> 3] >> (LED_PLAY_GREEN & 7u)) & 1u) << 14;
-}
-EXPORT uint32_t web_lit_keys(void) { return led_keys(fm1_led); }
-EXPORT uint32_t web_dim_buttons(void) { return led_buttons(fm1_led_dim); }
-EXPORT uint32_t web_dim_keys(void) { return led_keys(fm1_led_dim); }
-EXPORT uint32_t web_dim_level(void) { return web_dim_lo; }
-EXPORT uint32_t web_breath_buttons(void) { return led_buttons(fm1_led_breath); }   /* #119: dark .. ~60 % of lit */
-EXPORT uint32_t web_breath_keys(void) { return led_keys(fm1_led_breath); }
-EXPORT uint32_t web_mid_keys(void) { return led_keys(fm1_led_mid); }   /* the DRUM grid's beats: a steady mid level */
-/* the power-on sweep running: each LED's level now (hal/fm1_led_anim.h: 0..64 /64 of lit, | 0x80 the glow under
- * it), 0..13 the buttons by label, 14..40 the keys F3..G5; 0 when it is not */
-EXPORT uint8_t *web_anim_levels(void)
-{
-    static uint8_t lv[FM1_ANIM_NBTN + FM1_ANIM_NKEY];
-    uint32_t f = web_anim_frame(), i;
-    if (!fm1_led_anim_on())
-        return 0;
-    for (i = 0; i < FM1_ANIM_NBTN + FM1_ANIM_NKEY; i++)
-        lv[i] = (uint8_t)fm1_anim_level(f, i < FM1_ANIM_NBTN ? (i < NB ? panel.btn[i] : i) : i, web_anim_glow);
-    return lv;
 }
 
 /* for the test and the bench (web/emu/emu_test.mjs), a heavy song straight into the tracks (as hostsim's

@@ -13,10 +13,7 @@
  *   a deleted slot's sets gone for good; SKF3 / SKF4 slots and the pattern pool's sectors of before: OLD FORMAT, free;
  *   (FELUCCA_LEGACY, the converter's) projects holding their steps (SKF1 ..) become SKF5 and a set, a cut anywhere
  *   ending the same at the next pass.
- * Built and run by tests/run_tests.sh (also -DBOARD_SMK37=1: the SMK-37 Pro's sectors). */
-#ifndef BOARD_SMK37
-#define BOARD_SMK37 0                                   /* -DBOARD_SMK37=1: the store on the SMK-37 Pro layout */
-#endif
+ * Built and run by tests/run_tests.sh. */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -237,21 +234,15 @@ static int layout(void)
     uint32_t i, o, c;
     for (i = 0; i < TS_NSECT; i++) {
         uint32_t s = ts_sector(i);
-#if BOARD_SMK37
         ok &= s >= FL_BANK_LO && s + 0x1000u <= FL_BANK_HI && FL_GUARD(s, 0x1000u) &&
               (s >= SMP_USER_BASE + SMP_USER_FLASH_SLOTS * SMP_USER_SIZE || s + 0x1000u <= SMP_USER_BASE);
-#else
-        ok &= (s >= 0xE7000u && s + 0x1000u <= 0xE9000u) || (s >= 0xEA000u && s + 0x1000u <= 0xFC000u);
-#endif
         for (o = 0; o < OBJ_COUNT; o++)
             for (c = 0; c < 2u; c++)
                 ok &= st_sector(o, c) != s;
-        ok &= s != 0xE9000u || BOARD_SMK37;
         for (o = 0; o < i; o++)
             ok &= ts_sector(o) != s;
     }
-    bad += check(BOARD_SMK37 ? "20 sectors (SMK-37 Pro): USRFLASH after the user slot, nor any other object's" :
-                 "20 sectors: the VM area's last two, the package's USR region; not BTIF, nor any other object's", ok);
+    bad += check("20 sectors (SMK-37 Pro): USRFLASH after the user slot, nor any other object's", ok);
     bad += check("a chunk 3840 bytes: the tape's 1440 records in three, six sequencers of 640 (90 bytes free); 5 sets x 4",
                  TS_LEN == 3840u && TAPE_N == 1440u && TS_TAPE * TS_LEN == TAPE_N * 8u &&
                  TS_LEN - NTRK * TS_SEQ_USED == 90u && TS_SLOTS * TS_CHUNKS == TS_NSECT && sizeof(ts_hdr_t) == 64u);

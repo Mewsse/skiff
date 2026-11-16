@@ -28,6 +28,7 @@ static void theme_apply(void) { palette_set(settings.palette); }   /* (ui.c's: T
 #if __has_include("../firmware/src/favorites.c")
 #include "../firmware/src/favorites.c"
 #endif
+#include "../firmware/hal/smk_pads.h"             /* (SMK_KV_N: KEY VELOCITY's settings byte) */
 #include "../firmware/src/settings_persist.c"
 int main(void)
 {

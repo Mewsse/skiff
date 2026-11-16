@@ -28,17 +28,10 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 #include "../firmware/src/menu_items.c"
 static void panel_setup(void) {}
 
-#if BOARD_SMK37                                 /* (-DBOARD_SMK37=1: the SMK-37 Pro's layout, storage.c, fm1_flash_map.h) */
 #define T_AS 0xA9000u                           /* the autosave's pair */
 #define T_FM6_A 0xAB000u                        /* the FM6 patches' pair (OBJ_FM6BANK / OBJ_UPFM6) */
 #define T_FM6_B 0xAC000u
 #define T_TS(off) ((off) >= FL_BANK_LO && (off) < FL_BANK_HI)
-#else
-#define T_AS 0xE5000u
-#define T_FM6_A 0x9F000u
-#define T_FM6_B 0xFE000u
-#define T_TS(off) (((off) >= 0xE7000u && (off) < 0xE9000u) || ((off) >= 0xEA000u && (off) < 0xFC000u))
-#endif
 static uint8_t nor[0x100000], flash_ok = 1;
 static int erase_error, fail_after = -1;
 static uint32_t erases, as_erases, ts_erases;    /* (as_erases: the autosave's two sectors, 0xE5000 / 0xE6000; ts_erases:
@@ -795,8 +788,7 @@ int main(void)
               persist_saved.s.cpal == 0u && persist_saved.palette == palette_to_stored(UI_QUARK_INDEX);
         bad += check("(#27) COLORS: stored while playing, written at STOP, in use after a power cycle; REMOVE written", ok);
     }
-#if BOARD_SMK37
-    {   /* (SMK-37 Pro: no LEDS row, so the editor's id 4 is unknown there; the MENU_SET path below is the FM-1's) */
+    {   /* (no LEDS row on the SMK-37 Pro, so the editor's id 4 is unknown) */
         const uint8_t leds_off[] = {4, 0, 64};
         reset();
         settings_init();
@@ -804,48 +796,44 @@ int main(void)
         bad += check("SMK-37: MENU_SET of LEDS: rc 1 (no such row), nothing changed, no erase",
                      ed_rep[0] == 1 && settings_leds != LEDS_OFF && !persist_pending && !erases);
     }
-#else
     {   /* MENU_SET (editor_menu.c): the same settings record, the same deferral, retry and idempotence */
-        const uint8_t leds_off[] = {4, 0, 64}, large_on[] = {2, 1, 64}, hold_06[] = {5, 3, 64}, eq_bass[] = {9, 2, 64};
+        const uint8_t hold_3[] = {5, 3, 64}, hold_2[] = {5, 2, 64}, hold_0[] = {5, 0, 64}, large_on[] = {2, 1, 64},
+                      eq_bass[] = {9, 2, 64};
         sks_t q;
         reset();
         settings_init();
         song.playing = 1;
-        ed_repn = 0; ed_menu_handle(ED_MENU_SET, leds_off, 3);
+        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_3, 3);
         bad += check("MENU_SET while playing: applied, rc 4 (queued until STOP), no erase",
-                     ed_repn == 4 && ed_rep[0] == 4 && ed_rep[1] == 4 && settings_leds == LEDS_OFF && persist_pending == 1 && !erases);
+                     ed_repn == 4 && ed_rep[0] == 4 && ed_rep[1] == 5 && settings_hold == 3u && persist_pending == 1 && !erases);
         song.playing = 0;
         settings_poll();
-        bad += check("STOP commits the MENU setting (LEDS OFF in the settings record)",
+        bad += check("STOP commits the MENU setting (HOLD in the settings record)",
                      !persist_pending && erases == 1 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
-                     leds_from_stored(q.zoom) == LEDS_OFF);
+                     hold_from_stored(q.bold) == 3u);
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, large_on, 3);
         ok = ed_rep[0] == 0 && (ui_prefs & PREF_LARGE);
-        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
-        ok &= ed_rep[0] == 0 && settings_hold == 3u;
+        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_2, 3);
+        ok &= ed_rep[0] == 0 && settings_hold == 2u;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, eq_bass, 3);
         ok &= ed_rep[0] == 0 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q && q.lowcut == 2u &&
-              hold_from_stored(q.bold) == 3u && (q.s.prefs & PREF_LARGE) && leds_from_stored(q.zoom) == LEDS_OFF;
-        bad += check("MENU_SET stopped: rc 0, saved at once (LARGE, HOLD, SPEAKER EQ), the others kept", ok);
+              hold_from_stored(q.bold) == 2u && (q.s.prefs & PREF_LARGE);
+        bad += check("MENU_SET stopped: rc 0, saved at once (LARGE, HOLD, SPEAKER EQ)", ok);
         before = erases;
-        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
+        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_2, 3);
         bad += check("repeating an unchanged MENU_SET: rc 0, no erase", ed_rep[0] == 0 && erases == before);
         erase_error = 1;
-        ed_repn = 0; ed_menu_handle(ED_MENU_SET, leds_off, 3);   /* unchanged: still rc 0 (no write) */
+        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_2, 3);   /* unchanged: still rc 0 (no write) */
         ok = ed_rep[0] == 0;
-        {
-            const uint8_t leds_inv[] = {4, 3, 64};
-            ed_repn = 0; ed_menu_handle(ED_MENU_SET, leds_inv, 3);
-        }
-        ok &= ed_rep[0] == 3 && settings_leds == LEDS_INV && persist_pending == 2 && leds_from_stored(persist_saved.zoom) == LEDS_OFF;
+        ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_0, 3);
+        ok &= ed_rep[0] == 3 && settings_hold == 0u && persist_pending == 2 && hold_from_stored(persist_saved.bold) == 2u;
         bad += check("MENU_SET with a failing flash: applied, rc 3, the saved setting kept", ok);
         erase_error = 0;
         fm1_ms += 1000;
         settings_poll();
-        bad += check("... and retried by the settings path", !persist_pending && leds_from_stored(persist_saved.zoom) == LEDS_INV);
-        settings_hold = HOLD_DEF; settings_leds = LEDS_DIM;
+        bad += check("... and retried by the settings path", !persist_pending && hold_from_stored(persist_saved.bold) == 0u);
+        settings_hold = HOLD_DEF;
     }
-#endif
     reset();
     settings.palette = 3;
     settings.lowcut = 2;

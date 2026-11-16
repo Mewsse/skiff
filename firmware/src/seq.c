@@ -35,7 +35,6 @@ static const uint16_t SCALE_MASK[] = {
 static uint32_t kb_prev;
 static volatile uint8_t kb_boot_hold;    /* #137: set from power-on to the end of the splash (main.c): the keys sound nothing,
                                           * and one held across its end stays silent until it is let go and pressed again */
-#if BOARD_SMK37
 /* (SMK-37 Pro, SMK37_UX.md outer keys A) 37 keys: the FM-1's 27 (F3..G5) as keys 0..26, the outer ten after them, C3..E3
  * as 27..31 and G#5..C6 as 32..36 (kb_outer): kb_bed, the keybed's key; kb_semi, its offset from F3 (the low five below
  * it: a negative one). Each key plays with its velocity through MENU > KEY VELOCITY (smk_input.h smk_vel); the FM-1's
@@ -45,12 +44,6 @@ static uint32_t kb_bed(uint32_t k) { return k < 27u ? k + SMK_KEY_F3 : k < 32u ?
 static uint32_t kb_semi(uint32_t k) { return k < 27u ? k : k < 32u ? k - 32u : k - 5u; }
 #define KB_VEL(k) smk_vel(fm1_in.key_vel[kb_bed(k)])
 #define KB_IN(k) ((k) < 27u ? (k) + 1u : 0u)
-#else
-#define KB_N 27u
-static uint32_t kb_semi(uint32_t k) { return k; }
-#define KB_VEL(k) 100u
-#define KB_IN(k) ((k) + 1u)
-#endif
 static uint8_t kb_note[KB_N], kb_trk[KB_N];   /* per key: the note it started and on which track */
 static uint8_t kb_sol[KB_N], in_solo;    /* (2.1, #74) per key: a black key of QNT SOLO (key_on); in_solo: the notes going
                                           * into input_on / input_off now are one's (they never go into the ARP) */
@@ -1064,11 +1057,7 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 static uint8_t kb_ped[KB_N], kb_ped_trk;            /* the keys held; their track + 1 (0: none) */
 static int kb_pedal(void)
 {
-#if BOARD_SMK37
     return smk_pedal != 0;
-#else
-    return 0;
-#endif
 }
 static int kb_hold_on(const track_t *t) { return kb_pedal() || (t->p[P_AHOLD] && !t->p[P_AMODE]); }
 static uint8_t kb_ped_sol;                          /* (2.1, #74) a SOLO black key among the keys held (kb_sol_up) */
@@ -1139,7 +1128,6 @@ static __attribute__((noinline)) void kb_fresh(uint32_t k)
     kb_ped_end();
 }
 
-#if BOARD_SMK37
 /* the ten outer keys (smk_input.h's queue, from the scan): notes on the selected track as the others play them; in a
  * layer (its tiles are F3..G5's), NAME, the DRUM grid and under the splash nothing; SCREEN OFF's wake press silent */
 static void kb_outer(void)
@@ -1167,7 +1155,6 @@ static void kb_outer(void)
         }
     }
 }
-#endif
 
 /* the keys' changes, once a block. ((2.2) Not inlined, and measured on its own (tests/target_budget.py): its loop over
  * the 27 keys (which runs only when one changed) laid out inside the audio ISR's own made that ISR's static cost jump
@@ -1176,14 +1163,12 @@ static __attribute__((noinline)) void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
     uint32_t lay, fx;
-#if BOARD_SMK37
     kb_outer();
-#endif
     ch = cur ^ kb_prev;                           /* keys also sound while entering steps */
     if (!ch)
         return;
     CAST(cast_rec('N', cur, fm1_in.buttons));    /* (Skiff Studio: the keys and buttons this block sees) */
-#if BOARD_SMK37 && FELUCCA_CAST
+#if FELUCCA_CAST
     for (k = 0; cast.on == 1u && k < 27u; k++)    /* (.. and the velocity of each key struck: KB_VEL) */
         if ((ch & cur) >> k & 1u)
             cast_rec('V', k, fm1_in.key_vel[kb_bed(k)]);

@@ -1763,23 +1763,13 @@ static void persist_boot(void)                    /* before settings_init / pane
 #if FELUCCA_FLASH
     union { persist_t per; sks_t sks; } p;         /* ((2.0) SKS1, or a PER4 of before) */
     uint32_t f = irq_save();
-#if BOARD_SMK37
     flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());      /* the SMK-37's part (or the FM-1's): fm1_flash_map.h */
-#else
-    {   /* the Puya P25Q80, or ((2.2, #96) newer FM-1s) the UC25HQ80: else stay RAM-only (fm1_flash_map.h FL_JEDEC_OK,
-         * which the builds without the flash map, the web emulator and converter, don't see) */
-        uint32_t id = FL_FAR(fl_jedec_ram)();
-        flash_ok = id == 0x856014u || id == 0xB36014u;
-    }
-#endif
     irq_restore(f);
     if (!flash_ok)
         return;
     fl_plain_window_init();                        /* flash above 0x93000 (SMK 0x9D000) reads as plaintext through XIP
                                                     * (user sample sets are played from there) */
-#if BOARD_SMK37
     st_owner_check();                              /* never parse another firmware's store (storage.c) */
-#endif
 #if FELUCCA_SLICE
     slc_store_boot();                              /* (the scans read each slot's stored slices) */
 #endif

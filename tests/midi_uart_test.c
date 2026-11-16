@@ -13,6 +13,7 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"   /* SIE register macros (never touched here) */
 static uint8_t host_mset[16 * 32];                  /* ((2.2) MENU > MIDI's settings (usb.c mset_io): THRU below */
 static const uint8_t *const mset_io = host_mset;
+#include "smk_uart_host.h"
 #include "../firmware/src/usb.c"
 #include "../firmware/src/midi_uart.c"
 
@@ -155,7 +156,7 @@ int main(void)
         static const uint8_t thru[] = {0x90, 60, 100, 0xF8, 0xF2, 4, 0, 0xF0, 1, 0xF7};
         uint32_t ok;
         usb.config = 1;
-        mo_w = mo_r = 0;
+        mo_w = mo_r = mo.rt = 0;
         for (i = 0; i < sizeof thru; i++)
             um_byte(thru[i]);
         ok = mo_w == 0u;                              /* (THRU OFF, the default: nothing) */
@@ -166,7 +167,7 @@ int main(void)
         host_mset[32u * 15u + 17u] = 0;
         bad += (uint32_t)check("(2.2) uart THRU: a note, the clock, Song Position out to USB (no SysEx); OFF: none", ok);
         usb.config = 0;
-        mo_w = mo_r = 0;
+        mo_w = mo_r = mo.rt = 0;
     }
     bad += (uint32_t)test_usb_sysex();
     printf("%s\n", bad ? "MIDI PARSER TEST FAILED" : "midi parser test passed");

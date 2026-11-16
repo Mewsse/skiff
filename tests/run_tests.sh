@@ -65,13 +65,6 @@
 # SMPMIX (tests/smpmix_test.c, Skiff #21): a user slot's sounds' LEVEL (square law), REV and DLY (their own sends, as
 #                   the track's would be, 127 at most in all, none while muted), kept with the slot (slice_store.c: for
 #                   its header only, with SLICE's record, torn or junk ignored), a slot of before as uploaded.
-# INPUT (tests/input_test.c): the key / button debounce of hal/fm1_input.h against the TIMER5 scan and bouncing
-#                   contacts: a press within 2 scans (<= 2.3 ms), one note per bouncy press, no early or hanging
-#                   release, stray samples ignored, fast repeats, the encoders' detents; the LED scan: lit LEDs every
-#                   frame, dim ones a short pulse (the second line write) every frame, each only on its own column;
-#                   the breath (#119): dark .. ~60 % of lit (DIM LO ~30 %), smooth, no dark run over ~10 ms near its peak;
-#                   the power-on sweep (1.1, hal/fm1_led_anim.h): its length, every LED every frame at its level, the
-#                   head left to right with its tail, the buttons, the end on the idle glow, the tick as before after.
 # CLICK (tests/click_test.c, 1.1): the metronome (src/click.c) and the count-in (src/seq.c) through audio.c: each beat at
 #                   the first sample of its block, with a 1/16 track's steps 1 5 9 13 (internal and external clock, DIV 1/8
 #                   and SWING too), the accent, the frequencies, length, LEVEL, MASTER, OFF / REC / ON, USB audio bit for bit
@@ -85,9 +78,10 @@
 # web (web/test_web.mjs): the editor protocol against its mock device, whose tables must equal the
 #                   firmware's (tests/descdump.c -> build/host/desc.json; the MENU settings: tests/editor_test.c -> build/host/menu.json),
 #                   the package builder, the updater.
-# Browser emulator (web/emu, when emcc is there): the firmware in WebAssembly (build/emu) boots, plays keys and MIDI,
-#                   draws, lights its LEDs, keeps a save across instances, plays a song bit for bit as the same file
-#                   built with cc (web/emu/native_check.c); the cost of 1 s of a heavy song against real time.
+# Browser emulator (web/emu, when emcc is there): the firmware in WebAssembly (build/emu) boots, plays MIDI, draws,
+#                   keeps a save across instances, plays a song bit for bit as the same file built with cc
+#                   (web/emu/native_check.c); the cost of 1 s of a heavy song against real time; the editor's Screen tab
+#                   copy (build/cast) builds.
 # PHYS (tests/phys_test.c): stability over the whole parameter and pitch range, the worst-case cost against
 #                   the heaviest factory preset, demos in build/phys_demo/; tests/phys_ref.cpp compares the
 #                   fixed-point models with DaisySP's float originals when DaisySP is there (DAISYSP=path).
@@ -137,7 +131,7 @@ export AC79_SDK="${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}"
 cd "$(dirname "$0")/.."
 OUT=build/host
 mkdir -p "$OUT"
-CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
+CC="${CC:-cc} -O1 -Wall -Wno-unused-function -Ifirmware/hal"
 fail=0
 run() { echo "== $1"; shift; "$@" || fail=1; }
 
@@ -149,9 +143,6 @@ run "user presets (UP_PUT parser, bank round trip, versions 4..6, grid records; 
 LEGACY="-DFELUCCA_LEGACY=1"                     # ((2.0, Tier B 10) the converter's build: the formats of before, core.h)
 $CC $LEGACY -o "$OUT/upreset_test_legacy" tests/upreset_test.c
 run "user presets, the converter's build (FELUCCA_LEGACY): versions 1..3, PHYS DRUM and SAMPLE PERC -> DRUM, DIGITAL kept" "$OUT/upreset_test_legacy"
-
-$CC -o "$OUT/input_test" tests/input_test.c
-run "keys and buttons: fast press, long release, bouncy contacts (one note each), glitches, encoders" "$OUT/input_test"
 
 $CC -o "$OUT/midi_uart_test" tests/midi_uart_test.c
 run "TRS MIDI parser" "$OUT/midi_uart_test"
@@ -194,50 +185,26 @@ EOF
         "$OUT/usb_desc_test"
 done
 
-[ -f build/felucca.fwsc ] || { echo "run ./build.sh first"; exit 1; }
-
-$CC -DOWN_PKG=1 -o "$OUT/ota_test" tests/ota_test.c
-run "M-UPGRADE entry (own loader)" "$OUT/ota_test" build/felucca.fwsc
-# ((2.0.2, #64) M-VAVE's own V15 and V16, from FM1_STOCK_DIR when set (never in the repo; V16 as FM-1_016.fwsc): their
-# loader staged as it is after the head check (-5 when the unit's differs), V16's flash.bin size (0xA9000) taken with it
-for f in FM-1.fwsc FM-1_016.fwsc; do
-    v="${FM1_STOCK_DIR:-/nonexistent}/$f"
-    if [ -f "$v" ]; then
-        run "M-UPGRADE entry, M-VAVE's $f: its loader staged after the head check" "$OUT/ota_test" "$v" official
-    else
-        echo "FM-1 $f: skipped (FM1_STOCK_DIR not set)"
-    fi
-done
+[ -f build/felucca.bin ] && [ -f build/loader/ota.bin ] || { echo "run ./build.sh first"; exit 1; }
 
 head -c 200000 build/felucca.bin > "$OUT/old_app.bin"
-python3 tools/fm1pkg_make.py "$OUT/old_app.bin" build/loader/ota.bin "$OUT/old.fwsc" >/dev/null
-$CC -o "$OUT/ldr_test" tests/ldr_test.c
-run "update loader: other app -> this build" "$OUT/ldr_test" "$OUT/old.fwsc" build/felucca.fwsc
-# M-VAVE's own V15, from FM1_STOCK_DIR when set (never in the repo): Skiff's loader writes its flash.bin's app area only,
-# the header last
-v15="${FM1_STOCK_DIR:-/nonexistent}/FM-1.fwsc"
-if [ -f "$v15" ]; then
-    run "update loader: M-VAVE's V15 flash.bin, the app area only, the header last" "$OUT/ldr_test" "$OUT/old.fwsc" "$v15" stock
-else
-    echo "FM-1 V15: skipped (FM1_STOCK_DIR not set)"
-fi
 $CC -o "$OUT/ldr_screen_test" tests/ldr_screen_test.c
 run "update loader's screen (Skiff): UPDATE MODE, WRITING and its bar, UPDATE FAILED" "$OUT/ldr_screen_test"
 
-# the SMK-37 Pro build (BOARD_SMK37; after genkigenki's SMK-37 layer): the flash map and the store's owner tag, the
-# package layout, the OTA staging and the loader's windows on SMK-layout packages (made here from the FM-1 binaries:
-# only the layout and the protocol are under test); the tape store and persistence on its layout below (build/gen)
-$CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_flash_test" tests/smk_flash_test.c
+# the SMK-37 Pro build (after genkigenki's SMK-37 layer): the flash map and the store's owner tag, the package layout,
+# the OTA staging and the loader's windows on SMK-layout packages (made here from the build's binaries: only the
+# layout and the protocol are under test); the tape store and persistence on its layout below (build/gen)
+$CC -Ifirmware/hal -o "$OUT/smk_flash_test" tests/smk_flash_test.c
 run "SMK-37 Pro flash map: every object, the tape store and the sample slot inside the windows, protected ranges never"     "$OUT/smk_flash_test"
-$CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_owner_test" tests/smk_owner_test.c
+$CC -Ifirmware/hal -o "$OUT/smk_owner_test" tests/smk_owner_test.c
 run "SMK-37 Pro store owner tag (family SKIFF): another firmware's store cleared, ours kept, the stock mapping"     "$OUT/smk_owner_test"
 python3 tools/fm1pkg_make.py --board smk37 build/felucca.bin build/loader/ota.bin "$OUT/smk_new.fwsc" >/dev/null
 python3 tools/fm1pkg_make.py --board smk37 "$OUT/old_app.bin" build/loader/ota.bin "$OUT/smk_old.fwsc" >/dev/null
 run "SMK-37 Pro package layout (fm1pkg_make --board smk37): PRCT 0x9D000, the stock region table"     python3 tests/smk_pkg_test.py "$OUT/smk_new.fwsc"
-$CC -DBOARD_SMK37=1 -DOWN_PKG=1 -o "$OUT/ota_test_smk" tests/ota_test.c
+$CC -DOWN_PKG=1 -o "$OUT/ota_test_smk" tests/ota_test.c
 run "M-UPGRADE entry, SMK-37 Pro build (staging 0xBB000, record ota-SMK-37 Pro_016)" "$OUT/ota_test_smk" "$OUT/smk_new.fwsc"
 for m in 1 2; do                         # the MODEL=elite / mke builds of ota.c
-    $CC -DBOARD_SMK37=1 -DT_MODEL=$m -o "$OUT/ota_test_smk_m$m" tests/ota_test.c
+    $CC -DT_MODEL=$m -o "$OUT/ota_test_smk_m$m" tests/ota_test.c
     run "M-UPGRADE entry, SMK model $m build (MODEL=elite / mke: its own record identity)" "$OUT/ota_test_smk_m$m"         "$OUT/smk_new.fwsc"
 done
 for m in pro elite mke; do               # the packages BOARD=smk37 MODEL=... sh build.sh made, when present
@@ -246,7 +213,7 @@ for m in pro elite mke; do               # the packages BOARD=smk37 MODEL=... sh
     [ $m = mke ] && f=build/skiff-smk37-mke.fwsc && id="MKE-P37_700"
     [ -f $f ] && run "SMK package $f: identity $id, the stock region table" python3 tests/smk_pkg_test.py $f "$id"
 done
-$CC -DBOARD_SMK37=1 -o "$OUT/ldr_test_smk" tests/ldr_test.c
+$CC -o "$OUT/ldr_test_smk" tests/ldr_test.c
 run "update loader, SMK-37 Pro: app area 0x4000-0x9CFFF, protected ranges untouched" "$OUT/ldr_test_smk"     "$OUT/smk_old.fwsc" "$OUT/smk_new.fwsc"
 # M-VAVE's own V016 package, from SMK_STOCK_DIR when set (never in the repo): the SMK app stages its own loader for it
 # (SMK37.md), and that loader writes the official flash.bin's app area only, the header last
@@ -347,11 +314,11 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "tape store (Skiff P10): four slots of full tapes and sequencers, torn saves, fallback, wear, the music's set, the generation wrap, OLD FORMAT" "$OUT/tape_store_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/tape_store_test_legacy" tests/tape_store_test.c -lm
     run "tape store, the converter's build (FELUCCA_LEGACY): projects holding their steps become SKF5 and a set (proj_migrate)" "$OUT/tape_store_test_legacy"
-    $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/tape_store_test_smk" tests/tape_store_test.c -lm
+    $CC -w -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/tape_store_test_smk" tests/tape_store_test.c -lm
     run "tape store on the SMK-37 Pro layout (USRFLASH 0xD6000..)" "$OUT/tape_store_test_smk"
-    $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_smk"         tests/persistence_test.c -lm
+    $CC -w -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_smk"         tests/persistence_test.c -lm
     run "persistence on the SMK-37 Pro layout (the store from 0x9D000, its owner tag at boot)" "$OUT/persistence_test_smk"
-    $CC -O1 -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/smk_ui_test" tests/smk_ui_test.c -lm
+    $CC -O1 -w -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/smk_ui_test" tests/smk_ui_test.c -lm
     run "SMK-37 Pro controls (SMK37_UX.md): pads, colours, faders, outer keys, KEY VELOCITY, wheels, the pedal holding the keys, SHIFT, MASTER, TRS clock" "$OUT/smk_ui_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/backup_test" tests/backup_test.c -lm
     run "full backup: CRC before writes, stale runtime, USB reset / timeout, malformed objects; (2.0) OLD FORMAT slots backed up" "$OUT/backup_test"
@@ -488,12 +455,12 @@ elif ! san_ok; then
 else
     mkdir -p "$OUT/asan"
     A="$OUT/asan"
-    SCC="${CC%% *} $SAN -Ibuild/gen -Ifirmware/src"
+    SCC="${CC%% *} $SAN -Ibuild/gen -Ifirmware/src -Ifirmware/hal"
     export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
     $SCC -o "$A/ldr_test" tests/ldr_test.c
-    run "ASan/UBSan: update loader (other app -> this build)" "$A/ldr_test" "$OUT/old.fwsc" build/felucca.fwsc
+    run "ASan/UBSan: update loader (other app -> this build)" "$A/ldr_test" "$OUT/smk_old.fwsc" "$OUT/smk_new.fwsc"
     $SCC -DOWN_PKG=1 -o "$A/ota_test" tests/ota_test.c
-    run "ASan/UBSan: M-UPGRADE entry (own loader)" "$A/ota_test" build/felucca.fwsc
+    run "ASan/UBSan: M-UPGRADE entry (own loader)" "$A/ota_test" "$OUT/smk_new.fwsc"
     for t in editor_test project_test backup_test conv_test robust_test tape_store_test duck_test persistence_test ui_test; do
         $SCC -o "$A/$t" tests/$t.c -lm
         run "ASan/UBSan: $t" "$A/$t"
@@ -530,8 +497,8 @@ if ! command -v emcc >/dev/null 2>&1; then
 elif ! command -v node >/dev/null 2>&1 || [ ! -f build/gen/felucca_tables.h ]; then
     echo "== skip the browser emulator (needs node and build/gen)"
 else
-    run "browser emulator: the firmware to WebAssembly (web/emu/build.sh -> build/emu)" sh web/emu/build.sh
-    cc -O2 -ffp-contract=off -w -Ibuild/gen -Ifirmware/src -o "$OUT/emu_native" web/emu/native_check.c -lm
+    run "browser emulator: the firmware to WebAssembly (web/emu/build.sh -> build/emu, build/cast)" sh web/emu/build.sh
+    cc -O2 -ffp-contract=off -w -Ibuild/gen -Ifirmware/hal -Ifirmware/src -o "$OUT/emu_native" web/emu/native_check.c -lm
     run "browser emulator: the same song from the native build" "$OUT/emu_native" "$OUT/emu_native.f32"
     run "browser emulator: boot, keys, MIDI, screen, LEDs, PLAY, a save kept across instances, = native, cost" \
         node web/emu/emu_test.mjs build/emu/felucca.wasm "$OUT/emu_native.f32"

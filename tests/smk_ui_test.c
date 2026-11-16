@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Host test of Skiff's SMK-37 Pro controls (BOARD_SMK37, design/SMK37_UX.md as picked): the UI of tests/ui_test.c built
+/* Host test of Skiff's SMK-37 Pro controls (design/SMK37_UX.md as picked): the UI of tests/ui_test.c built
  * for the SMK (its prelude, the input stood in by the SMK's, hal/smk_pads.h as it is), and smk_ui.c:
  *   PADS     on HOME the step taps, in a layer and the DRUM grid the white keys; a tap sets a step to the last note
  *            (its velocity), again clears it, one undo a run; DRUM: the lane; past LEN nothing; the colours (A).
@@ -12,7 +12,7 @@
  *   SHIFT    KNOB BANK: the map (the SMK's names), + BT TAKE, no MENU when let go.
  *   MASTER   said while turned, kept at rest, back at power-on.
  *   CLOCK    the TRS jack's MIDI clock: Start, 24 a beat, Stop; none with an external clock.
- * Built with -DBOARD_SMK37=1 and run by tests/run_tests.sh. Generated once from ui_test.c's prelude (keep them alike). */
+ * Run by tests/run_tests.sh. Generated once from ui_test.c's prelude (keep them alike). */
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1                                    /* (as src/felucca.c: the console built in, MENU > USB SERIAL) */
 #endif

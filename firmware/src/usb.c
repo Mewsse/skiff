@@ -218,9 +218,7 @@ static struct {
     uint32_t due[MQO];
     uint32_t tick, now;          /* the block being rendered plays at; TIMER5's tick */
     uint32_t drops, flushes;     /* (diagnostics) the ring full; a packet nobody read, dropped */
-#if BOARD_SMK37
     volatile uint32_t rt;        /* the TRS jack's read index */
-#endif
     uint8_t wait;                /* polls the last packet has waited for the host */
 } mo __attribute__((section(".bss.mo")));
 
@@ -240,13 +238,8 @@ static uint32_t mset_ch(uint32_t v) { return v >= 1u && v <= 16u ? v : 0u; }   /
 static int mo_put(uint32_t pkt, uint32_t due)
 {
     uint32_t used = mo_w - mo_r;
-#if BOARD_SMK37
     uint32_t ut = mo_w - mo.rt;
     used = !usb.config || ut > used ? ut : used;
-#else
-    if (!usb.config)
-        return 1;
-#endif
     if (used >= MQO) {
         mo.drops++;
         return 0;
@@ -279,7 +272,6 @@ static uint32_t mo_take(uint8_t *p, uint32_t max, uint32_t now)
     return n;
 }
 
-#if BOARD_SMK37
 /* (SMK-37 Pro) the due events to the TRS jack's MIDI OUT (hal/smk_uart_tx.h; TIMER5, before its tick): each event's
  * own bytes (by its CIN: 3, 2 or 1), realtime ahead of the bytes queued (smk_uart_tx_rt). 31250 baud is about 3 bytes a
  * ms: with fewer than 24 bytes left in the UART's ring a note-on is dropped (its note-off still goes) */
@@ -306,7 +298,6 @@ static __attribute__((noinline)) void mo_trs(uint32_t now)
         mo.rt++;
     }
 }
-#endif
 #endif
 
 /* ------------------------------------------------------- descriptors --- */
@@ -943,7 +934,7 @@ static void midi_in_event(uint32_t pkt)                 /* one USB-MIDI event pa
     }
     if (cin == 0xFu && (st == 0xF8u || st == 0xFAu || st == 0xFBu || st == 0xFCu)) {
         midi_enqueue(0xFu | st << 8, 1u);
-#if BOARD_SMK37 && !defined(FELUCCA_LOADER)
+#if !defined(FELUCCA_LOADER)
         if (MSET(15, 17) & MO_THRU_ON)                 /* ((2.2) THRU: USB IN to the TRS jack's MIDI OUT) */
             smk_uart_tx_rt(st);
 #endif
@@ -957,7 +948,7 @@ static void midi_in_event(uint32_t pkt)                 /* one USB-MIDI event pa
         ((cin == 0xCu || cin == 0xDu) || !(pkt & 0x80000000u))) {   /* ((2.2) and Song Position) */
 #endif
         midi_enqueue(pkt, 1u);
-#if BOARD_SMK37 && !defined(FELUCCA_LOADER)
+#if !defined(FELUCCA_LOADER)
         if (MSET(15, 17) & MO_THRU_ON) {               /* (whole messages: TIMER5 is the jack's one writer) */
             smk_uart_tx_put(st);
             smk_uart_tx_put((pkt >> 16) & 0x7Fu);

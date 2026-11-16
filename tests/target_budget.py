@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Target-side cost estimate of the hot DSP code, from the pi32v2 objdump listing tools/build.py writes
-(build/felucca.dis). For each engine's render function and the audio ISR: the instructions
+(build/felucca.dis: the SMK-37 build). For each engine's render function and the audio ISR: the instructions
 inside loops (every address range closed by a backward branch: the per-sample loops and what they
 contain), and the hardware divides and calls in them. cost = the loop instructions, each weighted 4 per
 level of nesting (an inner loop runs several times per sample) and 1 + 8 for a divide (many cycles). A static count, not a cycle count: it changes only when the compiled code changes,
@@ -23,7 +23,7 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "dv_rim_run", "dv_bell_run", "dv_cym_run", "dv_out", "dv_metal_mix",
          # ((2.5) slicer_track: inlined into mix_part, which runs from RAM (fx.c AUDIO_RAM, flatten): counted there)
          "slice_render", "slc_rev",                          # SLICE (eng_slice.c): the render, the reverse windows
-         "fm1_alnk0_irq", "fm1_timer5_irq",               # the audio ISR; TIMER5: the key / LED scan (hal/fm1_input.h)
+         "fm1_alnk0_irq", "fm1_timer5_irq",               # the audio ISR; TIMER5: the key / button scan (hal/smk_input.h)
          "events_block", "keyboard_block",                 # ((2.2) a block's events, the keys' changes: out of the audio
                                                            # ISR's own (seq.c), measured here
          "ep1_tx",                                         # ((2.2) MIDI OUT's sender (usb.c): TIMER5, two callers now

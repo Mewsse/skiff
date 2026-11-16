@@ -5,33 +5,17 @@
 /* ----------------------------------------------------------- LEDs --- */
 /* The LED picture is built off-line and copied one byte per column: clearing
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
-#if BOARD_SMK37
 /* (SMK-37 Pro) no key matrix LEDs: the picture is drawn in a plain id space, place = id (byte id / 8, bit id % 8),
  * the buttons 0..17, PLAY's red half 18, the 27 keys from LED_KEY0; smk_leds_out reads the buttons' back */
 #define LED_KEY0 24u                                /* key k's LED id (the FM-1's 14 + k: its button ids end at 13) */
 #define LED_NID (LED_KEY0 + 27u)
-#else
-#define LED_KEY0 14u
-#define LED_NID 41u
-#endif
 static uint8_t led_pos[LED_NID];                   /* (col << 3) | row bit, 0xFF = none */
 
 static void led_pos_init(void)
 {
-#if BOARD_SMK37
     uint32_t id;
     for (id = 0; id < LED_NID; id++)
         led_pos[id] = (uint8_t)id;
-#else
-    uint32_t id, p, r;
-    for (id = 0; id < LED_NID; id++) {
-        led_pos[id] = 0xFF;
-        for (p = 0; p < FM1_NCOL; p++)
-            for (r = 1; r < 5u; r++)
-                if (FM1_KEYMAP[r][p] == (int8_t)id)
-                    led_pos[id] = (uint8_t)((p << 3) | r);
-    }
-#endif
 }
 
 static void led_put(uint8_t *nl, uint32_t id, int on)
@@ -42,11 +26,7 @@ static void led_put(uint8_t *nl, uint32_t id, int on)
 }
 
 /* PLAY's second, green LED: not in the key matrix (no key there), found on the hardware at column 8, row PA9 (bit 1) */
-#if BOARD_SMK37
 #define LED_PLAY_GREEN 16u                          /* (SMK) SEQ PLAY's green half, LED 16 (smk_input.h SMK_LEDC) */
-#else
-#define LED_PLAY_GREEN ((8u << 3) | 1u)
-#endif
 static void led_clear(uint8_t *nl, uint32_t id)
 {
     uint8_t q = led_pos[id];
@@ -365,7 +345,6 @@ static uint32_t key_leds(uint32_t *br)                 /* (*br: a layer's keys t
  * rest: the root's keys lit, the scale's at the mid level, the others glowing; the keys held and playing as ever
  * (lit, INV dark). Each picture is built off-line and copied one byte per column, the
  * glow first: an LED going from lit to dim never has a dark frame */
-#if BOARD_SMK37
 /* (SMK-37 Pro, SMK37_UX.md button LEDs A) the picture's button LEDs: on or off only, so lit or breathing = on, the glow
  * and the mid level dark; KNOB BANK lit while it is SHIFT, FADER BANK off the LEVEL bank (smk_ui.c). The keys' picture
  * (LED_KEY0 + k) goes to the pads (smk_ui.c smk_pads_out: no LEDs under the keys) */
@@ -380,7 +359,6 @@ static void smk_leds_out(const uint8_t *nl, const uint8_t *nd, const uint8_t *nb
     fm1_led_key(SMK_BTN_FADER_BANK, smk_fbank != 0u);
     smk_pads_out(nl, nd, nb, nm);
 }
-#endif
 static void ui_leds(void)
 {
     uint8_t nl[FM1_NCOL] = {0}, nd[FM1_NCOL] = {0}, own[FM1_NCOL] = {0}, og[FM1_NCOL] = {0}, nb[FM1_NCOL] = {0};
@@ -443,18 +421,7 @@ static void ui_leds(void)
     }
     if (song.playing || (seq_counting() && cin_pos < click_beat_len() / 4u))   /* counting in: green on each beat */
         nl[LED_PLAY_GREEN >> 3] |= (uint8_t)(1u << (LED_PLAY_GREEN & 7u));
-#if BOARD_SMK37
     smk_leds_out(nl, nd, nb, nm);
-#else
-    fm1_led_dim_level(mode == LEDS_DIM_LO);
-    for (c = 0; c < FM1_NCOL; c++) {
-        fm1_led_dim[c] = nd[c];
-        fm1_led_breath[c] = nb[c];
-        fm1_led_mid[c] = nm[c];
-    }
-    for (c = 0; c < FM1_NCOL; c++)
-        fm1_led[c] = nl[c];
-#endif
 }
 
 /* ---------------------------------------------------------- input --- */
@@ -1974,27 +1941,21 @@ static void ui_notices(void)
     }
 }
 
-#if BOARD_SMK37
 static uint32_t smk_sh_t0;                              /* KNOB BANK as SHIFT (ui_input) */
 static uint32_t smk_btn_seen __attribute__((section(".pool")));   /* the buttons ui_input's last pass saw (smk_ui.c smk_buttons:
                                                          * as the cast's T told them) */
-#endif
 /* (Skiff 2.0) SHIFT held (HOME; the SMK's KNOB BANK too), and a combo of it taken: no HOME tap, no MENU after (the
  * caller drops ui_input's home_long) */
 static int shift_held(void)
 {
-#if BOARD_SMK37
     if (smk_sh_t0)
         return 1;
-#endif
     return ui.home_t0 != 0u;
 }
 static void shift_mark(void)
 {
-#if BOARD_SMK37
     if (smk_sh_t0)
         smk_sh_t0 |= 2u;
-#endif
     if (ui.home_t0)
         ui.home_t0 |= 2u;
 }
@@ -2008,9 +1969,7 @@ static void ui_input(void)
     int32_t s, sel = 0, ks[4] = {0, 0, 0, 0};
     static uint32_t lock_ms;                            /* BPM LOCK: the last locked SELECT turn (fm1_ms | 1; 0 none) */
     static uint8_t home_long;                           /* Skiff: HOME held past 0.7 s, the menu closed: MENU when let go */
-#if BOARD_SMK37
     smk_btn_seen = fm1_in.buttons;
-#endif
     CAST(cast_take(pressed, notes));                    /* (Skiff Studio: what this pass takes from the panel) */
     fm6_poll();                                         /* FM6: PTCH turned -> its patch */
     unit_g_poll();                                      /* ((Skiff U3, R8) the unit's CLOCK MIDI IN TUNE) */
@@ -2062,7 +2021,6 @@ static void ui_input(void)
         home_long = 0;
         take_commit(song.sel);
     }
-#if BOARD_SMK37
     /* (SMK-37 Pro, SMK37_UX.md extra buttons A) KNOB BANK is SHIFT: HOME held, as a button of its own. Its combos are
      * HOME's (+ SAVE TAKE, + a layer's button its lock, pressed with a layer's button held: that layer locked) and its
      * map comes after the same moment; let go it does nothing (HOME still taps home, and held opens the MENU).
@@ -2076,7 +2034,6 @@ static void ui_input(void)
         ui.save_t0 |= 2u;
         take_commit(song.sel);
     }
-#endif
     rec_own = ui.lock == LAYER_REC;                     /* (its press closes the REC layer: no arming) */
     if (shift_held() && ((pressed >> panel.btn[B_EDIT]) & 1u) && !ui.menu && !ui.confirm && !name_on() &&
         song.seq_mode && !ui.home && (step_page(cur_page()->graph) || cur_page()->graph == GR_FEEL)) {
@@ -2092,14 +2049,12 @@ static void ui_input(void)
         layer_shift_lock(lb, now);
         pressed &= ~lb;
     }
-#if BOARD_SMK37
     if (smk_sh_t0 && !ui.home_t0 && !ui.menu && !ui.confirm && !name_on() && (pressed & layer_bits_all())) {
         uint32_t lb = pressed & layer_bits_all();       /* (KNOB BANK as SHIFT + a layer's button: locked open) */
         smk_sh_t0 |= 2u;
         layer_shift_lock(lb, now);
         pressed &= ~lb;
     }
-#endif
     layer_lock_input(pressed);                          /* (a button closes a locked layer) */
     layer_arm(pressed, now);
     layer_oct_open(pressed);                            /* (OCT± with a SET layer's button down: it opens now) */
@@ -2136,12 +2091,10 @@ static void ui_input(void)
             ui.home_t0 |= 2u;                          /* as always, SHIFT, its tap closing the lock); (#13) the layer */
             layer_home_lock();                         /* locked, as SHIFT + its button */
         }
-#if BOARD_SMK37
         if (((pressed >> SMK_BTN_KNOB_BANK) & 1u) && !ui.lock) {   /* (KNOB BANK: as HOME there) */
             smk_sh_t0 |= 2u;
             layer_home_lock();
         }
-#endif
         for (k = 0; k < 4u; k++)                        /* KNOB 1..4: the layer's (ui_layer.c layer_knob) */
             if ((ks[k] = panel_enc(EN_K1 + k)) != 0)
                 combo = 1;
@@ -2193,10 +2146,8 @@ static void ui_input(void)
                                                          * (home_long: let go, the MENU), a combo ends it */
         uint8_t sh = ui.home_t0 && (!(ui.home_t0 & 2u) || home_long) && !ui.menu && !ui.confirm && !name_on() && !ui.layer &&
                      !ui_hints_off && now - (ui.home_t0 & ~3u) > 250u * 1000u * FM1_TICKS_PER_US;
-#if BOARD_SMK37
         sh = sh || (smk_sh_t0 && !(smk_sh_t0 & 2u) && !ui.menu && !ui.confirm && !name_on() && !ui.layer &&
                     !ui_hints_off && now - (smk_sh_t0 & ~3u) > 250u * 1000u * FM1_TICKS_PER_US);
-#endif
         if (sh != ui.shift) {
             ui.shift = sh;
             ui.force = 1;

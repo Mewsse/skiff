@@ -1,18 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * SMK-37 Pro port: Copyright (C) 2026 M. Geisler (genkigenki/makkuro); Skiff's layout */
-/* The SMK-37 Pro flash map (build with -DBOARD_SMK37=1): every 4 KiB sector of the 1 MiB part through the app's
+/* The SMK-37 Pro flash map: every 4 KiB sector of the 1 MiB part through the app's
  * allow-list (FL_RANGE_OK / FL_GUARD, fm1_flash_map.h), the update loader's (loader.c) and the RAM driver's own net:
  * none may ever reach the head 0x0-0x3FFF, BTIF / USRTRIM 0xC0000-0xC1FFF, USR 0xF4000-0xFDFFF or key_mac 0xFF000-.
  * Every stored object by its OBJ_* (storage.c, A and B), the owner tag, the tape store (tape_store.c) and the user sample
  * slot (eng_sample.c) inside the allowed windows, none sharing a sector (but the FM6 pair, by design); ranges that wrap
- * or straddle a boundary are refused. tape_store_test runs the store itself on this layout (-DBOARD_SMK37=1). */
+ * or straddle a boundary are refused. tape_store_test runs the store itself on this layout. */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include "fm1_cc.h"
-#if !BOARD_SMK37
-#error "build with -DBOARD_SMK37=1"
-#endif
 #include "fm1_flash_map.h"
 
 static int st_read(uint32_t off, void *dst, uint32_t n) { (void)off; (void)dst; (void)n; return -1; }

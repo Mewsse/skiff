@@ -19,7 +19,7 @@
  *    it rings starts its sample again, without a click. */
 #include <stdarg.h>
 #include <stdint.h>
-static uint32_t host_slots[3u * 0x14000u / 4u];          /* USR1..3, as the flash at 0xA0000 */
+static uint32_t host_slots[3u * 0x14000u / 4u];          /* USR1..3, as the flash at FL_SLOT (only USR1 is scanned on the SMK-37) */
 #define SMP_USER_XIP(k) ((const uint8_t *)host_slots + (k) * SMP_USER_SIZE)
 #define main hostsim_main
 #include "hostsim.c"
@@ -255,32 +255,32 @@ static int drumkit_test(void)
     uint32_t kick, kick_up, kick_short, snare, bell, oh, oh_cut, muted, empty, std, i;
     int has = 1;
     voice_t *v;
-    kit_put(2);
+    kit_put(0);
     memset((uint8_t *)host_slots + 1u * SMP_USER_SIZE, 0xFF, SMP_USER_SIZE);   /* (USR2 empty) */
     smp_user_scan(1);
-    smp_user_scan(2);
-    t = kit_track(DK_USR3);
+    smp_user_scan(0);
+    t = kit_track(DK_USR1);
     kick = kit_blocks(t, 36, 400, 0, 0);
-    snare = kit_blocks(kit_track(DK_USR3), 38, 400, 0, 0);
-    bell = kit_blocks(kit_track(DK_USR3), 56, 400, 0, 0);
-    check("(#35) KIT USR3: KICK and SNARE their samples to their ends, BELL (none) silent",
+    snare = kit_blocks(kit_track(DK_USR1), 38, 400, 0, 0);
+    bell = kit_blocks(kit_track(DK_USR1), 56, 400, 0, 0);
+    check("(#35) KIT USR1: KICK and SNARE their samples to their ends, BELL (none) silent",
           kick + 2u >= 4000u / CTL && kick <= 4000u / CTL + 2u && snare + 2u >= 400u / CTL && snare <= 400u / CTL + 2u && !bell,
           "%u %u %u blocks", kick, snare, bell);
-    t = kit_track(DK_USR3);
+    t = kit_track(DK_USR1);
     t->p[P_LTUNE0] = 127;                                /* (KICK's TUNE: +11.8 semitones, about twice as fast) */
     kick_up = kit_blocks(t, 36, 400, 0, 0);
-    t = kit_track(DK_USR3);
+    t = kit_track(DK_USR1);
     t->p[P_LDECAY0] = -40;                               /* (KICK's DECAY below its middle: a fall) */
     kick_short = kit_blocks(t, 36, 400, 0, 0);
     check("  TUNE up: faster (half as long); the lane's DECAY down: shorter", kick_up * 2u <= kick + 4u &&
           kick_up * 2u + 4u >= kick && kick_short < kick / 2u, "%u %u of %u", kick_up, kick_short, kick);
-    t = kit_track(DK_USR3);
+    t = kit_track(DK_USR1);
     oh = kit_blocks(t, 46, 400, 0, 0);
-    t = kit_track(DK_USR3);
+    t = kit_track(DK_USR1);
     oh_cut = kit_blocks(t, 46, 400, 42, 10);
     check("  the closed hat chokes the open one", oh >= 6000u / CTL - 2u && oh_cut < 10u + 600u / CTL + 4u,
           "%u, %u with CL HAT at 10", oh, oh_cut);
-    t = kit_track(DK_USR3);
+    t = kit_track(DK_USR1);
     drum_mute[0] = 1u << 0;                              /* (KICK muted) */
     trk_note_on(t, 36, 100);
     {
@@ -293,7 +293,7 @@ static int drumkit_test(void)
     check("  a muted lane rings on unheard (its voice playing)", !muted && v && v->active && !v->s[6], "%u", muted);
     empty = kit_blocks(kit_track(DK_USR2), 36, 100, 0, 0);
     std = kit_blocks(kit_track(DK_STD), 36, 100, 0, 0);
-    t = kit_track(DK_USR3);
+    t = kit_track(DK_USR1);
     for (i = 0; i < 7u; i++)
         has &= drum_lane_has(t, i);
     has &= !drum_lane_has(t, 7);
@@ -349,15 +349,15 @@ static int drumkit_retrig_test(void)
     voice_t *v = 0;
     int32_t prev = 0, step0 = 0, step1 = 0, step2 = 0;
     uint32_t i, k, n2 = 0, pos = 0;
-    kit_put(2);
+    kit_put(0);
     for (i = 0; i < 4000u; i++)
         x[i] = (int16_t)(20000.0 * sin(i * 2.0 * 3.14159265 * 110.0 / 22050.0) * exp(-(double)i / 2500.0));
     memcpy(&h, b, sizeof h);
     ima_enc(x, 4000u, b + SMP_USER_DATA + h.zone[0].off);
     h.crc = st_crc32(b + SMP_USER_DATA, h.data_len);
     memcpy(b, &h, sizeof h);
-    smp_user_scan(2);
-    t = kit_track(DK_USR3);
+    smp_user_scan(0);
+    t = kit_track(DK_USR1);
     trk_note_on(t, 36, 100);
     for (k = 0; k < 400u; k++) {
         int32_t o[2 * CTL];
@@ -393,18 +393,18 @@ static int drumkit_retrig_test(void)
     return 0;
 }
 /* (2.0.3, found making the 2.0 video) SAMPLE struck again while it still sounds (MONO: the next note on its one voice):
- * a steady sine in USR2 under every key, struck, then another key at block 30, the sine at its peak there: the second
+ * a steady sine in USR1 under every key, struck, then another key at block 30, the sine at its peak there: the second
  * note starts the sample again (its position back at its start) and the steepest step at it is a small part of the
  * level just before it, not the jump from that level to the second note's start */
 static int sample_retrig_test(void)
 {
     static int16_t x[16000];
-    uint8_t *b = (uint8_t *)host_slots + 1u * SMP_USER_SIZE;
+    uint8_t *b = (uint8_t *)host_slots;                  /* (USR1) */
     smp_user_hdr_t h;
     track_t *t = &trk[0];
     int32_t prev = 0, lvl = 0, step2 = 0;
     uint32_t i, k, j, pos = 99999u;
-    slot_put(1, 1, 8000, 0);                             /* (one sound, 16000 samples) */
+    slot_put(0, 1, 8000, 0);                             /* (one sound, 16000 samples) */
     for (i = 0; i < 16000u; i++)                         /* (its peak at sample 959: the last before block 30) */
         x[i] = (int16_t)(20000.0 * sin(i * 2.0 * 3.14159265 * 2.25 / 959.0));
     memcpy(&h, b, sizeof h);
@@ -413,14 +413,14 @@ static int sample_retrig_test(void)
     ima_enc(x, 16000u, b + SMP_USER_DATA + h.zone[0].off);
     h.crc = st_crc32(b + SMP_USER_DATA, h.data_len);
     memcpy(b, &h, sizeof h);
-    smp_user_scan(1);
+    smp_user_scan(0);
     for (k = 0; k < NTRK; k++)
         for (j = 0; j < NVOICE; j++)
             trk[k].v[j].active = trk[k].v[j].gate = 0;
     host_tracks_init();
     song.g[G_RTYPE] = 0;
     host_preset(t, ENGI_SAMPLE, 0);
-    t->p[P_E0] = (int16_t)(SMP_NSETS + 1u);
+    t->p[P_E0] = (int16_t)SMP_NSETS;
     t->p[P_E2] = t->p[P_E6] = 0;                         /* (BITS, DRIVE off, CUTOFF open, no sends) */
     t->p[P_E4] = 127;
     t->p[P_DIST] = t->p[P_CHOR] = t->p[P_REV] = t->p[P_DLY] = 0;

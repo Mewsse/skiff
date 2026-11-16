@@ -43,6 +43,7 @@
 #define FELUCCA_UAC_MIDI_LAST T_ML
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"   /* SIE register macros (never touched here) */
+#include "smk_uart_host.h"
 #include "../firmware/src/usb.c"
 #include "usb_desc_v10.h"
 static uint32_t ota_now_ms(void) { return 0; }

@@ -4,7 +4,7 @@
  * the SysEx protocol (pack7, cmd 0x30 reads, 0xE0000000 -> "success") and a
  * simulated NOR plays the flash.
  *   cc -o ota_test tests/ota_test.c && ./ota_test FILE.fwsc
- * SMK-37 (-DBOARD_SMK37=1): `./ota_test M-VAVE.fwsc official` takes M-VAVE's own package (its 36 interleave blocks):
+ * SMK-37: `./ota_test M-VAVE.fwsc official` takes M-VAVE's own package (its 36 interleave blocks):
  * the app stages its own loader (SMK_LDR, made here) in place of the package's, under the stock record name.
  * ((2.0.2, #64) FM-1: `./ota_test FM-1.fwsc official`, M-VAVE's V15 or V16: their loader staged as it is, after the
  * head check.)
@@ -14,7 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if BOARD_SMK37                          /* -DBOARD_SMK37=1: the SMK-37 Pro build of ota.c */
 #if T_MODEL == 1                         /* -DT_MODEL=1 / 2: the MODEL=elite / mke build */
 #define SMK_MODEL "SMK-37 Elite"
 #elif T_MODEL == 2
@@ -33,16 +32,6 @@
 static uint8_t SMK_LDR[0x1F00];
 static uint32_t smk_ldr_len;
 #define SMK_LDR_LEN smk_ldr_len
-#else
-#define FELUCCA_ID "FM-1_900"
-#define T_AREA 0xE0000u
-#define T_PARM_ID "ota-FM-1_015"
-#define T_FL_LEN "0x93000"
-#define T_FL_OTHER 0x9D000u              /* an SMK-37 Pro package's */
-#define T_FL_OTHER_NAME "0x9D000"
-#define T_FL_V16 0xA9000u                /* ((2.0.2, #64) M-VAVE's V16's: with the official loader only) */
-#define T_SMK 0
-#endif
 #define T_AREA_HI (T_AREA + 0x5000u)
 #define FELUCCA_OTA_DRYRUN 0
 
@@ -191,7 +180,6 @@ static int check(const char *what, int ok)
     return ok ? 0 : 1;
 }
 
-#if BOARD_SMK37
 static void make_own_ldr(void)           /* a loader as build.py wraps one: outer head (CRC, 0x20, length, 0x41), body */
 {
     uint32_t len = 7000u, i;
@@ -206,11 +194,6 @@ static void make_own_ldr(void)           /* a loader as build.py wraps one: oute
     smk_ldr_len = len + 0x20u;
 }
 #define T_EMB ota_emb
-#else
-#define T_EMB 0
-#define SMK_LDR ((uint8_t *)0)
-#define smk_ldr_len 0u
-#endif
 
 static int area_erased(void)
 {
@@ -235,9 +218,7 @@ int main(int argc, char **argv)
     int bad = 0, rc, official = argc > 2 && !strcmp(argv[2], "official");
     size_t blocks = 20;
     if (argc < 2) { printf("usage: ota_test FILE.fwsc [official]\n"); return 2; }
-#if BOARD_SMK37
     make_own_ldr();
-#endif
     f = fopen(argv[1], "rb");
     if (!f) { perror(argv[1]); return 2; }
     raw = malloc(0x200000);
@@ -309,16 +290,6 @@ int main(int argc, char **argv)
         rc = ota_session();
         bad += check("another board's size (" T_FL_OTHER_NAME "): -15 after 2 reads, no commit, no erase",
                      rc == -15 && requests == 2u && !committed && erases == 0 && area_erased());
-#if !BOARD_SMK37
-        reset_dev();                                       /* ((2.0.2, #64) V16's size: the official loader's alone */
-        set_fl_size(logical, T_FL_V16);
-        rc = ota_session();
-        if (official)
-            bad += check("V16's size (0xA9000), the official loader: commits", rc == 0 && committed);
-        else
-            bad += check("V16's size (0xA9000), Skiff's own loader: -15, no commit, no erase",
-                         rc == -15 && requests == 3u && !committed && erases == 0 && area_erased());
-#endif
         memcpy(logical, keep, sizeof keep);
     }
     /* (2.0.2, #64) the official loader rewrites the head: a unit whose head is not the package's (V15's package on a unit

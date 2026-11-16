@@ -328,11 +328,7 @@ static void free_hint(void)
         return;
     layer_seen |= 1u;
     settings_save();
-#if BOARD_SMK37
     ui_message("SHIFT + BT: FREE TAKE");               /* (the SMK's SAVE: BT) */
-#else
-    ui_message("SHIFT + SAVE: FREE TAKE");
-#endif
     ui.msg_t = 130;                                     /* (as a layer's hint, ~2 s) */
 }
 
@@ -1420,7 +1416,6 @@ static void shift_map(smap_t *m)
         m[6 + i] = ALL[i < 3u && sel ? 6u + i : i];
     if (sel)                                         /* ((2.0) there SHIFT + EDIT deletes, ui_input.c sel_delete) */
         m[11] = (smap_t){"+ EDIT", "DELETE", 2};
-#if BOARD_SMK37
     {   /* (SMK-37 Pro, SMK37_UX.md question 10) the controls by the SMK's printed names: K2 SELECT, K3 ALGORITHM, K4
          * PRESETS, PARA EDIT, BT SAVE, SEQ REC REC, KNOB BANK SHIFT. PLAY stays PLAY: the SMK prints a play sign there,
          * which the screen's fonts don't have */
@@ -1434,7 +1429,6 @@ static void shift_map(smap_t *m)
                 if (str_eq(m[i].key, FM[j]))
                     m[i].key = SMK[j];
     }
-#endif
 }
 static void draw_shift(void)
 {
@@ -1460,11 +1454,9 @@ static void draw_shift(void)
     }
     cv_blit(0, Y_GRAPH);
     cv_begin(240, foot_h(), T_BG);
-#if BOARD_SMK37
     if (!((fm1_in.buttons >> panel.btn[B_HOME]) & 1u))   /* (KNOB BANK's SHIFT: let go, nothing) */
         cv_free_hint(8, foot_line_y(), "SHIFT", T_MID, T_BG, 110);
     else
-#endif
     cv_free_hint(8, foot_line_y(), "LET GO: MENU", T_MID, T_BG, 110);
     if (ui.home)
         str_cpy(ti, "HOME", sizeof ti);
