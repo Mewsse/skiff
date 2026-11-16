@@ -183,6 +183,14 @@
   /* mixer: a channel strip per track (six; Skiff phase 6) as on the device's MIXER page */
   .mixer { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; max-width: 900px; margin: 6px 0; }
   @media (max-width: 600px) { .mixer { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  /* (Skiff P11) the Tape tab: a lane a track, the target's on the tile colour, the head a line across */
+  .tape-row { margin: 8px 0; max-width: 900px; }
+  .tape-row.on .tape-lane { background: var(--tile); }
+  .tape-row.muted .tape-lane { opacity: .4; }
+  .tape-lane { display: block; width: 100%; height: 56px; border: 1px solid var(--line, var(--dim)); }
+  .tape-lane .tape-bar { fill: var(--dim); opacity: .35; }
+  .tape-lane .tape-head { fill: var(--fg); }
+  #tape-run button[aria-pressed="true"], .tape-head-row button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
   .strip { border: 1px solid var(--line); padding: 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
   .strip.sel { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
   .strip .num { font-size: 18px; font-weight: 600; line-height: 1; }
@@ -451,7 +459,7 @@
       <button role="tab" data-tab="sound" data-t="sound" data-ic="symbol_audio"></button>
       <button role="tab" data-tab="fm6" data-t="tabFm6" data-ic="ui_knob"></button>
       <button role="tab" data-tab="sequencer" data-t="tabSeq" data-ic="symbol_grid"></button>
-      <button role="tab" data-tab="song" data-t="sgTab" data-ic="control_arrow_loop"></button>
+      <button role="tab" data-tab="tape" data-t="tapeTab" data-ic="note_eight"></button>
       <button role="tab" data-tab="tracks" data-t="tabTracks" data-ic="ui_slider_vertical"></button>
       <button role="tab" data-tab="library" data-t="library" data-ic="symbol_books"></button>
       <button role="tab" data-tab="samples" data-t="samples" data-ic="symbol_waves"></button>
@@ -517,7 +525,14 @@
     </div>
   </section>
 
-  <section class="panel" id="p-song" data-tab="song" data-dev hidden>
+  <section class="panel" id="p-tape" data-tab="tape" data-dev hidden>
+    <h2 data-t="tapeTitle" data-ic="note_eight"></h2>
+    <p class="dim" data-t="tapeHelp"></p>
+    <div class="bar" id="tape-bar"></div>
+    <div id="tape-lanes"></div>
+    <h3 data-t="tapeRun"></h3>
+    <div class="bar" id="tape-run"></div>
+    <p class="dim" id="tape-count"></p>
   </section>
 
   <section class="panel" id="p-tracks" data-tab="tracks" data-dev hidden>
@@ -650,7 +665,10 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
   UI_STATE: 34, UI_SET: 35, UI_PALETTES: 36, FAV_GET: 37, FAV_SET: 38, COLORS: 39,
   MOTION: 64, BACKUP_LIST: 65, BACKUP_GET: 66, BACKUP_PUT: 67,
   FM6_GET: 68, FM6_PUT: 69, FM6_LIST: 70, FM6_ERASE: 71, MENU_DESC: 72, MENU_SET: 73, KIT_GET: 74, KIT_PUT: 75, TRANSPORT: 76, PROJ_NAME: 77,
-  SMP_MIX: 81, CAST: 83 };
+  SMP_MIX: 81, CAST: 83, TAPE: 84, TAPE_GET: 85 };
+/* (Skiff P11) TAPE ops (editor_tape.c) */
+const TAPE_OP = { MERGE: 1, CLEAR: 2, MUTE: 3, LENGTH: 4, LOCATE: 5, TARGET: 6, RUN: 7, OVERDUB: 8 };
+const TAPE = { TRACKS: 4, BARS_MAX: 256, BAR: 1920, PAGE: 32 };   /* test_web.mjs: == the firmware's (tape.c) */
 /* frames the device sends on its own (while WATCH is on); never replies */
 const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANGED]);
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
@@ -830,6 +848,7 @@ const parse = {
     o.kitLanes = 0;                               /* (Skiff W3, INFO 4B 01 8) KIT_GET / KIT_PUT: the DRUM-X kit's lanes */
     o.skiff = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 (POOL: gone), (#21)
                                                      5 SMP_MIX, (2.0, #25) 6 a step's ties (3 LIST, 4 PERFORM: gone) */
+    o.tape = 0;                                   /* (Skiff P11, INFO 5A 01 caps) bit 0: TAPE, TAPE_GET (the Tape tab) */
     o.cast = 0;                                   /* (Skiff Studio, INFO 59 01 caps) bit 0: the cast (cmd 83), the Screen tab;
                                                      bit 1: an SMK-37's (its copy: felucca_cast_smk.wasm) */
     for (const p of [8, 11]) if (o.motionMax && trailer[p] === 0x46 && trailer[p + 1] === 1) {   /* for the editor's */
@@ -854,7 +873,8 @@ const parse = {
         o.pe0 = trailer[r + 4] | trailer[r + 5] << 7;
         r += 6;
       }
-      if (trailer[r] === 0x59 && trailer[r + 1] === 1) o.cast = trailer[r + 2] & 127;   /* (Skiff Studio) the cast, last */
+      if (trailer[r] === 0x59 && trailer[r + 1] === 1) { o.cast = trailer[r + 2] & 127; r += 3; }   /* (Skiff Studio) the cast */
+      if (trailer[r] === 0x5A && trailer[r + 1] === 1) o.tape = trailer[r + 2] & 127;   /* (Skiff P11) the note tape, last */
     }
     o.light = o.light || { tracks: 0, engines: 0 };   /* the tracks that may not play some engines, and those engines */
     return o;
@@ -939,6 +959,21 @@ const parse = {
     return o;
   },
   [CMD.PROJECT](a) { const r = new Reader(a); return { op: r.b(), slot: r.b(), used: r.b() }; },
+  /* (Skiff P11) TAPE: op, rc (0 done, 1 refused), the length in bars, the head (ticks, 480 a quarter), the target track, overdub
+     (0: replace), the mutes (a bit a track), RUN (a bit an instrument), the notes it can hold, each track's notes */
+  [CMD.TAPE](a) {
+    const r = new Reader(a), w = () => r.b() | r.b() << 7;
+    const o = { op: r.b(), rc: r.b(), bars: w(), head: r.b() | r.b() << 7 | r.b() << 14, target: r.b(), overdub: !!r.b(), mutes: r.b(), run: r.b(), cap: w() };
+    o.counts = [0, 1, 2, 3].map(w);
+    return o;
+  },
+  /* (Skiff P11) TAPE_GET: track, first, the notes the track holds, then n x (at, length: ticks; note, instrument, velocity) */
+  [CMD.TAPE_GET](a) {
+    const r = new Reader(a), w = () => r.b() | r.b() << 7, t3 = () => r.b() | r.b() << 7 | r.b() << 14;
+    const o = { track: r.b(), first: w(), total: w(), notes: [] };
+    for (let i = r.b(); i > 0; i--) o.notes.push({ at: t3(), len: t3(), note: r.b(), inst: r.b(), vel: r.b() });
+    return o;
+  },
   [CMD.SONG](a) {
     const r = new Reader(a);
     const o = { op: r.b(), rc: r.b(), count: r.b(), playing: r.b(), row: r.b(), remaining: r.b(), rows: [] };
@@ -1130,6 +1165,23 @@ const req = {
   menuSet: (id, v) => [CMD.MENU_SET, [id & 0x7F, ...v14enc(v)]],
   kitGet: (lane) => [CMD.KIT_GET, [lane & 7]],
   kitPut: (k) => [CMD.KIT_PUT, [k.lane, k.wave, k.filt, +k.snap, k.pmod, +k.drive, ...k.a, ...k.b].map((x) => x & 0x7F)],
+  /* (Skiff P11) TAPE: none, the state; else TAPE_OP and its bytes: MERGE (into, from), CLEAR (track), MUTE (track, 0/1), LENGTH (bars lo, hi),
+     LOCATE (bar lo, hi), TARGET (track), RUN (instrument, 0/1), OVERDUB (0/1) */
+  tape: (op = 0, ...args) => {
+    const n = { 0: 0, 1: 2, 2: 1, 3: 2, 4: 2, 5: 2, 6: 1, 7: 2, 8: 1 }[op];
+    if (n === undefined || args.length !== n || args.some((x) => !Number.isInteger(x) || x < 0 || x > 127)) throw new Error("bad TAPE request");
+    if (op === TAPE_OP.MERGE && (args[0] > 3 || args[1] > 3 || args[0] === args[1])) throw new Error("bad TAPE request");
+    if ([TAPE_OP.CLEAR, TAPE_OP.TARGET].includes(op) && args[0] > 3 || op === TAPE_OP.MUTE && (args[0] > 3 || args[1] > 1)) throw new Error("bad TAPE request");
+    if (op === TAPE_OP.RUN && (args[0] > 5 || args[1] > 1) || op === TAPE_OP.OVERDUB && args[0] > 1) throw new Error("bad TAPE request");
+    if (op === TAPE_OP.LENGTH && ((args[0] | args[1] << 7) < 1 || (args[0] | args[1] << 7) > TAPE.BARS_MAX)) throw new Error("bad TAPE request");
+    return [CMD.TAPE, op ? [op, ...args] : []];
+  },
+  /* TAPE_GET: a page of a track's notes, 1..32 from the first */
+  tapeGet: (track, first = 0, count = TAPE.PAGE) => {
+    if (!Number.isInteger(track) || track < 0 || track >= TAPE.TRACKS || !Number.isInteger(first) || first < 0 || first > 16383 ||
+        !Number.isInteger(count) || count < 1 || count > TAPE.PAGE) throw new Error("bad TAPE_GET request");
+    return [CMD.TAPE_GET, [track, first & 127, first >> 7, count]];
+  },
   transport: (op = 0) => [CMD.TRANSPORT, op ? [op] : []],            /* 1 PLAY, 2 STOP, 3 RESTART, 4 REC; none: the state */
   projName: (op = 0, slot = 0, name = "") => [CMD.PROJ_NAME, op ? [op, slot & 3, ...strEnc(cleanProjName(name))] : []],   /* 1 SAVE AS, 2 RENAME */
 };
@@ -1152,6 +1204,8 @@ function replyMatches(cmd, args, a) {
     case CMD.MENU_SET: return a[1] === args[0];
     case CMD.KIT_GET: case CMD.KIT_PUT: return a[0] === args[0];
     case CMD.PROJ_NAME: return a[0] === (args[0] || 0);
+    case CMD.TAPE: return a[0] === (args[0] || 0);
+    case CMD.TAPE_GET: return a[0] === args[0] && (a[1] | a[2] << 7) === (args[1] | args[2] << 7);
     case CMD.BACKUP_GET: return a[0] === args[0] && a.slice(2, 7).every((v, i) => v === args[i + 1]);
     case CMD.BACKUP_PUT: return a[0] === args[0] && a[1] === args[1];
     case CMD.UI_SET: return a[1] === args[0] && a[2] === args[1];
@@ -2518,6 +2572,7 @@ function makeMockDevice(opt = {}) {
     g: GP.map((d) => d.def),
     slots: [null, null, null, null], songRows: [], chainPlaying: false, chainRow: 0, chainRemaining: 0,
     slotNames: ["", "", "", ""], projCur: -1, projName: "", projSig: "", playing: false,   /* ((Skiff W3) PROJ_NAME, TRANSPORT) */
+    tape: { bars: 4, head: 0, target: 0, overdub: 1, mutes: 0, run: 63, notes: [[], [], [], []] },   /* ((Skiff P11) tape.c: TAPE_N notes in all) */
     smp: [0, 1, 2].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF,
       mix: SMP.MIX0() })),                            /* ((#21) LEVEL x 16, REV x 16, DLY x 16) */
     bank: new Array(opt.slots || 32).fill(null),     /* user presets: {engine, name, p, pattern, grid, fm6 (FM6: its patch)} */
@@ -2617,6 +2672,11 @@ function makeMockDevice(opt = {}) {
   const projOn = () => kitOn() && !opt.noProj;         /* (Skiff W3, INFO 57 01 03) TRANSPORT, PROJ_NAME */
   const songOn = () => projOn() && !opt.noSong;        /* (INFO 57 01 SMP_MIX, ties; before: 3) */
   const tiesOn = () => songOn() && !opt.noTies;        /* ((2.0, #25) INFO 57 01 bit 6) a step's ties after its NUDGE */
+  const tapeOn = () => projOn() && !opt.noTape;        /* ((Skiff P11) INFO 5A 01) TAPE, TAPE_GET */
+  const TAPE_N = 1440;                                  /* tape.c: the notes of all four tracks */
+  for (const [track, notes] of [[0, [[0, 48], [480, 55], [960, 52], [1440, 55], [1920, 48], [2400, 55], [2880, 52], [3360, 60]]],
+                                [1, [[0, 72], [960, 74], [1920, 76], [3840, 72]]]])
+    st.tape.notes[track] = notes.map(([at, note]) => ({ at, len: 240, note, inst: track ? 2 : 1, vel: 100 }));
   const stepOut = (x, b) => { b(x.n); x.notes.forEach(b); b(x.time); b(x.flags); b(x.vel); hitsEnc(x.hit, x.acc).forEach(b); if (!opt.legacy && !opt.v3 && !opt.v5) b(x.chance ?? 100); if (ratchetOn()) b(x.ratchet ?? 1);
     if (stepxOn()) { b(x.flam ? 1 : 0); b(x.cond | 0); b(((x.nudge | 0) + 32) & 63); } if (tiesOn()) b(x.ties | 0); };
   function stepIn(x, a) {                         /* editor.c ed_step_put: n, 4 notes, time, flags, vel [, hits (3) [, chance [, ratchet]]] */
@@ -2656,6 +2716,7 @@ function makeMockDevice(opt = {}) {
       if (kitOn()) [0x4B, 1, 8].forEach(b);                    /* (Skiff W3) */
       if (projOn()) [0x57, 1, songOn() ? (tiesOn() ? 99 : 35) : 3].forEach(b);   /* ((#21) 32: SMP_MIX; (2.0) 64 the ties) */
       if (projOn()) [0x49, 1, P_COUNT & 127, P_COUNT >> 7, P_E0 & 127, P_E0 >> 7].forEach(b);   /* ((Skiff 1.3) wide ids) */
+      if (tapeOn()) [0x5A, 1, 1].forEach(b);                                                  /* ((Skiff P11) the tape, last) */
     };
     const wid = (s, i) => (s === 2 ? [0, i + 128] : [s, i]);   /* ((1.3) scope 2: a track id from 128 on) */
     if (opt.legacy && cmd >= CMD.UP_LIST) return null;
@@ -2807,6 +2868,33 @@ function makeMockDevice(opt = {}) {
         else if (a[0] === 1 || a[0] === 3) st.playing = true;
         else if (a[0] === 2) st.playing = false;
         [0, +st.playing, 0, 0, st.rec, st.sel].forEach(b);
+        break;
+      }
+      case CMD.TAPE: {                         /* (Skiff P11) editor_tape.c; the mock's sequencer RUN and head take effect at once */
+        if (!tapeOn()) return null;
+        const tp = st.tape, w = a[1] | a[2] << 7;
+        const sizes = { 1: 3, 2: 2, 3: 3, 4: 3, 5: 3, 6: 2, 7: 3, 8: 2 };
+        if (a.length && (sizes[a[0]] !== a.length || ([2, 3, 6].includes(a[0]) && a[1] > 3) || (a[0] === 1 && (a[1] > 3 || a[2] > 3 || a[1] === a[2])) ||
+            (a[0] === 3 && a[2] > 1) || (a[0] === 4 && (w < 1 || w > TAPE.BARS_MAX)) || (a[0] === 7 && (a[1] > 5 || a[2] > 1)) || (a[0] === 8 && a[1] > 1))) return null;
+        let rc = 0;
+        if (a[0] === 1) { if (tp.notes[a[2]].length) { tp.notes[a[1]] = tp.notes[a[1]].concat(tp.notes[a[2]]).sort((x, y) => x.at - y.at); tp.notes[a[2]] = []; } else rc = 1; }
+        else if (a[0] === 2) tp.notes[a[1]] = [];
+        else if (a[0] === 3) tp.mutes = a[2] ? tp.mutes | 1 << a[1] : tp.mutes & ~(1 << a[1]);
+        else if (a[0] === 4) { tp.bars = w; tp.head %= w * TAPE.BAR; }
+        else if (a[0] === 5) { if (st.playing || w >= tp.bars) rc = 1; else tp.head = w * TAPE.BAR; }
+        else if (a[0] === 6) tp.target = a[1];
+        else if (a[0] === 7) tp.run = a[2] ? tp.run | 1 << a[1] : tp.run & ~(1 << a[1]);
+        else if (a[0] === 8) tp.overdub = a[1];
+        b(a.length ? a[0] : 0); b(rc); b(tp.bars); b(tp.bars >> 7); b(tp.head); b(tp.head >> 7); b(tp.head >> 14); b(tp.target); b(tp.overdub);
+        b(tp.mutes); b(tp.run); b(TAPE_N); b(TAPE_N >> 7);
+        tp.notes.forEach((n) => { b(n.length); b(n.length >> 7); });
+        break;
+      }
+      case CMD.TAPE_GET: {
+        if (!tapeOn() || a.length !== 4 || a[0] > 3 || a[3] < 1 || a[3] > TAPE.PAGE) return null;
+        const first = a[1] | a[2] << 7, all = st.tape.notes[a[0]], page = all.slice(first, first + a[3]);
+        b(a[0]); b(first); b(first >> 7); b(all.length); b(all.length >> 7); b(page.length);
+        for (const n of page) { b(n.at); b(n.at >> 7); b(n.at >> 14); b(n.len); b(n.len >> 7); b(n.len >> 14); b(n.note); b(n.inst); b(n.vel); }
         break;
       }
       case CMD.PROJ_NAME: {                    /* (Skiff W3) editor_project.c: SAVE AS, RENAME (the transport stopped first) */
@@ -3185,7 +3273,7 @@ function makeMockDevice(opt = {}) {
   ];
   return {
     state: st, sim,
-    tables: { TP, GP, ENG, PATTERNS, P_COUNT, G_COUNT, NSTEP, P_E0, G_ENGSEL, P_SLCR, NTRK,
+    tables: { TP, GP, ENG, PATTERNS, P_COUNT, G_COUNT, NSTEP, P_E0, G_ENGSEL, P_SLCR, NTRK, TAPE_N, TAPE,
       FM6: { bank: 0, own: FM6_OWN, init: FM6.INIT_PK, factory: FM6.FACTORY_PK } },   /* test_web.mjs: == the firmware */
     stop: () => timers.forEach(clearInterval),
     access: { sysexEnabled: true, inputs: new Map([[input.id, input]]), outputs: new Map([[output.id, output]]), onstatechange: null },
@@ -3393,8 +3481,15 @@ const TEXT = {
     noName: "（名前なし）", projNow: "現在", projChanged: "保存後に変更あり",
     projRefused: "本体が受け付けませんでした（空のスロット、またはパターンがいっぱい）", projFailed: "本体での保存に失敗しました",
     play: "再生", stop: "停止", playTitle: "再生（Shift+クリック: 頭から）", playing: "再生中", stopped: "停止中", countIn: "カウントイン",
-    sgTab: "ソング",
-    sgNoFw: "このファームウェアにはソングのコマンドがありません。Skiff を更新してください。",
+    tapeTab: "テープ", tapeNoFw: "このファームウェアにはテープがありません。Skiff を更新してください。",
+    tapeTitle: "ノートテープ",
+    tapeHelp: "REC は録音待ちのトラックの音符をここに書きます（音声ではありません）。4 トラック、合成しても音符は失われません。本体の SEQ > TAPE と同じです。",
+    tapeLength: "長さ（小節）", tapeMode: "REC", tapeOverdub: "オーバーダブ", tapeReplace: "置き換え", tapeAt: "小節へ移動", tapeGo: "移動",
+    tapeHead: "ヘッド", tapeTrack: "テープ", tapeNotes: "音符", tapeMute: "ミュート", tapeClear: "クリア", tapeMergeFrom: "合成元",
+    tapeRun: "シーケンサー RUN",
+    tapeConfirmClear: "テープ {n} をクリアしますか？ {count} 音符が消えます（元に戻せません）。",
+    tapeConfirmMerge: "テープ {from} をテープ {to} に合成しますか？ テープ {from} は空になります（元に戻せません）。",
+    tapeRefused: "本体が受け付けませんでした（停止してください、または合成する音符がありません）",
     confirmSave: "スロット {n} に上書き保存しますか？", confirmLoad: "スロット {n} を読み込みますか？ すべてのトラックの音色とシーケンスが置き換わります（元に戻せません）。",
     confirmLoadFile: "「{name}」を読み込みますか？ 今の音色は置き換わります（本体の SAVE 長押しで元に戻せます）。",
     confirmLoadFileSteps: "「{name}」を読み込みますか？ 今の音色とシーケンス（64 ステップ）が置き換わります。",
@@ -3533,8 +3628,15 @@ const TEXT = {
     noName: "(no name)", projNow: "Now", projChanged: "changed since saved",
     projRefused: "The device refused (an empty slot, or the patterns are full)", projFailed: "Saving failed on the device",
     play: "Play", stop: "Stop", playTitle: "Play (Shift+click: from the top)", playing: "Playing", stopped: "Stopped", countIn: "Count-in",
-    sgTab: "Song",
-    sgNoFw: "This firmware has no song commands: update Skiff.",
+    tapeTab: "Tape", tapeNoFw: "This firmware has no tape: update Skiff.",
+    tapeTitle: "Note tape",
+    tapeHelp: "REC writes the notes of the armed tracks here (not audio): four tracks that merge without loss. The same as SEQ > TAPE on the unit.",
+    tapeLength: "Length (bars)", tapeMode: "REC", tapeOverdub: "Overdub", tapeReplace: "Replace", tapeAt: "Go to bar", tapeGo: "Go",
+    tapeHead: "Head", tapeTrack: "Tape", tapeNotes: "notes", tapeMute: "Mute", tapeClear: "Clear", tapeMergeFrom: "Merge from",
+    tapeRun: "Sequencer RUN",
+    tapeConfirmClear: "Clear tape {n}? Its {count} notes are removed (no undo).",
+    tapeConfirmMerge: "Merge tape {from} into tape {to}? Tape {from} is emptied (no undo).",
+    tapeRefused: "The device refused (stop first, or nothing to merge)",
     confirmSave: "Overwrite slot {n}?", confirmLoad: "Load slot {n}? The sounds and sequences of every track are replaced (no undo).",
     confirmLoadFile: "Load \"{name}\"? It replaces the current sound (hold SAVE on the device to undo).",
     confirmLoadFileSteps: "Load \"{name}\"? It replaces the current sound and the sequence (64 steps).",
@@ -3625,7 +3727,7 @@ $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; 
 
 /* ---------------------------------------------------------------- tabs --- */
 /* one panel at a time; the last one is remembered (localStorage) and in the URL hash (#sound ...) */
-const TABS = ["sound", "fm6", "sequencer", "song", "tracks", "library", "samples", "projects", "screen", "settings"];
+const TABS = ["sound", "fm6", "sequencer", "tape", "tracks", "library", "samples", "projects", "screen", "settings"];
 const TAB_KEY = "felucca-editor-tab";
 const TRACK_TABS = new Set(["sound", "sequencer", "tracks"]);
 let tab = (() => {
@@ -3648,7 +3750,7 @@ function showTab(name) {
   if (name === "settings" && prev !== "settings" && dev && dev.dump && dev.info.menuCount) op(() => readMenu());   /* ((Skiff W3)) */
   if (name === "sound" && prev !== "sound" && kitShown()) op(() => readKit());
   if (name === "projects" && prev !== "projects" && dev && dev.dump && dev.info.skiff & 2) op(() => readProj());   /* ((Skiff W3)) */
-  if (name === "song" && prev !== "song" && dev && dev.dump && dev.info.skiff & 4) op(() => readSong());   /* ((Skiff W3) the kit as the device has it) */
+  if (name === "tape" && prev !== "tape" && dev && dev.dump && dev.info.tape) op(() => readTape(dev, false, true));   /* ((Skiff P11) the tape as the device has it) */
   if (name === "fm6" && prev !== "fm6" && dev && dev.dump && dev.info.fm6 && !fm6Listing) op(fm6Refresh);
 }
 function renderPanels() {
@@ -3670,7 +3772,7 @@ function renderPanels() {
     if (mine && "dev" in p.dataset && !dev) hint = want === "fm6" ? "fm6NeedDevice" : "needDevice";   /* (while connecting the status line says it) */
     if (show && want === "fm6" && fm6Off) { show = false; hint = "fm6NoFw"; }
     if (show && want === "samples" && !dev.smp) { show = false; hint = "smpNone"; }
-    if (show && want === "song" && !(dev.info.skiff & 4)) { show = false; hint = "sgNoFw"; }   /* ((Skiff W3)) */
+    if (show && want === "tape" && !dev.info.tape) { show = false; hint = "tapeNoFw"; }   /* ((Skiff P11)) */
     p.hidden = !show;
   }
   $("hint").hidden = !hint;
@@ -3713,12 +3815,108 @@ async function transportOp(n) {
 }
 $("tplay").addEventListener("click", (e) => transportOp(e.shiftKey ? 3 : 1));
 
-/* ((Skiff W3) the Song tab (INFO 57 bit 2): for now only the transport as the keep-alive while it shows (a later phase
-   replaces the tab) */
-async function readSong(d = dev, poll = false) {
-  if (!d || !d.info || !(d.info.skiff & 4)) return;
+/* ((Skiff P11) the Tape tab (INFO 5A 01): the unit's SEQ > TAPE. Four lanes of the notes REC wrote (TAPE_GET, a track's again
+   once its count changes), the target REC writes to, MUTE, CLEAR, MERGE into the target, the length in bars, OVERDUB or REPLACE,
+   the head (LOCATE, stopped), each instrument's sequencer RUN. Read when the tab opens, after each edit and as its keep-alive */
+async function tapeNotes(rqs, track, total) {
+  const notes = [];
+  while (notes.length < total) {
+    const page = parse[CMD.TAPE_GET](await rqs(req.tapeGet(track, notes.length)));
+    if (!page.notes.length) break;
+    notes.push(...page.notes);
+  }
+  return notes;
+}
+async function readTape(d = dev, poll = false, all = false) {
+  if (!d || !d.info || !d.info.tape) return;
   const o = poll ? { quiet: true, retries: 0 } : undefined, rqs = (r) => sessionRequest(d, r, o);
+  const state = parse[CMD.TAPE](await rqs(req.tape())), old = d.tape;
   if (poll && d.info.skiff & 1) { const x = parse[CMD.TRANSPORT](await rqs(req.transport())); if (d === dev) renderTransport(x); }
+  d.tape = state;
+  d.tapeNotes = d.tapeNotes || [[], [], [], []];
+  for (let track = 0; track < TAPE.TRACKS; track++)
+    if (all || !old || old.counts[track] !== state.counts[track]) d.tapeNotes[track] = await tapeNotes(rqs, track, state.counts[track]);
+  const sig = JSON.stringify({ ...state, head: 0 }) + (d.transport ? transportPlaying(d.transport) : "");
+  if (d !== dev) return;
+  if (all || sig !== d.tapeSig) { d.tapeSig = sig; renderTape(); }
+  else tapeHeadMove(state);                          /* (only the head moved: the inputs keep their focus) */
+}
+function tapeHeadMove(s) {
+  for (const r of $("tape-lanes").querySelectorAll(".tape-head")) r.setAttribute("x", s.head * 640 / (s.bars * TAPE.BAR));
+  $("tape-headtext").textContent = `${t("tapeHead")} ${tapeBarsText(s.head)}`;
+}
+function tapeOp(code, ...args) {
+  const d = dev;
+  if (!d || !d.info || !d.info.tape) return;
+  op(async () => {
+    const state = parse[CMD.TAPE](await sessionRequest(d, req.tape(code, ...args)));
+    if (state.rc) throw new Error(t("tapeRefused"));
+    await readTape(d, false, true);
+  });
+}
+const tapeBarsText = (ticks) => `${Math.floor(ticks / TAPE.BAR) + 1}.${Math.floor(ticks % TAPE.BAR / 480) + 1}`;
+function tapeLane(d, track, s) {
+  const len = s.bars * TAPE.BAR, width = 640, height = 56, ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("class", "tape-lane");
+  svg.setAttribute("role", "img");
+  const mark = (x, y, w, h, cls, color) => {
+    const r = document.createElementNS(ns, "rect");
+    r.setAttribute("x", x); r.setAttribute("y", y); r.setAttribute("width", w); r.setAttribute("height", h);
+    if (cls) r.setAttribute("class", cls);
+    if (color) r.setAttribute("fill", color);
+    svg.append(r);
+  };
+  let every = 1;
+  while (width * every / s.bars < 8) every *= 2;
+  for (let bar = 0; bar < s.bars; bar += every) mark(bar * width / s.bars, 0, 1, height, "tape-bar");
+  for (const n of d.tapeNotes[track]) {
+    if (n.at >= len) continue;
+    const x = n.at * width / len, w = Math.max(2, Math.min(n.len * width / len, width - x));
+    mark(x, 2 + (127 - n.note) * (height - 6) / 127, w, 3, "", `var(--t${n.inst % 6 + 1})`);
+  }
+  mark(s.head * width / len, 0, 1.5, height, "tape-head");
+  return svg;
+}
+function renderTape() {
+  const d = dev, s = d && d.tape;
+  if (!s || !d.tapeNotes) return;
+  const playing = !!d.transport && transportPlaying(d.transport), bar = $("tape-bar");
+  const length = el("input", { type: "number", min: 1, max: TAPE.BARS_MAX, value: s.bars, id: "tape-len" });
+  length.addEventListener("change", () => tapeOp(TAPE_OP.LENGTH, ...[Math.max(1, Math.min(TAPE.BARS_MAX, Math.round(+length.value || 1)))].map((v) => [v & 127, v >> 7]).flat()));
+  const where = el("input", { type: "number", min: 1, max: s.bars, value: Math.floor(s.head / TAPE.BAR) + 1, id: "tape-at", disabled: playing });
+  const go = el("button", { disabled: playing, onclick: () => {
+    const v = Math.max(1, Math.min(s.bars, Math.round(+where.value || 1))) - 1;
+    tapeOp(TAPE_OP.LOCATE, v & 127, v >> 7);
+  } }, t("tapeGo"));
+  const mode = el("select", { id: "tape-mode", onchange: () => tapeOp(TAPE_OP.OVERDUB, +mode.value) },
+    el("option", { value: 1, selected: s.overdub }, t("tapeOverdub")), el("option", { value: 0, selected: !s.overdub }, t("tapeReplace")));
+  bar.replaceChildren(el("label", {}, el("span", { text: t("tapeLength") + " " }), length), el("label", {}, el("span", { text: t("tapeMode") + " " }), mode),
+    el("label", {}, el("span", { text: t("tapeAt") + " " }), where), go, el("span", { class: "dim", id: "tape-headtext", text: `${t("tapeHead")} ${tapeBarsText(s.head)}` }));
+  const lanes = $("tape-lanes");
+  lanes.replaceChildren(...[0, 1, 2, 3].map((track) => {
+    const muted = !!(s.mutes >> track & 1), n = s.counts[track];
+    const merge = el("select", { "aria-label": t("tapeMergeFrom") }, el("option", { value: "" }, t("tapeMergeFrom")),
+      ...[0, 1, 2, 3].filter((from) => from !== track && s.counts[from]).map((from) => el("option", { value: from }, `${t("tapeTrack")} ${from + 1}`)));
+    merge.addEventListener("change", () => {
+      const from = merge.value === "" ? -1 : +merge.value;
+      if (from < 0) return;
+      if (confirm(t("tapeConfirmMerge").replace(/\{from\}/g, from + 1).replace("{to}", track + 1))) tapeOp(TAPE_OP.MERGE, track, from);
+      else merge.value = "";
+    });
+    return el("div", { class: "tape-row" + (s.target === track ? " on" : "") + (muted ? " muted" : "") },
+      el("div", { class: "tape-head-row bar" },
+        el("button", { "aria-pressed": String(s.target === track), onclick: () => tapeOp(TAPE_OP.TARGET, track) }, `${t("tapeTrack")} ${track + 1}${s.target === track ? " · REC" : ""}`),
+        el("span", { class: "dim", text: `${n} ${t("tapeNotes")}` }),
+        el("button", { "aria-pressed": String(muted), onclick: () => tapeOp(TAPE_OP.MUTE, track, muted ? 0 : 1) }, t("tapeMute")),
+        el("button", { disabled: !n, onclick: () => { if (confirm(t("tapeConfirmClear").replace("{n}", track + 1).replace("{count}", n))) tapeOp(TAPE_OP.CLEAR, track); } }, t("tapeClear")),
+        merge),
+      tapeLane(d, track, s));
+  }));
+  $("tape-run").replaceChildren(...Array.from({ length: d.info.ntrk || 6 }, (_, k) => el("button", { "aria-pressed": String(!!(s.run >> k & 1)),
+    onclick: () => tapeOp(TAPE_OP.RUN, k, s.run >> k & 1 ? 0 : 1) }, `T${k + 1}`)));
+  $("tape-count").textContent = `${s.counts.reduce((x, y) => x + y, 0)} / ${s.cap} ${t("tapeNotes")}`;
 }
 const transportPlaying = (s) => (s.pending ? s.pending !== 2 : s.playing || s.counting);
 $("tstop").addEventListener("click", () => transportOp(2));
@@ -5898,10 +6096,10 @@ async function keepAlive() {
       else if (d === dev) { d.watch = false; renderLive(); }
     } catch (e) { /* closed */ } finally { keepAlive.run = false; }
   } else if (gap > 850 && d.link.idle) {
-    if (tab === "song" && d.info.skiff & 4) {     /* ((Skiff W3) on the Song tab: it as the keep-alive) */
-      if (!keepAlive.song) {
-        keepAlive.song = true;
-        readSong(d, true).catch(() => {}).finally(() => { keepAlive.song = false; });
+    if (tab === "tape" && d.info.tape) {          /* ((Skiff P11) on the Tape tab: it as the keep-alive) */
+      if (!keepAlive.tape) {
+        keepAlive.tape = true;
+        readTape(d, true).catch(() => {}).finally(() => { keepAlive.tape = false; });
       }
     } else if (d.info.skiff & 1) {                 /* ((Skiff W3) the transport's state as the keep-alive) */
       d.link.request(req.transport(), { key: "ping", quiet: true, retries: 0 })

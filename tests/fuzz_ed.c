@@ -33,7 +33,7 @@ int main(int argc, char **argv)
             n = 0; f[n++] = 0xF0;
             if (mode == 1) { f[n++] = (uint8_t)(rnd() & 0x7F); f[n++] = (uint8_t)(rnd() & 0x7F); f[n++] = (uint8_t)(rnd() & 0x7F); }
             else { f[n++] = ED_HDR0; f[n++] = ED_HDR1; f[n++] = ED_HDR2; }
-            cmd = mode < 4u ? (rnd() & 0x7F) : 1u + rnd() % 70u;
+            cmd = mode < 4u ? (rnd() & 0x7F) : rnd() % 8u == 0 ? ED_TAPE + rnd() % 2u : 1u + rnd() % 70u;   /* ((P11) the tape: TAPE, TAPE_GET) */
             f[n++] = (uint8_t)cmd;
             L = rnd() % 4u == 0 ? rnd() % 1100u : rnd() % 40u;
             for (j = 0; j < L; j++) {

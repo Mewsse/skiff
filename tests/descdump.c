@@ -71,6 +71,8 @@ int main(void)
     int32_t v[16];
     printf("{\"P_COUNT\":%d,\"G_COUNT\":%d,\"NSTEP\":%d,\"P_E0\":%d,\"G_ENGSEL\":%d,\"P_SLCR\":%d,\"NTRK\":%d,\n",
            P_COUNT, G_COUNT, NSTEP, P_E0, G_ENGSEL, P_SLCR, NTRK);
+    printf("\"TAPE_N\":%u,\"TAPE_TRACKS\":%u,\"TAPE_BARS_MAX\":%u,\"TAPE_BAR\":%u,\n",
+           TAPE_N, TAPE_TRACKS, TAPE_BARS_MAX, (unsigned)TAPE_BAR);
     printf("\"TP\":");
     js_descs(TP, P_E0);                                  /* P_E0.. are the engine's */
     printf(",\n\"GP\":");

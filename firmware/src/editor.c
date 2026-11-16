@@ -388,6 +388,7 @@ static int ed_flash_stop(void)
 #include "editor_fm6.c"
 #include "editor_menu.c"
 #include "editor_project.c"                         /* (Skiff W3) TRANSPORT, PROJ_NAME */
+#include "editor_tape.c"                            /* (Skiff P11) TAPE, TAPE_GET */
 
 /* MOTION's reply: the records of track k as (step, id, v14), a lock's id without its MOTION_LOCK bit (a 7-bit SysEx
  * byte); kinds (1.1: the ops 5..7): then one byte per record, in the same order, 0 automation, 1 lock. The query and
@@ -425,6 +426,8 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
         return n == 3u;
     case ED_TRANSPORT: case ED_PROJ_NAME:
         return ed_project_args_ok(cmd, a, n);
+    case ED_TAPE: case ED_TAPE_GET:
+        return ed_tape_args_ok(cmd, a, n);
     case ED_KIT_GET:                                   /* (Skiff W3) a lane; a lane and its 15 values, each in range */
         return n == 1u && a[0] < 8u;
 #if FELUCCA_CAST
@@ -519,6 +522,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_project_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_tape_handle(cmd, a, na)) { ed_send(); return; }
     switch (cmd) {
     case ED_MOTION: {
         track_t *t = &trk[a[0]]; uint32_t rc = 0;
@@ -563,6 +567,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             0x59, 1, 1u | (BOARD_SMK37 ? 2u : 0u),     /* (Skiff Studio) the cast, cmd 83 (cast.c); bit 1: the SMK-37's
                                                          * layout (its copy: felucca_cast_smk.wasm) */
 #endif
+            0x5A, 1, 1,                                 /* (Skiff P11) the note tape: TAPE, TAPE_GET (editor_tape.c) */
         };
         ed_str("FELUCCA " FELUCCA_VERSION, 24);
         ed_b(NENGINES);

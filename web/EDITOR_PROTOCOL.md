@@ -975,6 +975,34 @@ time) and after each change. The CLEARs ask on the device's screen there; the ed
 with the song layer: firmware since answers none of them and clears `57 01` bits 3 and 4 and `58 01` bit 1. The `58
 01` tag stays (bit 0) and is the last of INFO's, after `49 01`: an editor before reads up to `49 01` and stops.
 
+## Tape (84, 85; Skiff P11)
+
+The note tape (SEQ > TAPE on the unit; REC writes to it): four tracks of notes, each a list sorted by tick (480 a
+quarter note, 1920 a bar, 4/4), merged without loss. It holds notes, not audio and not knob moves; 1,440 notes in all.
+INFO advertises `5A 01 01` (bit 0: TAPE, TAPE_GET), the last tag of INFO, after `59 01` when there is one. Firmware without it
+answers neither command. A request of the wrong length, an op it doesn't know or a value out of range gets no reply. A
+change acts as the device's own control does (tape.c, from its main loop; REC is untouched). Nothing is pushed: the
+editor asks again, with TRANSPORT about once a second while it shows the tape, and after each change.
+
+| cmd | Request args | Reply args |
+| --- | --- | --- |
+| 84 TAPE | none (the state), or op, its args: 1 MERGE into, from (tracks 0..3, not the same; the source's notes join the target's, the source is emptied); 2 CLEAR track; 3 MUTE track, 0/1; 4 LENGTH bars lo, hi (1..256 whole bars; notes past it stay, unplayed); 5 LOCATE bar lo, hi (the head to that bar line, 0-based, stopped only); 6 TARGET track (the one REC writes to); 7 RUN instrument 0..5, 0/1 (its step sequencer: stopped at once, playing at the next GRID line as PERFORM's key does; a second request before it lands takes it back); 8 OVERDUB 0/1 (0: REPLACE) | op, rc (0 done, 1 refused: MERGE from an empty track, LOCATE while playing or counting in or past the length), the state |
+| 85 TAPE_GET | track 0..3, first lo, hi (a note's index in the track, 0-based), count 1..32 | track, first lo, hi, the notes the track holds lo, hi, n, then n notes of 9 bytes |
+
+**The state:** bars lo, hi (the length), the head in ticks (3 bytes, 7 bits each, LSB first; it moves while the
+transport plays), the target track, overdub 0/1, the mutes (a bit a track), RUN (a bit an instrument, 0..5), the
+notes the tape can hold (lo, hi: 1440), then each track's notes (lo, hi). A MERGE of an empty source and a LOCATE
+that was refused reply with rc 1 and the state as it is.
+
+**A note** (TAPE_GET): `at` (ticks from the tape's start, 3 bytes), `len` (ticks, 3 bytes), note, instrument 0..5,
+velocity. The notes come in tick order; one the unit is recording as you ask (a key still held) is not among them,
+and one past the tape's length is (it stays stored and is not played). The index counts only the notes that are sent,
+so a page from `first` is stable while nothing is recorded. The reply holds at most 32 notes (297 bytes).
+
+TAPE's reply to an edit is the state after it. The device saves the tape with the project (its four slots and the music
+now), only while stopped; nothing here saves. The pattern pool's POOL (78), the lists' and PERFORM's commands (79, 80,
+82) are gone, see "Pool" below.
+
 ## THEME CUSTOM (39; Skiff #27)
 
 MENU › DISPLAY › THEME has the user's colours as its last value, CUSTOM, once the editor has stored a set (after

@@ -38,7 +38,7 @@ const E = vm.runInNewContext(proto + `
 ;({ frame, unframe, parse, req, Link, parseWav, resample, normalize, takeSample, kitZones, LANES, portPairs, autoTrim, zoomView, rootFromName, buildSlot, makeMockDevice, CMD, SMP,
    UP, bank, capturePatch, auditionPatch, lightRefuses, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, parseNotes, parseHits, hitsText, gridFromSteps, LANE_NOTE, LANE_OF, readDevicePreferences, devicePresetRows, TC_NAMES, engineOrder, ENGINE_ORDER, aliasOf, fmtValue, FM6, enumShown, F,
-   FM4, fromDigital, fromPerc, DRUM_KIT_E, DX_KIT_DEF, DX_KITS, DRUMX_PKIT,
+   FM4, fromDigital, fromPerc, DRUM_KIT_E, DX_KIT_DEF, DX_KITS, DRUMX_PKIT, TAPE_OP, TAPE,
    PAL_BUILTIN, PAL_ROLES, colorWarnings, customTokens, hex565, from565hex, mix565, luma565,
    MENU: typeof MENU === "undefined" ? null : MENU, MENU_TABS: typeof MENU_TABS === "undefined" ? null : MENU_TABS,
    readDeviceMenu: typeof readDeviceMenu === "undefined" ? null : readDeviceMenu })`,
@@ -474,7 +474,8 @@ function mockTables() {
   const norm = (d) => ({ label: d.label, fmt: d.fmt, min: d.min, max: d.max, def: d.def, names: d.names || null, unit: d.unit || "" });
   const diffs = [];
   const cmp = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) diffs.push(`${what}: mock ${JSON.stringify(a)} != firmware ${JSON.stringify(b)}`); };
-  for (const k of ["P_COUNT", "G_COUNT", "NSTEP", "P_E0", "G_ENGSEL", "P_SLCR", "NTRK"]) cmp(k, T[k], fw[k]);
+  for (const k of ["P_COUNT", "G_COUNT", "NSTEP", "P_E0", "G_ENGSEL", "P_SLCR", "NTRK", "TAPE_N"]) cmp(k, T[k], fw[k]);
+  cmp("tape tracks, bars, ticks a bar", { TRACKS: T.TAPE.TRACKS, BARS_MAX: T.TAPE.BARS_MAX, BAR: T.TAPE.BAR }, { TRACKS: fw.TAPE_TRACKS, BARS_MAX: fw.TAPE_BARS_MAX, BAR: fw.TAPE_BAR });
   cmp("TP length", T.TP.length, fw.TP.length);
   fw.TP.forEach((d, i) => cmp(`TP[${i}]`, T.TP[i] && norm(T.TP[i]), d));
   cmp("GP length", T.GP.length, fw.GP.length);
@@ -1073,6 +1074,63 @@ async function editorPool() {
     ok(E.parse[C.INFO](await x.rq(E.req.info())).skiff === 3, "pool gone: firmware without the later caps (57 01 03)");
     x.done();
   }
+}
+
+/* (Skiff P11) TAPE (84) and TAPE_GET (85), INFO 5A 01: the state, each op, the notes in pages; older firmware (no tag): none */
+async function editorTape() {
+  const C = E.CMD;
+  const { rq, done } = attachMock({});
+  const info = E.parse[C.INFO](await rq(E.req.info()));
+  ok(C.TAPE === 84 && C.TAPE_GET === 85 && info.tape === 1 && info.skiff === 99, "tape: INFO 5A 01 caps 1 after the others; commands 84, 85");
+  const ask = async (op = 0, ...args) => E.parse[C.TAPE](await rq(E.req.tape(op, ...args)));
+  let s = await ask();
+  ok(s.op === 0 && !s.rc && s.bars === 4 && s.head === 0 && s.target === 0 && s.overdub && s.mutes === 0 && s.run === 63 && s.cap === 1440 &&
+     s.counts.join() === "8,4,0,0", "tape: the state (4 bars, head 0, target 0, overdub, RUN of 6, capacity, a track's notes)");
+  const page = async (track, first, count) => E.parse[C.TAPE_GET](await rq(E.req.tapeGet(track, first, count)));
+  let g = await page(0, 0, 32);
+  ok(g.track === 0 && g.first === 0 && g.total === 8 && g.notes.length === 8 && g.notes[0].at === 0 && g.notes[0].note === 48 && g.notes[0].len === 240 &&
+     g.notes[7].at === 3360 && g.notes[7].inst === 1 && g.notes[7].vel === 100, "tape: TAPE_GET a track's notes in tick order");
+  g = await page(0, 6, 5);
+  ok(g.first === 6 && g.total === 8 && g.notes.length === 2 && g.notes[0].at === 2880, "tape: TAPE_GET a page from the 7th (the last two)");
+  g = await page(2, 0, 4);
+  ok(!g.total && !g.notes.length, "tape: an empty track's page");
+  s = await ask(E.TAPE_OP.MUTE, 2, 1);
+  ok(s.mutes === 4 && (await ask(E.TAPE_OP.MUTE, 2, 0)).mutes === 0, "tape: MUTE");
+  ok((await ask(E.TAPE_OP.TARGET, 3)).target === 3 && (await ask(E.TAPE_OP.OVERDUB, 0)).overdub === false && (await ask(E.TAPE_OP.OVERDUB, 1)).overdub,
+     "tape: TARGET, OVERDUB (REPLACE)");
+  ok((await ask(E.TAPE_OP.RUN, 4, 0)).run === 47 && (await ask(E.TAPE_OP.RUN, 4, 1)).run === 63, "tape: RUN of an instrument");
+  s = await ask(E.TAPE_OP.LENGTH, 0, 2);
+  ok(s.bars === 256 && (await ask(E.TAPE_OP.LENGTH, 8, 0)).bars === 8, "tape: LENGTH 1..256 (two 7-bit bytes)");
+  s = await ask(E.TAPE_OP.LOCATE, 3, 0);
+  ok(!s.rc && s.head === 3 * E.TAPE.BAR && (await ask(E.TAPE_OP.LOCATE, 9, 0)).rc === 1, "tape: LOCATE a bar, refused past the end");
+  await rq(E.req.transport(1));
+  ok((await ask(E.TAPE_OP.LOCATE, 1, 0)).rc === 1, "tape: LOCATE refused while playing");
+  await rq(E.req.transport(2));
+  ok((await ask(E.TAPE_OP.MERGE, 2, 3)).rc === 1 && (await ask(E.TAPE_OP.MERGE, 2, 1)).counts.join() === "8,0,4,0",
+     "tape: MERGE an empty source refused; track 2 into 3 in order, the source emptied");
+  ok((await ask(E.TAPE_OP.MERGE, 0, 2)).counts.join() === "12,0,0,0" && (await page(0, 0, 32)).notes.every((n, i, all) => !i || all[i - 1].at <= n.at),
+     "tape: a merge keeps the notes sorted");
+  s = await ask(E.TAPE_OP.CLEAR, 0);
+  ok(s.counts.join() === "0,0,0,0", "tape: CLEAR");
+  for (const bad of [[E.TAPE_OP.MERGE, 1, 1], [E.TAPE_OP.CLEAR, 4], [E.TAPE_OP.MUTE, 0, 2], [E.TAPE_OP.LENGTH, 0, 0], [E.TAPE_OP.LENGTH, 1, 2],
+                     [E.TAPE_OP.RUN, 6, 1], [E.TAPE_OP.OVERDUB, 2], [9], [E.TAPE_OP.CLEAR]]) {
+    let err = null;
+    try { E.req.tape(...bad); } catch (e) { err = e; }
+    ok(err, `tape: a bad request is not built (${bad.join(" ")})`);
+  }
+  for (const frame of [[C.TAPE, [9]], [C.TAPE, [2, 4]], [C.TAPE_GET, [0, 0, 0, 33]], [C.TAPE_GET, [4, 0, 0, 1]], [C.TAPE_GET, [0, 0, 0, 0]]]) {
+    const err = await rq(frame, { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
+    ok(/^timeout/.test(err || ""), `tape: the device answers no bad frame (${frame[0]}: ${frame[1].join(" ")})`);
+  }
+  ok(E.parse[C.TAPE]([1, 0, 4, 0, 0, 0, 0, 0, 1, 0, 63, 32, 11, 1, 0, 2, 0, 3, 0, 4, 0]).counts.join() === "1,2,3,4" &&
+     E.parse[C.TAPE]([0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).bars === 256, "tape: the reply read (counts, the bars' two bytes)");
+  done();
+  const o = attachMock({ noTape: true });
+  ok(!E.parse[C.INFO](await o.rq(E.req.info())).tape, "tape: firmware without it (no 5A tag): the editor shows none");
+  o.done();
+  const n = attachMock({ noProj: true });
+  ok(!E.parse[C.INFO](await n.rq(E.req.info())).tape, "tape: no 57 tag, no 5A tag");
+  n.done();
 }
 
 /* RATCH: a step's ratchet (1..4) after its chance, INFO 52 01 04; older firmware (no tag): none, replies read x1 */
@@ -2053,6 +2111,7 @@ await editorStepTies();
 await editorKit();
 await editorTransportNames();
 await editorPool();
+await editorTape();
 await editorLocks();
 await editorLight();
 await editorLive();
