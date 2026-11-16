@@ -944,6 +944,25 @@ static void draw_columns(void)
         sheet_of(cur_page()->graph)->cards();
         return;
     }
+    if (cur_page()->graph == GR_TAPE) {                  /* TRACK, LENGTH, ACTION (KNOB 3: what OCT+ does), MUTE */
+        uint32_t target = tp_target % TAPE_TRACKS, bars = tape_length() / TAPE_BAR, mute = tp_trk[target].mute;
+        fmt_int(val, (int32_t)target + 1);
+        draw_column(0, "TRACK", val, "/4", VR_LIVE, (int32_t)target * 1000 / 3, ICON_AUTO);
+        fmt_int(val, (int32_t)bars);
+        draw_column(1, "LENGTH", val, bars == 1u ? "BAR" : "BARS", VR_LIVE, (int32_t)bars * 1000 / (int32_t)TAPE_BARS_MAX,
+                    ICON_AUTO);
+        if (!ui.tsrc) {
+            str_cpy(val, "CLEAR", sizeof val);
+        } else if (tape_src_ok()) {
+            str_cpy(val, "FROM 1", sizeof val);
+            val[5] = (char)('0' + ui.tsrc);
+        } else {
+            str_cpy(val, "--", sizeof val);
+        }
+        draw_column(2, "ACTION", val, "", tape_act_ready() ? VR_THEME : VR_DIM, -1, ICON_AUTO);
+        draw_column(3, "MUTE", mute ? "ON" : "OFF", "", mute ? VR_ACCENT : VR_LIVE, -1, ICON_AUTO);
+        return;
+    }
     if (cur_page()->graph == GR_BANK) {                  /* (Skiff phase 5) the pool view: PATTERN, its LEN, how many
                                                          * use it, ((2.0) ACTION; was CLEAR) (bank.c pool_refs) */
         uint32_t id = ui.bslot % NPAT, len = pool_len(id), n = len ? pool_refs(id) : 0u;
@@ -1361,6 +1380,19 @@ static void confirm_text(char *a, char *b)
             str_cpy(b, "no entry uses it", 40);
         break;
     }
+    case CF_TAPE_CLEAR:                                 /* SEQ > TAPE: "CLEAR TAPE TRACK 2?", its notes */
+        str_cpy(a, "CLEAR TAPE TRACK 1?", 24);
+        a[17] = (char)('1' + (k & 3u));
+        fmt_int(b, (int32_t)tp_trk[k & 3u].count);
+        str_cpy(b + str_len(b), tp_trk[k & 3u].count == 1u ? " note" : " notes", 40 - str_len(b));
+        break;
+    case CF_TAPE_MERGE:                                 /* "MERGE TRACK 3 INTO 1?", the notes that move */
+        str_cpy(a, "MERGE TRACK 1 INTO 1?", 24);
+        a[12] = (char)('1' + ((k >> 4) & 3u));
+        a[19] = (char)('1' + (k & 3u));
+        fmt_int(b, (int32_t)tp_trk[(k >> 4) & 3u].count);
+        str_cpy(b + str_len(b), tp_trk[(k >> 4) & 3u].count == 1u ? " note moves" : " notes move", 40 - str_len(b));
+        break;
     case CF_CLEAR_UNUSED:                               /* ((2.0, #46) "CLEAR 3 UNUSED?" */
         str_cpy(a, "CLEAR ", 24);
         fmt_int(a + 6, (int32_t)k);

@@ -5932,8 +5932,10 @@ static int test_seq_tools(void)
     press(B_SEQ); frames(320);
     ok &= cur_page()->graph == GR_EVENTS && str_eq(cur_page()->title, "AUTOMATION");
     press(B_SEQ); frames(320);
+    ok &= cur_page()->graph == GR_TAPE && str_eq(cur_page()->title, "TAPE");
+    press(B_SEQ); frames(320);
     ok &= cur_page()->graph == GR_ROLL;
-    bad += check("  a tap on NOTES: the next SEQ page ((2.0) FEEL PATTERN AUTOMATION NOTES; the hint first)", ok);
+    bad += check("  a tap on NOTES: the next SEQ page (FEEL PATTERN AUTOMATION TAPE NOTES; the hint first)", ok);
 
     /* the whole sequence: REVERSE (a note's ties stay after it), SHIFT, CLEAR, locks, LEN, silent keys, undo */
     ui_power_on();
@@ -9009,6 +9011,137 @@ static uint32_t keep_new(uint32_t k)
     (void)keep_all();
     return trk_pid[k] ? trk_pid[k] - 1u : NPAT;
 }
+/* SEQ > TAPE (the note tape's page): its place in SEQ, KNOB 1 the target, 2 the length, 3 CLEAR / merge source, 4 MUTE,
+ * OCT+ behind a dialog, the header's bar.beat */
+static void tape_put(uint32_t track, uint32_t at, uint32_t note, uint32_t part)
+{
+    (void)tape_insert(track, at | note << 20 | part << 27, 240u | 100u << 20, TAPE_ANY_PASS);
+}
+static int test_tape(void)
+{
+    int bad = 0, ok;
+    ui_power_on();
+    tape_clear(0);
+    tape_clear(1);
+    tape_clear(2);
+    tape_clear(3);
+    tp_target = 0;
+    ui.tsrc = 0;
+    song.playing = 0;
+    go_page(GR_TAPE);
+    frame();
+    ok = !ui.home && cur_page()->fam == FAM_SEQ && act_col() == 4u && !act_ready() && tp_target == 0u;
+    bad += check("TAPE (SEQ): the page; OCT+ always picked, not ready on an empty tape", ok);
+    turn(EN_K1, 1);
+    turn(EN_K1, 5);
+    ok = tp_target == 3u;
+    turn(EN_K1, -9);
+    ok &= tp_target == 0u;
+    bad += check("  KNOB 1: the target track, 1..4", ok);
+    tape_set_len(4);
+    turn(EN_K2, 1);
+    ok = tape_length() == 5u * TAPE_BAR;
+    turn(EN_K2, -2);
+    ok &= tape_length() == 3u * TAPE_BAR;
+    turn(EN_K2, -90);
+    ok &= tape_length() == TAPE_BAR;
+    turn(EN_K2, 120);
+    ok &= tape_length() > 4u * TAPE_BAR && tape_length() <= TAPE_BARS_MAX * TAPE_BAR;
+    tape_set_len(4);
+    bad += check("  KNOB 2: the length in bars (1 .. 256)", ok);
+    turn(EN_K4, 1);
+    ok = tp_trk[0].mute == 1u && !tp_trk[1].mute;
+    turn(EN_K1, 1);
+    ok &= !tp_trk[1].mute;
+    turn(EN_K1, -1);
+    turn(EN_K4, -1);
+    ok &= tp_trk[0].mute == 0u;
+    bad += check("  KNOB 4: the target's MUTE on, off", ok);
+    tape_put(0, 100, 60, 0);
+    tape_put(0, 500, 64, 1);
+    tape_put(1, 900, 67, 2);
+    frame();
+    ok = act_ready() && !ui.tsrc;
+    press(B_OCTUP);
+    ok &= ui.confirm == CF_TAPE_CLEAR && ui.confirm_trk == 0u && tp_trk[0].count == 2u;
+    press(B_OCTDN);
+    ok &= !ui.confirm && tp_trk[0].count == 2u && !ui.home;
+    bad += check("  CLEAR (KNOB 3 first): OCT+ asks, OCT- cancels, the notes stay", ok);
+    press(B_OCTUP);
+    press(B_OCTUP);
+    ok = !ui.confirm && tp_trk[0].count == 0u && tp_trk[0].first == TAPE_END && tp_trk[1].count == 1u &&
+         msg_is("TAPE 1 CLEARED");
+    bad += check("  CLEAR: OCT+ then OCT+ clears the target only (TAPE 1 CLEARED)", ok);
+    press(B_OCTUP);
+    bad += check("  CLEAR on an empty track: NOTHING TO CLEAR, no dialog", !ui.confirm && msg_is("NOTHING TO CLEAR"));
+    turn(EN_K3, 1);
+    ok = ui.tsrc == 2u;
+    turn(EN_K3, -1);
+    turn(EN_K3, 1);
+    ok &= ui.tsrc == 2u;
+    turn(EN_K3, 1);
+    turn(EN_K3, 1);
+    turn(EN_K3, 1);
+    turn(EN_K3, 1);
+    ok &= ui.tsrc == 4u;
+    turn(EN_K3, -1);
+    turn(EN_K3, -1);
+    turn(EN_K3, -1);
+    turn(EN_K3, -1);
+    ok &= ui.tsrc == 0u;
+    bad += check("  KNOB 3: CLEAR, then tracks 2..4 (never the target itself), at most 4", ok);
+    tape_put(0, 700, 72, 3);
+    turn(EN_K3, 1);
+    frame();
+    ok = ui.tsrc == 2u && act_ready();
+    press(B_OCTUP);
+    ok &= ui.confirm == CF_TAPE_MERGE && ui.confirm_trk == (0u | 1u << 4);
+    press(B_OCTUP);
+    ok &= !ui.confirm && tp_trk[0].count == 2u && tp_trk[1].count == 0u && msg_is("TAPE 2 INTO 1");
+    bad += check("  MERGE: track 2 into 1 after its dialog; 2 is left empty", ok);
+    {
+        uint16_t node = tp_trk[0].first;
+        uint32_t prev = 0, sorted = 1, seen = 0;
+        for (; node != TAPE_END; node = tp_nx[node], seen++) {
+            sorted &= TP_AT(tp_w0[node]) >= prev;
+            prev = TP_AT(tp_w0[node]);
+        }
+        bad += check("  .. the merged list stays in time order, every note there", sorted && seen == 2u);
+    }
+    press(B_OCTUP);
+    bad += check("  MERGE from an empty track: no dialog, said", !ui.confirm && msg_is("THAT TRACK IS EMPTY"));
+    turn(EN_K1, 1);
+    ok = ui.tsrc == 0u || (uint32_t)ui.tsrc - 1u != tp_target;
+    turn(EN_K1, -1);
+    bad += check("  the target turned onto the merge source: back to CLEAR", ok);
+    tape_clear(0);
+    tape_put(0, 0, 60, 0);
+    ui.tsrc = 1;
+    frame();
+    press(B_OCTUP);
+    bad += check("  merging a track into itself is refused (PICK ANOTHER TRACK)", !ui.confirm && msg_is("PICK ANOTHER TRACK"));
+    tape_clear(0);
+    ui.tsrc = 0;
+    tape_head = 2u * TAPE_BAR + 3u * TAPE_TPQ;
+    ui.force = 1;
+    frame();
+    {
+        char pos[12];
+        uint32_t k;
+        ok = 0;
+        song.sel = 0;
+        for (k = 0; k < 2u; k++) {
+            fmt_int(pos, (int32_t)(tape_head / TAPE_BAR) + 1);
+            ok = str_eq(pos, "3") && (tape_head % TAPE_BAR / TAPE_TPQ) == 3u;
+        }
+        bad += check("  the header: the tape's bar.beat (3.4 at the head)", ok && ui.head_sig != 0u);
+    }
+    tape_head = 0;
+    press(B_OCTDN);
+    bad += check("  OCT- goes HOME", ui.home != 0u);
+    return bad;
+}
+
 /* Skiff phase 5: SAVE > PATTERNS, the pool view (bank.c pool_refs, pool_clear; the pool itself: tests/bank_test.c):
  * KNOB 1 the pattern (01 .. 64), its LEN and how many use it on the cards; CLEAR always picked: OCT+ clears a pattern
  * nothing uses (no track on it, no saved project naming it), after its dialog; on a used one it says how many use it;
@@ -9597,6 +9730,7 @@ int main(void)
     bad += test_style();
     bad += test_blocks();
     bad += test_undo_levels();
+    bad += test_tape();                               /* SEQ > TAPE */
     bad += test_pool();                               /* Skiff phase 5: SAVE > PATTERNS, the pool view */
     bad += test_perform();                            /* Skiff: the PERFORM layer (live switching) */
     bad += test_duck_page();                          /* Skiff: FX > DUCK */

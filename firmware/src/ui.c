@@ -281,6 +281,7 @@ static struct {
     uint8_t uslot;               /* SAVE > USER: the selected user preset slot */
     uint8_t bslot;               /* (Skiff phase 5) SAVE > PATTERNS: the pattern picked, 01 .. 64 (the pool view) */
     uint8_t bact;                /* ((2.0, #46) .. KNOB 4's ACTION: BA_*) */
+    uint8_t tsrc;                /* SEQ > TAPE's KNOB 3: 0 CLEAR the target track, 1..4 merge that track into it */
     uint8_t ev_row;              /* SEQ > AUTO LIST (ui_input.c ev_*): the row selected (the track's count: + ADD LOCK) */
     uint8_t ev_step, ev_id;      /* .. + ADD LOCK: the step and the parameter a lock is added on */
     uint8_t uboot;               /* main.c: seconds left before UPDATE MODE (OCT- + OCT+ held), 0 = none */
@@ -315,10 +316,11 @@ static struct {
 enum { CF_NONE, CF_CLEAR_SEQ, CF_OVR_PROJ, CF_OVR_USER,
        CF_INIT_SOUND, CF_CLEAR_MOTION, CF_ERASE_USER,
        CF_ERASE_BANK, CF_LOAD_PROJ, CF_RESET_SET, CF_ERASE_PROJ, CF_NEW_PROJ,
-       CF_EMPTY_BANK, CF_CLEAR_UNUSED, CF_CLEAR_TRKS, CF_COUNT };   /* ui.confirm: TOOLS' clears; SAVE
+       CF_EMPTY_BANK, CF_CLEAR_UNUSED, CF_CLEAR_TRKS, CF_TAPE_CLEAR, CF_TAPE_MERGE, CF_COUNT };   /* ui.confirm: TOOLS' clears; SAVE
                                    * over a used slot; USER ERASE; (Skiff phase 5) SAVE > PATTERNS: CLEAR an unused pattern;
                                    * (Skiff U1) PROJECT LOAD over the session; ((2.0, #46) SAVE > PATTERNS: EMPTY a
-                                   * pattern, CLEAR every unused one; (2.5, 3A) SAVE > PROJECT's KNOB 3: CLEAR TRACKS) */
+                                   * pattern, CLEAR every unused one; (2.5, 3A) SAVE > PROJECT's KNOB 3: CLEAR TRACKS; SEQ > TAPE: CLEAR a
+                                   * track, MERGE one into another: confirm_trk = track | source << 4) */
 /* (2.0, #46) SAVE > PATTERNS' KNOB 4, ACTION: CLEAR (an unused pattern, as before), EMPTY (its steps and automation, the
  * pattern and its entries kept), CLEAR UNUSED (every pattern nothing uses) */
 enum { BA_CLEAR, BA_EMPTY, BA_UNUSED, BA_N };
@@ -2266,6 +2268,8 @@ static uint32_t act_cols(void)                   /* the columns that are actions
         return 14u;                              /* ((Skiff U2) NAME, was EDIT; (1.2.1) DELETE or NAME) LOAD (or NEW) SAVE */
     if (pg->graph == GR_BANK)
         return 8u;                               /* ((Skiff phase 5) the pool view: CLEAR, always picked: act_col) */
+    if (pg->graph == GR_TAPE)
+        return 8u;                               /* TAPE: the footer's hint; no knob is an action (ui_input.c tape_knob) */
     if (pg->graph == GR_SLICES)
         return slice_page_ok() ? 12u : 0u;       /* SPLIT JOIN (a SLICE track only) */
     if (pg->scope == SC_GLOBAL)
@@ -2279,7 +2283,7 @@ static uint32_t act_cols(void)                   /* the columns that are actions
 static uint32_t act_col(void)
 {
     if (!ui.home && cur_page()->graph == GR_EVENTS && !ui.ev_top) return 5u;
-    if (!ui.home && cur_page()->graph == GR_BANK) return 4u;
+    if (!ui.home && (cur_page()->graph == GR_BANK || cur_page()->graph == GR_TAPE)) return 4u;
     return ui.act;
 }
 
@@ -2297,6 +2301,14 @@ static const char *bank_act_name(void)
         str_cpy(b + str_len(b), " UNUSED", sizeof b - str_len(b));
     }
     return b;
+}
+/* SEQ > TAPE: OCT+ does KNOB 3's pick (ui.tsrc): CLEAR the target track, or merge a track into it. Ready when there is
+ * something to move; a merge source never is the target itself */
+static const char *tape_act_name(void) { return ui.tsrc ? "MERGE" : "CLEAR"; }
+static int tape_src_ok(void) { return ui.tsrc && (uint32_t)ui.tsrc - 1u != tp_target % TAPE_TRACKS; }
+static int tape_act_ready(void)
+{
+    return ui.tsrc ? tape_src_ok() && tp_trk[ui.tsrc - 1u].count != 0u : tp_trk[tp_target % TAPE_TRACKS].count != 0u;
 }
 /* (2.5, the user's 3A) SAVE > PROJECT's KNOB 3, what OCT+ does: LOAD (a used slot), NEW, CLEAR TRACKS; an empty
  * slot's list starts at NEW. ui.act2: the step past the first while KNOB 3's picked (ui_input.c) */
@@ -2321,6 +2333,8 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
     }
     if (cur_page()->graph == GR_BANK)
         return bank_act_name();
+    if (cur_page()->graph == GR_TAPE)
+        return tape_act_name();
     if (cur_page()->graph == GR_SLICES)
         return c == 3u ? "JOIN" : "SPLIT";
     return id == G_LOAD ? "LOAD" : "SAVE";
@@ -2338,6 +2352,8 @@ static int act_ready(void)
         return c == 3u ? !song.playing : up_used(ui.uslot) && (c == 1u || !song.playing);
     if (cur_page()->graph == GR_SLOTS && c == 1u)       /* ((Skiff U2) NAME; (1.2.1) DELETE) */
         return project_used((uint32_t)song.g[G_SLOT] - 1u) && !transport_busy();
+    if (cur_page()->graph == GR_TAPE)
+        return tape_act_ready();
     if (cur_page()->graph == GR_BANK)                   /* (Skiff phase 5) a pattern nothing uses, stopped */
         return !transport_busy() && (ui.bact == BA_UNUSED ? pool_unused() != 0u : pool_used(ui.bslot % NPAT) &&
                                      (ui.bact == BA_EMPTY || !pool_refs(ui.bslot % NPAT)));   /* ((2.0) ACTION) */

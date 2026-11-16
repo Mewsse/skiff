@@ -60,7 +60,11 @@ static void draw_head_blocks(void)
     uint16_t ic;
     int mark = head_mark(mk);                        /* ((Skiff phase 5) the pattern edited) */
     project_cur_name(pn);                            /* (HOME's title) */
-    if (song.playing) {                              /* (in time: REV, PING, RAND count up too) */
+    if (!ui.home && cur_page()->graph == GR_TAPE) {   /* the tape's: where its head is (stopped too: PLAY starts there) */
+        fmt_int(pos, (int32_t)(tape_head / TAPE_BAR) + 1);
+        str_cpy(pos + str_len(pos), ".", 2);
+        fmt_int(pos + str_len(pos), (int32_t)(tape_head % TAPE_BAR / TAPE_TPQ) + 1);
+    } else if (song.playing) {                       /* (in time: REV, PING, RAND count up too) */
         fmt_int(pos, (int32_t)(seq_at(t) / 16u) + 1);
         str_cpy(pos + str_len(pos), ".", 2);
         fmt_int(pos + str_len(pos), (int32_t)(seq_at(t) % 16u / 4u) + 1);
@@ -330,7 +334,7 @@ static void draw_confirm_blocks(void)
         [CF_CLEAR_MOTION] = "CLEAR", [CF_ERASE_USER] = "ERASE",
         [CF_ERASE_BANK] = "CLEAR", [CF_LOAD_PROJ] = "LOAD", [CF_RESET_SET] = "RESET",
         [CF_ERASE_PROJ] = "DELETE", [CF_NEW_PROJ] = "NEW", [CF_EMPTY_BANK] = "EMPTY", [CF_CLEAR_UNUSED] = "CLEAR",
-        [CF_CLEAR_TRKS] = "CLEAR"};                   /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
+        [CF_CLEAR_TRKS] = "CLEAR", [CF_TAPE_CLEAR] = "CLEAR", [CF_TAPE_MERGE] = "MERGE"};                   /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
     static const uint8_t KEY[2] = {KC_OCTDN, KC_OCTUP};
     char a[24], b[40];
     const aafont_t *tf = &AF_M;

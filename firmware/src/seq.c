@@ -1295,9 +1295,9 @@ static __attribute__((noinline)) void tape_clock(void)
     now = tape_beat * TAPE_TPQ + frac;
     tape_head += now - song_ticks;
     song_ticks = now;
-    while (tape_head >= len) {
-        tape_head -= len;
-        tape_pass++;
+    if (tape_head >= len) {                        /* (a divide, not a loop: tests/target_budget.py counts none for tape_clock) */
+        tape_pass += (uint16_t)(tape_head / len);
+        tape_head %= len;
     }
 }
 

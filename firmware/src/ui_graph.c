@@ -1685,6 +1685,9 @@ static int analog_page(const page_t *pg, const track_t *t)
     return pg->scope == SC_ENGINE && ENGINES[t->eng_req % NENGINES] == &ENG_ANALOG;
 }
 
+#define TPG_X0 26
+#define TPG_W 196
+static uint32_t tape_head_px(void) { return tape_head % tape_length() * TPG_W / tape_length(); }
 static uint32_t graph_signature(void)
 {
     const page_t *pg = cur_page();
@@ -1765,6 +1768,13 @@ static uint32_t graph_signature(void)
         for (i = 0; i < t->nheld && i < 16u; i++)
             h = (h ^ t->held[i]) * 16777619u;
         h ^= (t->nheld + 1u) * 104729u;
+    }
+    if (pg->graph == GR_TAPE) {                      /* the head's pixel, the notes (a track's count; a take going in), mutes */
+        h = (h ^ (tape_head_px() + 1u) * 40503u ^ tape_length() * 2654435761u ^ ui.tsrc * 7919u ^ tp_target * 131u) * 16777619u;
+        for (i = 0; i < TAPE_TRACKS; i++)
+            h = (h ^ ((uint32_t)tp_trk[i].count << 4 | tp_trk[i].mute << 2 | (tp_trk[i].first == TAPE_END))) * 16777619u;
+        if (song.playing && song.rec)
+            h ^= (ui.frame / 4u + 1u) * 2246822519u;
     }
     if (pg->graph == GR_BANK)                        /* (Skiff phase 5) the pool, the one picked (and the tracks: below) */
         h = (h ^ (bank_gen() * 2654435761u + ui.bslot * 40503u + ui.bact * 7919u)) * 16777619u;   /* ((2.0) ACTION) */
@@ -1986,6 +1996,54 @@ static void graph_bank(void)
         GFX_HOOK_ALIGN(x, y, x + PV_W, y + th, AL_HV, "pool tile number centred");
         cv_text_in(x, y + CAP_IN(S, th), PV_W, &AF_S, s, pick ? T_INK : n || ui.bact == BA_UNUSED ? T_TEXT : T_MID, fill);
     }
+}
+/* SEQ > TAPE: the four lanes over the tape's length, a note a mark in its instrument's colour (a muted track's: DIM),
+ * higher up for a higher pitch, as long as it sounds; the target's lane on RAISE, a line a bar (every 2nd, 4th ... when
+ * they would crowd), the head a TEXT line across them; under them, the notes the tape holds and its length. The lists
+ * are walked as the main loop may (tape.c): bounded by TAPE_N */
+static void graph_tape(void)
+{
+    uint32_t len = tape_length(), bars = len / TAPE_BAR, lane, node, guard, notes = 0, every = 1;
+    int32_t top = 6, lane_h = ((int32_t)cv_h - top - 20) / 4, i;
+    char b[16];
+    if (lane_h < 6)
+        lane_h = 6;
+    while (TPG_W * every / bars < 6u)
+        every *= 2u;
+    for (lane = 0; lane < TAPE_TRACKS; lane++) {
+        int32_t y = top + (int32_t)lane * lane_h, base = lane_h - 4;
+        uint16_t ink = tp_trk[lane].mute ? T_DIM : T_TEXT;
+        if (lane == tp_target % TAPE_TRACKS)
+            cv_rect(TPG_X0 - 2, y, TPG_W + 4, lane_h - 2, T_RAISE);
+        b[0] = (char)('1' + lane);
+        b[1] = 0;
+        GFX_HOOK_ALIGN(0, y, 0, y + lane_h - 2, AL_V, "tape lane number centred up/down");
+        cv_text_on(12, y + CAP_IN(S, lane_h - 2), &AF_S, b, lane == tp_target % TAPE_TRACKS ? ink : tp_trk[lane].mute ? T_DIM : T_MID,
+                   T_SURF);
+        notes += tp_trk[lane].count;
+        for (i = 1; i * (int32_t)every < (int32_t)bars; i++)
+            cv_rect(TPG_X0 + i * (int32_t)every * TPG_W / (int32_t)bars, y, 1, lane_h - 2, T_LINE);
+        node = tp_trk[lane].first;
+        for (guard = 0; node < TAPE_N && guard < TAPE_N; guard++, node = tp_nx[node]) {
+            uint32_t w0 = tp_w0[node], at = TP_AT(w0), span = tp_w1[node] & TP_HELD ? 1u : TP_LEN(tp_w1[node]);
+            int32_t x, w;
+            if ((w0 & TP_GHOST) || at >= len)
+                continue;
+            x = TPG_X0 + (int32_t)(at * TPG_W / len);
+            w = (int32_t)(span * TPG_W / len);
+            w = w < 2 ? 2 : w > TPG_X0 + TPG_W - x ? TPG_X0 + TPG_W - x : w;
+            cv_rect(x, y + base - (int32_t)TP_NOTE(w0) * base / 127, w, 2, tp_trk[lane].mute ? T_DIM : T_TRK(TP_INST(w0)));
+        }
+    }
+    cv_rect(TPG_X0 + (int32_t)tape_head_px(), top - 2, 1, 4 * lane_h + 2, T_TEXT);
+    fmt_int(b, (int32_t)notes);
+    str_cpy(b + str_len(b), notes == 1u ? " NOTE" : " NOTES", sizeof b - str_len(b));
+    GFX_HOOK_ALIGN(0, top + 4 * lane_h, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
+    cv_text_on(12, top + 4 * lane_h + CAP_IN(S, (int32_t)cv_h - top - 4 * lane_h), &AF_S, b, T_MID, T_SURF);
+    fmt_int(b, (int32_t)bars);
+    str_cpy(b + str_len(b), bars == 1u ? " BAR" : " BARS", sizeof b - str_len(b));
+    GFX_HOOK_ALIGN(0, top + 4 * lane_h, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
+    cv_text_r(224, top + 4 * lane_h + CAP_IN(S, (int32_t)cv_h - top - 4 * lane_h), &AF_S, b, T_MID, T_SURF);
 }
 /* SEQ > AUTOMATION (ui_events.c; 1.1.5's AUTO LIST): the track's records around the one selected, a row each: the kind
  * (LOCK in the accent, AUTO), the step, the parameter's name, the value at the right; the last row + ADD LOCK. (Skiff
@@ -2730,6 +2788,10 @@ static void draw_graph(void)
         case GR_BANK:                                /* (Skiff phase 5) the pool view, from the panel's top (the mockup's) */
             cv_oy = 0;
             graph_bank();
+            break;
+        case GR_TAPE:
+            cv_oy = 0;
+            graph_tape();
             break;
         case GR_DXSND:                               /* (Skiff phase 7, 8; FM6 LAB) a sheet, from the panel's top */
         case GR_FMOP:

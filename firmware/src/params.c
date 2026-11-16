@@ -525,7 +525,8 @@ enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_
        GR_SMIX,                    /* (Skiff, #21) EDIT > SAMPLES: a user sample's LEVEL, REVERB, DELAY (ui.c smx_zone) */
        GR_LMIX,                    /* (2.0, #36, the user's pick 1A) EDIT > LANE MIX: a kit's lane levels and pans */
        GR_FOLLOW,                  /* (2.1) SCL > FOLLOW: the chord it follows, as CHORD's (ui_graph.c graph_follow) */
-       GR_FXDLY, GR_FXREV };       /* (2.5) FX > DELAY, REVERB: the track's send beside the bus's own (page_desc) */
+       GR_FXDLY, GR_FXREV,         /* (2.5) FX > DELAY, REVERB: the track's send beside the bus's own (page_desc) */
+       GR_TAPE };                  /* SEQ > TAPE: the note tape's four lanes (ui_graph.c graph_tape), its own knobs (ui_input.c) */
 
 typedef struct {
     const char *title;
@@ -597,6 +598,7 @@ static const page_t PAGES[] = {
     {"FEEL", FAM_SEQ, SC_STEP, GR_FEEL, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P_SDIV, P_SSWING, P_SGATE}},   /* (2.0) PRESETS: the track's DIR */
     {"AUTOMATION", FAM_SEQ, SC_TRACK, GR_EVENTS, {0xFF, 0xFF, 0xFF, 0xFF}},   /* 1.1.5's AUTO LIST: the locks and events */
+    {"TAPE", FAM_SEQ, SC_GLOBAL, GR_TAPE, {0xFF, 0xFF, 0xFF, 0xFF}},   /* TRACK LENGTH ACTION MUTE; OCT+ clears or merges */
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
 /* (2.0, D 1A) the MOD page: the route KNOB 1 picks (0..10): the seven fixed routings (LFO DEST's and ENV DEST's of

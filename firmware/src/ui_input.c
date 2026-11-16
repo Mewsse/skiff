@@ -98,7 +98,7 @@ static int mom_turn(uint32_t k, int32_t s)
     } else {
         if (act_cols() || lock_held() || !(pg->scope == SC_TRACK || pg->scope == SC_ENGINE || pg->scope == SC_GLOBAL) ||
             pg->graph == GR_EVENTS || pg->graph == GR_BROWSE || pg->graph == GR_USER ||
-            pg->graph == GR_BANK || sheet_of(pg->graph) || (pg->graph == GR_SLICES && k < 2u) ||
+            pg->graph == GR_BANK || pg->graph == GR_TAPE || sheet_of(pg->graph) || (pg->graph == GR_SLICES && k < 2u) ||
             (pg->graph == GR_MOD && k == 0u))
             return 0;
         d = page_desc(pg, k, &vp);
@@ -469,6 +469,7 @@ static void ui_leds(void)
  * ui.enc_t[role]: bits 0..23 the ms of its last read, bit 24 its direction (+1), 25..31 its ms per detent (127 slow) */
 #define ACC_GAP 40u
 #define ACC_RATE 50u
+static void tape_knob(uint32_t slot, int32_t steps);
 static int32_t accel(uint32_t role, int32_t s, int32_t range)
 {
     uint32_t now = fm1_ms & 0xFFFFFFu, st = ui.enc_t[role], up = s > 0, pi = st >> 25, a, i, m = 1;
@@ -1414,6 +1415,10 @@ static void edit_param(uint32_t slot, int32_t steps)
         tracks_edit(slot, steps);
         return;
     }
+    if (pg->graph == GR_TAPE) {
+        tape_knob(slot, steps);
+        return;
+    }
     if (pg->graph == GR_BROWSE) {                         /* KNOB 1: one preset, KNOB 2: the next / previous engine */
         if (slot == 0u) {
             preset_step(steps);
@@ -1491,6 +1496,33 @@ static void edit_param(uint32_t slot, int32_t steps)
     }
 }
 
+/* SEQ > TAPE: KNOB 1 the target track (the one REC writes to, KNOB 3's CLEAR and merge go to, KNOB 4 mutes), 2 the tape's
+ * length in bars, 3 what OCT+ does: CLEAR, or merge track 1..4 into the target (never itself), 4 the target's MUTE.
+ * Every edit of the lists is tape.c's, from here, the main loop */
+static void tape_knob(uint32_t slot, int32_t steps)
+{
+    uint32_t target = tp_target % TAPE_TRACKS, bars = tape_length() / TAPE_BAR;
+    if (slot == 0u) {
+        target = (uint32_t)clamp((int32_t)target + steps, 0, (int32_t)TAPE_TRACKS - 1);
+        tp_target = (uint8_t)target;
+        if (ui.tsrc && (uint32_t)ui.tsrc - 1u == target)
+            ui.tsrc = 0;
+    } else if (slot == 1u) {
+        uint32_t next = (uint32_t)clamp((int32_t)bars + accel(EN_K1 + slot, steps, (int32_t)TAPE_BARS_MAX - 1), 1,
+                                        (int32_t)TAPE_BARS_MAX);
+        if (next != bars)
+            tape_set_len(next);
+    } else if (slot == 2u) {
+        int32_t dir = steps > 0 ? 1 : -1, pick = (int32_t)ui.tsrc + dir;
+        if (pick > 0 && (uint32_t)pick - 1u == target)
+            pick += dir;
+        if (pick >= 0 && pick <= (int32_t)TAPE_TRACKS)
+            ui.tsrc = (uint8_t)pick;
+    } else {
+        tp_trk[target].mute = steps > 0;
+    }
+}
+
 /* (2.5, the user's 3A) SAVE > PROJECT's CLEAR TRACKS: stopped, every track's pattern kept in the pool first (as NEW does: SAVE > PATTERNS and the song's
  * entries still have them), then each track's steps and automation emptied, on no pattern (a new one when kept);
  * the sounds stay */
@@ -1537,6 +1569,20 @@ static void act_do(void)
         return;
     }
 #endif
+    if (cur_page()->graph == GR_TAPE) {                   /* CLEAR the target track, or a track merged into it: asks first */
+        uint32_t target = tp_target % TAPE_TRACKS;
+        if (!ui.tsrc && !tp_trk[target].count)
+            ui_message("NOTHING TO CLEAR");
+        else if (!ui.tsrc)
+            confirm_open(CF_TAPE_CLEAR, target);
+        else if (!tape_src_ok())
+            ui_message("PICK ANOTHER TRACK");
+        else if (!tp_trk[ui.tsrc - 1u].count)
+            ui_message("THAT TRACK IS EMPTY");
+        else
+            confirm_open(CF_TAPE_MERGE, target | ((uint32_t)ui.tsrc - 1u) << 4);
+        return;
+    }
     if (cur_page()->graph == GR_BANK) {                   /* (Skiff phase 5) the pool view: CLEAR the pattern picked,
                                                          * after its dialog, when nothing uses it (bank.c pool_clear);
                                                          * ((2.0, #46) KNOB 4's ACTION: or EMPTY it, or CLEAR UNUSED) */
@@ -2262,6 +2308,17 @@ static void ui_input(void)
                 pool_empty(ui.confirm_trk);
             } else if (kind == CF_CLEAR_UNUSED) {
                 pool_clear_unused();
+            } else if (kind == CF_TAPE_CLEAR) {
+                char b[24] = "TAPE 1 CLEARED";
+                tape_clear(ui.confirm_trk & 3u);
+                b[5] = (char)('1' + (ui.confirm_trk & 3u));
+                ui_message(b);
+            } else if (kind == CF_TAPE_MERGE) {
+                char b[24] = "TAPE 1 INTO 1";
+                tape_merge(ui.confirm_trk & 3u, (ui.confirm_trk >> 4) & 3u);
+                b[5] = (char)('1' + ((ui.confirm_trk >> 4) & 3u));
+                b[12] = (char)('1' + (ui.confirm_trk & 3u));
+                ui_message(b);
             } else if (kind == CF_CLEAR_MOTION) {
                 track_t *t = &trk[ui.confirm_trk % NTRK];
                 undo_label = "AUTOMATION"; load_begin(t, UNDO_PAT); motion_clear(t); load_end(t); ui_message("AUTOMATION CLEARED");
@@ -2465,7 +2522,7 @@ static void ui_input(void)
             continue;
         }
         if (ui.home || pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
-            ((pg->graph == GR_USER || pg->graph == GR_BANK || pg->graph == GR_MOD) && k == 0u)
+            pg->graph == GR_TAPE || ((pg->graph == GR_USER || pg->graph == GR_BANK || pg->graph == GR_MOD) && k == 0u)
             || (pg->graph == GR_SLICES && k < 2u) || sheet_of(pg->graph)) {   /* (not an empty
                                                          * column; (Skiff) a sheet's four) */
             ui.hot_col = (uint8_t)k;
