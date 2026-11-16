@@ -240,7 +240,7 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 | cmd (v7) | Request args | Reply args |
 | --- | --- | --- |
 | 64 MOTION | track (query); track, 1, on 0/1 (play on / off); track, 2 (clear); track, 3, step, id, v14 (set an event); track, 4, step, id (delete an event or a lock); (1.1) track, 5, step, id, v14 (set a lock); track, 6, step (clear the step's locks; step 127: every step's); track, 7 (query with the kinds) | track, rc, on (0/1), count (this track's events and locks), max (64), then count × (step, id, v14); after ops 5..7 (1.1) then count × kind (0 automation, 1 lock), in the same order |
-| 65 BACKUP_LIST | — | 1, rc, count (11), then per object: id, size u32, crc u32 |
+| 65 BACKUP_LIST | — | 1, rc, count (33: `ED_BK_N`), then per object: id, size u32, crc u32 |
 | 66 BACKUP_GET | id, offset u32, count lo, count hi (≤ 256) | id, rc, offset u32, count lo, count hi, pack7 data |
 | 67 BACKUP_PUT | op 0 begin: 0, id, size u32, crc u32; op 1 data: 1, id, offset u32, pack7 data; op 2 commit: 2, id; op 3 abort: 3, id | op, id, rc |
 

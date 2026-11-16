@@ -1297,7 +1297,7 @@ static void confirm_text(char *a, char *b)
         break;
     case CF_CLEAR_TRKS:                                 /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
         str_cpy(a, "CLEAR ALL TRACKS?", 24);
-        str_cpy(b, "the patterns stay in PATTERNS", 40);
+        str_cpy(b, "steps, automation go; tape stays", 40);
         break;
     case CF_RESET_SET:                                  /* ((Skiff U4, A3) MENU > SYSTEM > RESET SETTINGS) */
         str_cpy(a, "RESET SETTINGS?", 24);
