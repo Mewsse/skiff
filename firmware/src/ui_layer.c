@@ -1421,7 +1421,7 @@ static void shift_map(smap_t *m)
          * which the screen's fonts don't have */
         static const char *const FM[] = {"PRESETS", "SELECT", "GLO + SELECT", "ALGO", "EDIT + REC", "HOLD SAVE",
                                          "+ SAVE", "+ REC", "KEYS + REC", "+ PRESETS", "+ EDIT"};
-        static const char *const SMK[] = {"K4", "K2", "GLOBE + K2", "K3", "PARA + SEQ REC", "HOLD BT",
+        static const char *const SMK[] = {"K4", "K2", "GLOBE + K2", "K3", "PARA+SEQ REC", "HOLD BT",
                                           "+ BT", "+ SEQ REC", "KEYS + SEQ REC", "+ K4", "+ PARA"};
         uint32_t j;
         for (i = 0; i < 12u; i++)

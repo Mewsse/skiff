@@ -212,7 +212,7 @@ b55eb7bb5fc0ea08 CRYPT_roll_ties
 316c56c71559fd3b CRYPT_scl
 c915575e30cced42 CRYPT_shift_env
 cbc0f552f3610adc CRYPT_shift_home
-c9d4380df3816b2c CRYPT_shift_step
+55a5742a1fcfc955 CRYPT_shift_step
 b6ba44eb5bcd5dc8 CRYPT_six_edit
 25b1d76ffe9aa4c4 CRYPT_six_edit_said
 b80089f5f62f8c41 CRYPT_six_fx
@@ -456,7 +456,7 @@ fb4970b2251f1714 CUSTOM_CRYPT_roll_playing
 ca3a2d772c7f2692 CUSTOM_CRYPT_scl
 d897073b58244846 CUSTOM_CRYPT_shift_env
 90b80ffe32bd06f9 CUSTOM_CRYPT_shift_home
-5454f87566ec2600 CUSTOM_CRYPT_shift_step
+b6c51599f36e653b CUSTOM_CRYPT_shift_step
 f39891592b654834 CUSTOM_CRYPT_six_edit
 695b2ee760930628 CUSTOM_CRYPT_six_edit_said
 73083c675de79454 CUSTOM_CRYPT_six_fx
@@ -700,7 +700,7 @@ d3bb17497791d367 CUSTOM_NEON_roll_wide
 b6c0e0d99deb51bb CUSTOM_NEON_scl
 372c375db0fd52e5 CUSTOM_NEON_shift_env
 505d49ff8d66ab87 CUSTOM_NEON_shift_home
-0bb5205256f7c170 CUSTOM_NEON_shift_step
+326dc6788db405fa CUSTOM_NEON_shift_step
 1de6763ad860efe1 CUSTOM_NEON_six_edit
 2854918bdb470df5 CUSTOM_NEON_six_edit_said
 f2959401c9d65ffd CUSTOM_NEON_six_fx
@@ -944,7 +944,7 @@ dabb4bf21f131bc2 CUSTOM_QUARK_roll_playing
 e25cb74de78386d4 CUSTOM_QUARK_scl
 c52a9dfec17bd6c5 CUSTOM_QUARK_shift_env
 2ae652d21482b8fc CUSTOM_QUARK_shift_home
-25db1ac47386d577 CUSTOM_QUARK_shift_step
+224f7192a092fc29 CUSTOM_QUARK_shift_step
 b19d819a4fce0c09 CUSTOM_QUARK_six_edit
 f7f3d9b67d25c853 CUSTOM_QUARK_six_edit_said
 1b6d5736dd21ca7d CUSTOM_QUARK_six_fx
@@ -1188,7 +1188,7 @@ da3f51292bbb2b6d CUSTOM_SKIFF_samples
 07f18d7eee3a914a CUSTOM_SKIFF_scl
 19a173048267c301 CUSTOM_SKIFF_shift_env
 4320217e0bf85b32 CUSTOM_SKIFF_shift_home
-7fbba17bd8482507 CUSTOM_SKIFF_shift_step
+f77bd147e45d4179 CUSTOM_SKIFF_shift_step
 0cb656b2b03fcf09 CUSTOM_SKIFF_six_edit
 87c02b7f8fa7c0b7 CUSTOM_SKIFF_six_edit_said
 7360b918fd6f0c1b CUSTOM_SKIFF_six_fx
@@ -1432,7 +1432,7 @@ f716258f504d3251 HI-CON_samples
 96a7203d8706e62b HI-CON_scl
 a9472a596246d6a2 HI-CON_shift_env
 e79c7c174164dd4e HI-CON_shift_home
-c60455d49b52cf4b HI-CON_shift_step
+ea8f3715f10f29b5 HI-CON_shift_step
 c1f26ec66bb6ec7f HI-CON_six_edit
 06191e662096e03e HI-CON_six_edit_said
 0561eb1ff1004ee5 HI-CON_six_fx
@@ -1676,7 +1676,7 @@ b0ca063078ad9eb6 LARGE_CRYPT_samples
 97525c8eb2fdaa0d LARGE_CRYPT_scl
 62a5692688ef87be LARGE_CRYPT_shift_env
 22a5357448fc4e6a LARGE_CRYPT_shift_home
-037b41f5491a3436 LARGE_CRYPT_shift_step
+bfe1978f19799127 LARGE_CRYPT_shift_step
 5dc77129ed89b4db LARGE_CRYPT_six_edit
 865189d44b376bc7 LARGE_CRYPT_six_edit_said
 b9430484288188f9 LARGE_CRYPT_six_fx
@@ -1920,7 +1920,7 @@ fc6ffa7173c499c7 LARGE_NEON_samples
 633953bbf5883f0f LARGE_NEON_scl
 c8ab5f02f07c217c LARGE_NEON_shift_env
 1e23e362a17314e7 LARGE_NEON_shift_home
-87d7055c7f41bb87 LARGE_NEON_shift_step
+826167bf655cb431 LARGE_NEON_shift_step
 66a3a0645070775e LARGE_NEON_six_edit
 265d022e20b0d392 LARGE_NEON_six_edit_said
 9021d542d0500a63 LARGE_NEON_six_fx
@@ -2164,7 +2164,7 @@ bf2ab5fe8e561d9d LARGE_QUARK_samples
 efd41706b09a3c7f LARGE_QUARK_scl
 4dfaed47a15f1aab LARGE_QUARK_shift_env
 9601105c006fc52c LARGE_QUARK_shift_home
-3f0ffbc0f4eed4e9 LARGE_QUARK_shift_step
+042d44cb18131ed7 LARGE_QUARK_shift_step
 6617dc1a6b298524 LARGE_QUARK_six_edit
 8d5e90669c3fc603 LARGE_QUARK_six_edit_said
 122a64d17ccaf211 LARGE_QUARK_six_fx
@@ -2408,7 +2408,7 @@ c266029fed96e9b1 LARGE_SKIFF_roll_wide
 7781727e0f9c424a LARGE_SKIFF_scl
 8ca75b4f62f48b07 LARGE_SKIFF_shift_env
 6d0c0a3a15080ba9 LARGE_SKIFF_shift_home
-adcad1f063244a04 LARGE_SKIFF_shift_step
+c8774417ed0062d4 LARGE_SKIFF_shift_step
 b17188a85bb69571 LARGE_SKIFF_six_edit
 6fa7fbfb56a74890 LARGE_SKIFF_six_edit_said
 39d876b8d7101060 LARGE_SKIFF_six_fx
@@ -2654,7 +2654,7 @@ f09e935c8650832f NEON_roll_low
 1164e1ed3c0a395a NEON_scl
 2e42a5ee64c87108 NEON_shift_env
 746debd2de4788d2 NEON_shift_home
-adca02e3bd59837f NEON_shift_step
+533ec536a4499729 NEON_shift_step
 2e8bb9726cafca47 NEON_six_edit
 24c0ff78aa4f20d3 NEON_six_edit_said
 03c8554957266cff NEON_six_fx
@@ -2898,7 +2898,7 @@ dc4c5f20cfc5b54b PAPER_roll_wide
 12e042f62d24f55e PAPER_scl
 e1092b18d47afa55 PAPER_shift_env
 6c4bded1ac132932 PAPER_shift_home
-abc4c48563a22961 PAPER_shift_step
+26d41efe0b0eaedb PAPER_shift_step
 9398d2560194e1d1 PAPER_six_edit
 2a4ae2cf977464e6 PAPER_six_edit_said
 f033481decb43bda PAPER_six_fx
@@ -3150,7 +3150,7 @@ e262ae3579d94034 QUARK_samples
 6dbbe37749aae813 QUARK_scl
 e9d63e9e0fe9c474 QUARK_shift_env
 94605a83404302e3 QUARK_shift_home
-d658492ac7cd56b1 QUARK_shift_step
+8159445560939d1f QUARK_shift_step
 7ee9d8bdde3c6db8 QUARK_six_edit
 fcc11747dcfbdc27 QUARK_six_edit_said
 850b64f980ca82e4 QUARK_six_fx
@@ -3396,7 +3396,7 @@ db6f99e225d746ea SKIFF_samples
 24c2fbf8254df780 SKIFF_scl
 62a252b19bd364ea SKIFF_shift_env
 6f5bb4fc2bb69f92 SKIFF_shift_home
-8c979b20596acdcc SKIFF_shift_step
+939e0b969c89c4dc SKIFF_shift_step
 480f03aff8e6dce5 SKIFF_six_edit
 bf792663bbe1a298 SKIFF_six_edit_said
 fe3755b8370d6328 SKIFF_six_fx
