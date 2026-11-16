@@ -380,6 +380,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "SLICER: no clicks, timing, sync with the sequencer, STUT, cost, demos" "$OUT/slicer_test" build/slicer_demo
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/swing_test" tests/swing_test.c -lm
     run "SWING: track + global at most 100, sequencer and SLICER step lengths, the SWG display" "$OUT/swing_test"
+    $CC -O2 -w -o "$OUT/tape_test" tests/tape_test.c
+    run "TAPE core: lists vs a reference (ISR inside the walks), cursor rules, merge, dedupe, replace, codec" "$OUT/tape_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/drift_test" tests/drift_test.c -lm
     run "(2.5, #107) DRIFT: the quarter x24, every DIV a share; 5 DIVs and the click together for 30 min" "$OUT/drift_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/grid_test" tests/grid_test.c -lm
@@ -494,6 +496,8 @@ else
         $SCC -o "$A/$t" tests/$t.c -lm
         run "ASan/UBSan: $t" "$A/$t"
     done
+    $SCC -o "$A/tape_test" tests/tape_test.c
+    run "ASan/UBSan: tape_test" "$A/tape_test" 20000 3
     $SCC -o "$A/fuzz_ed" tests/fuzz_ed.c -lm
     run "ASan/UBSan fuzz: editor SysEx and raw USB-MIDI packets (20000, seed 7)" "$A/fuzz_ed" 20000 7
     $SCC -o "$A/fuzz_proj" tests/fuzz_proj.c -lm

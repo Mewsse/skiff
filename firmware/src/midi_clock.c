@@ -23,6 +23,7 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
         midi_clock.interval_ms = 0;
         midi_clock.start_ms = ms;
         midi_clock.spp = 0;
+        tape_voices_end(-1);
         tape_head = 0;
         seq_start();
     } else if (status == 0xFBu) {                  /* Continue: preserve the step ((2.2) or go where SPP said) */

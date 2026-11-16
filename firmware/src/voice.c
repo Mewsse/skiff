@@ -536,6 +536,9 @@ static void strum_drop(const track_t *t, uint32_t note)   /* let go before its t
             j++;
 }
 
+static uint8_t tape_playing;                       /* 1 while the tape sounds a note: the record hooks skip it (tape.c) */
+#define TAPE_HAVE_PLAYING
+
 /* a note starts on track t: (2.5) a strum's kept for its time, else trk_note_go now */
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 {

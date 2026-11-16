@@ -49,8 +49,11 @@ static struct { volatile uint32_t notes, buttons, virt, vtap, vack; } fm1_in;   
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../firmware/src/usb.c"
 #include "../firmware/src/midi_uart.c"                /* TRS MIDI IN: its parser (um_byte) feeds midi_in_q */
-static void fm1_irq_off(void);                     /* (launch.c arm_poll: each test its own) */
+static void fm1_irq_off(void);                     /* (each test its own) */
 static void fm1_irq_on(void);
+#define TAPE_IRQ_HOOKS                              /* (tape.c's irq-off sections: the host has one thread) */
+static uint32_t tp_irq_save(void) { return 0; }
+static void tp_irq_restore(uint32_t flags) { (void)flags; }
 #include "../firmware/src/grid.c"
 #include "../firmware/src/seq.c"
 #define inst (trk[0])                   /* the single-part renders below: part 1 */
@@ -84,6 +87,7 @@ static uint64_t now_ns(void)
 static void host_tracks_init(void)                /* as felucca_init: defaults, empty patterns */
 {
     uint32_t i, k;
+    tape_init();
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
     for (k = 0; k < NTRK; k++) {

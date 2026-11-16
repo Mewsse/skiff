@@ -1431,6 +1431,7 @@ static void mo_rt(uint32_t b, uint32_t due) { (void)mo_put(0x0Fu | b << 8, due);
  * 4 bars until the tape's own (tape.c) sets it */
 
 static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; }
+#include "tape.c"                                  /* the note tape: its lists, and what the ISR plays of them */
 static __attribute__((noinline)) uint32_t tape_beat_frac(void)
 {
     uint32_t quarter = beat_samples(), frac = (beat_pos * TAPE_TPQ + quarter / 2u) / quarter;   /* (rounded: a pulse is 20) */
@@ -1445,12 +1446,14 @@ static __attribute__((noinline)) void tape_locate(uint32_t tick)
     tape_beat = tick / TAPE_TPQ;
     tape_frac = (uint16_t)(tick % TAPE_TPQ);
     tape_pass = 0;
+    tape_seek(tape_head);
 }
 /* Continue: where the beat is now, nothing counted for the time stopped (beat_pos runs free then) */
 static void tape_resume(void)
 {
     tape_frac = (uint16_t)tape_beat_frac();
     song_ticks = tape_beat * TAPE_TPQ + tape_frac;
+    tape_seek(tape_head);
 }
 /* the head on, once a block while playing (events_block). Not inlined: the audio ISR's loop keeps its shape */
 static __attribute__((noinline)) void tape_clock(void)
@@ -1573,6 +1576,7 @@ static void seq_stop(void)
 {
     uint32_t i;
     song.playing = 0;
+    tape_voices_end(-1);
     live_drop((1u << NTRK) - 1u);
     free_stop();                                   /* ((2.5) take.c: what is played from now: a free take */
     thr_out = 0;                                   /* (Skiff) the throws back at once (throw.c) */
@@ -1606,6 +1610,7 @@ static void seq_stop(void)
 static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t pos)
 {
     uint32_t i, k, rem, adv, len, per, u;
+    tape_voices_end(-1);
     seq_start();
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
@@ -1647,6 +1652,7 @@ static __attribute__((noinline)) void seq_locate(uint32_t pos)
  * their shape (tests/target_budget.py reads their loops from the layout) */
 static __attribute__((noinline)) void seq_go(void)
 {
+    tape_voices_end(-1);
     tape_head -= tape_head % TAPE_BAR;
     seq_start();
 }
@@ -2264,8 +2270,8 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         transport_req = 0;
     } else if (transport_req == 3u) {                 /* GLO + PLAY: from the top without stopping (INT clock) */
         if (!clock_mode) {
-            tape_head = 0;
             seq_stop();
+            tape_head = 0;
             seq_start();
         }
         transport_req = 0;
@@ -2295,9 +2301,13 @@ static __attribute__((noinline)) void events_block(uint32_t n)
     }
     if (live_n)
         live_drop(pr);
+    if (pr == (1u << NTRK) - 1u)
+        tape_voices_end(-1);
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         if ((pr >> i) & 1u) {
+            if (pr != (1u << NTRK) - 1u)
+                tape_voices_end((int)i);
             midi_forget_track(i);
             trk_all_off(t);
             t->nheld = 0;
@@ -2350,6 +2360,7 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         seq_audition();                               /* ((1.3) STEP PREVIEW: a step sounds, stopped) */
     for (i = 0, ord = fol_order(); i < NTRK; i++, ord >>= 4)   /* ((2.1) the tracks followed first: follow.c) */
         seq_tick(&trk[ord & 15u], seq_n);
+    tape_block();
     if (cin_flush)
         cin_record();
     if (song.playing)

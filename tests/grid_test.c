@@ -435,6 +435,81 @@ static int test_live(void)
     return bad;
 }
 
+/* the tape's playback (tape.c through events_block): one bar long, notes at 100 (60, 100 ticks) and 1000 (62, 100) */
+static uint32_t rise[2][8], rises[2];
+static void tape_fresh(uint32_t bpm)
+{
+    fresh(bpm);
+    tape_init();
+    tape_set_len(1);
+    tape_insert(0, 100u | 60u << 20, 100u | 100u << 20, TAPE_ANY_PASS);
+    tape_insert(0, 1000u | 62u << 20, 100u | 100u << 20, TAPE_ANY_PASS);
+    rises[0] = rises[1] = 0;
+}
+static void tape_run(uint32_t until_ticks, uint32_t bpm_at, uint32_t bpm_to)
+{
+    static const uint8_t NOTES[2] = {60, 62};
+    uint32_t blk, k, was[2] = {0, 0};
+    for (blk = 0; blk < 40000u && song_ticks < until_ticks; blk++) {
+        events_block(CTL);
+        if (bpm_to && song_ticks >= bpm_at)
+            song.g[G_BPM] = (int16_t)bpm_to;
+        for (k = 0; k < 2u; k++) {
+            uint32_t now = sounds(&trk[0], NOTES[k]);
+            if (now && !was[k] && rises[k] < 8u)
+                rise[k][rises[k]++] = tape_head + tape_pass * tape_length();
+            was[k] = now;
+        }
+    }
+}
+static int near_at(uint32_t got, uint32_t want, uint32_t slack) { return got + slack >= want && got <= want + slack; }
+static int test_tape_play(void)
+{
+    uint32_t bad = 0, pass, ok;
+    tape_fresh(120);
+    transport_req = 1;
+    tape_run(4u * TAPE_BAR, 0, 0);
+    ok = rises[0] == 4u && rises[1] == 4u;
+    for (pass = 0; ok && pass < 4u; pass++)
+        ok = near_at(rise[0][pass], pass * TAPE_BAR + 100u, 4u) && near_at(rise[1][pass], pass * TAPE_BAR + 1000u, 4u);
+    bad += check("TAPE: a 1 bar tape plays its notes at their ticks across 3 loop wraps", ok);
+    transport_req = 2;
+    events_block(CTL);
+    tape_fresh(120);
+    transport_req = 1;
+    tape_run(3u * TAPE_BAR / 2u, 2000u, 240);
+    tape_run(5u * TAPE_BAR, 0, 0);
+    ok = rises[0] >= 4u && rises[1] >= 4u && near_at(rise[0][2], 2u * TAPE_BAR + 100u, 8u) && near_at(rise[1][2], 2u * TAPE_BAR + 1000u, 8u);
+    bad += check("TAPE: a tempo change in the middle of a pass: the next passes land on their ticks (the head counts beats)", ok);
+    transport_req = 2;
+    events_block(CTL);
+    tape_fresh(120);
+    transport_req = 1;
+    tape_run(2u * TAPE_TPQ, 0, 0);
+    seq_locate(24);
+    rises[0] = rises[1] = 0;
+    tape_run(song_ticks + 1500u, 0, 0);
+    ok = rises[1] >= 1u && near_at(rise[1][0] % TAPE_BAR, 1000u, 8u) && (!rises[0] || rise[0][0] >= TAPE_BAR);
+    bad += check("TAPE: SPP to the 24th 16th (head 960): the note at 1000 sounds, the one at 100 waits for the next pass", ok);
+    transport_req = 2;
+    events_block(CTL);
+    return bad;
+}
+static int test_tape_stop(void)
+{
+    uint32_t bad = 0, blk;
+    tape_fresh(120);
+    tape_insert(1, 500u | 64u << 20, 1500u | 100u << 20, TAPE_ANY_PASS);
+    transport_req = 1;
+    for (blk = 0; blk < 4000u && !sounds(&trk[0], 64); blk++)
+        events_block(CTL);
+    bad += check("TAPE: a long note sounds", sounds(&trk[0], 64));
+    transport_req = 2;
+    events_block(CTL);
+    bad += check("TAPE: STOP ends every tape voice", !sounds(&trk[0], 64));
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
@@ -450,6 +525,8 @@ int main(void)
     fails += test_arm_grid();
     fails += test_arp();
     fails += test_live();
+    fails += test_tape_play();
+    fails += test_tape_stop();
     printf(fails ? "grid: %u FAILED\n" : "grid: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

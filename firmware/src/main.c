@@ -171,6 +171,7 @@ static void fm1_main(void)
     uint8_t c1_told = 0;                                /* (Skiff 1.3) CORE 2 FAILED said (and the setting cleared) */
 #endif
     persist_boot();
+    tape_init();                                        /* (the note tape: its free list, before the audio runs) */
     bank_boot();                                        /* (Skiff) the pattern bank (bank.c) */
 #if FELUCCA_OTA
     if (flash_ok)
@@ -377,6 +378,7 @@ static void fm1_main(void)
         smk_ui_frame();                               /* the SMK-37's own controls (smk_ui.c) */
 #endif
         settings_poll();                              /* queued settings save: only while stopped */
+        tape_poll();                                  /* the notes the ISR recorded, into the tape */
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
         felucca_dbg.stage = 2;
         ui_leds();

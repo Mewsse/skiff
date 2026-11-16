@@ -38,9 +38,11 @@ static void trk_note_off(track_t *t, uint32_t note)
 
 static int irq_off, irq_bad;
 static uint32_t max_stores, sections;
-static uint32_t irq_save(void);
-static void irq_restore(uint32_t flags);
+static uint32_t tp_irq_save(void);
+static void tp_irq_restore(uint32_t flags);
 static void host_yield(void);
+#define TAPE_N 1440u
+#define TAPE_IRQ_HOOKS
 #define TAPE_YIELD() host_yield()
 #include "../firmware/src/tape.c"
 
@@ -69,7 +71,7 @@ static void snap_trk(uint16_t *out, uint32_t k)
     out[3] = tp_trk[k].mute;
     out[4] = tp_trk[k].kill;
 }
-static uint32_t irq_save(void)
+static uint32_t tp_irq_save(void)
 {
     uint32_t k;
     if (irq_off)
@@ -85,7 +87,7 @@ static uint32_t irq_save(void)
     sn_seek = tp_seek_req;
     return 0;
 }
-static void irq_restore(uint32_t flags)
+static void tp_irq_restore(uint32_t flags)
 {
     uint32_t k, j, stores = 0;
     uint16_t now[5];

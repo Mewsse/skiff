@@ -3,10 +3,12 @@
  * One structural writer, the main loop: it walks with irqs on and commits each change in a short irq-off section of
  * a few stores. The audio ISR (tape_block) only moves each track's cur, sets the ghost bit, plays its voices and
  * fills the record queue. A node that leaves a list waits in limbo until the ISR finished a block since.
- * Needs, declared before it: grid.c TAPE_TPQ / TAPE_BAR; seq.c tape_len (0: 4 bars), tape_length(), tape_head,
- * tape_pass, song_ticks; voice.c trk[], trk_note_on / trk_note_off; core.h song.playing / song.rec, NTRK;
- * fm1_flash.h irq_save / irq_restore. */
-#define TAPE_N 1440u
+ * Included by seq.c after tape_length(). Needs, declared before it: grid.c TAPE_TPQ / TAPE_BAR; seq.c tape_len
+ * (0: 4 bars), tape_length(), tape_head, tape_pass, song_ticks; voice.c trk[], trk_note_on / trk_note_off,
+ * tape_playing; core.h song.playing / song.rec, NTRK; fm1_irq.h fm1_irq_off / fm1_irq_on. */
+#ifndef TAPE_N
+#define TAPE_N 680u                    /* nodes, all tracks: 10 B each. 1,440 once bank.c's pool is gone (pool headroom) */
+#endif
 #define TAPE_TRACKS 4u
 #define TAPE_END 0xFFFFu
 #define TAPE_VOICES 48u
@@ -18,14 +20,17 @@
 #define TAPE_PAGE 256u
 #define TAPE_ANY_PASS (1u << 16)         /* tape_insert's pass for an edit, not a recording: plays this pass when ahead */
 
-/* ---- not there yet: P7 binds these (voice.c owns tape_playing; tests define TAPE_YIELD to run tape_block) ---- */
+/* tests define TAPE_YIELD (it runs tape_block inside every main-side walk) and TAPE_IRQ_HOOKS (their own irq-off) */
 #ifndef TAPE_HAVE_PLAYING
-static uint8_t tape_playing;           /* 1 while the tape sounds a note: the record hooks skip it */
+static uint8_t tape_playing;           /* 1 while the tape sounds a note: the record hooks skip it (voice.c owns it) */
 #endif
 #ifndef TAPE_YIELD
 #define TAPE_YIELD() do { } while (0)
 #endif
-/* ---- */
+#ifndef TAPE_IRQ_HOOKS
+static uint32_t tp_irq_save(void) { fm1_irq_off(); return 0; }
+static void tp_irq_restore(uint32_t flags) { (void)flags; fm1_irq_on(); }
+#endif
 
 #define TP_AT(w) ((w) & 0xFFFFFu)
 #define TP_NOTE(w) (((w) >> 20) & 0x7Fu)
@@ -97,6 +102,8 @@ static void tape_init(void)
     tp_overdub = 1;
     tp_rq_w = tp_rq_r = 0;
     tp_rq_lost = 0;
+    tp_epoch = 0;
+    tp_limbo_epoch = 0;
     tp_seen_ticks = song_ticks;
     tp_seen_pass = tape_pass;
 }
@@ -241,7 +248,7 @@ static void tape_rq_push(uint32_t kind, uint32_t at, uint32_t note, uint32_t ins
 
 /* ISR: STOP, a locate, SPP, panic, MIDI IN overflow end the tape's voices (inst < 0: all) and close the open notes.
  * Call it before the head moves: the close is stamped with the head now */
-static void tape_voices_end(int inst)
+static __attribute__((noinline)) void tape_voices_end(int inst)
 {
     uint32_t k;
     for (k = 0; k < TAPE_VOICES; k++)
@@ -304,12 +311,12 @@ static uint16_t tape_insert(uint32_t track, uint32_t w0, uint32_t w1, uint32_t p
         next = tp_nx[next];
         TAPE_YIELD();
     }
-    irq = irq_save();
+    irq = tp_irq_save();
     tp_nx[node] = next;
     *tp_link(track, prev) = node;
     if (next == tt->cur && pass != tape_pass && at >= tape_head)
         tt->cur = node;
-    irq_restore(irq);
+    tp_irq_restore(irq);
     tt->count++;
     return node;
 }
@@ -317,11 +324,11 @@ static uint16_t tape_insert(uint32_t track, uint32_t w0, uint32_t w1, uint32_t p
 static void tp_unlink(uint32_t track, uint16_t prev, uint16_t node)
 {
     tape_track_t *tt = &tp_trk[track];
-    uint32_t irq = irq_save();
+    uint32_t irq = tp_irq_save();
     *tp_link(track, prev) = tp_nx[node];
     if (tt->cur == node)
         tt->cur = tp_nx[node];
-    irq_restore(irq);
+    tp_irq_restore(irq);
     tt->count--;
     tp_open_drop(node);
     tp_to_limbo(node, node);
@@ -364,11 +371,11 @@ static void tape_clear(uint32_t track)
 {
     tape_track_t *tt = &tp_trk[track];
     uint16_t chain, tail;
-    uint32_t irq = irq_save();
+    uint32_t irq = tp_irq_save();
     chain = tt->first;
     tt->first = tt->cur = TAPE_END;
     tt->kill = 1;
-    irq_restore(irq);
+    tp_irq_restore(irq);
     tt->count = 0;
     if (chain == TAPE_END)
         return;
@@ -396,7 +403,7 @@ static void tape_merge(uint32_t dst, uint32_t src)
             next = tp_nx[next];
             TAPE_YIELD();
         }
-        irq = irq_save();
+        irq = tp_irq_save();
         ts->first = tp_nx[node];
         unplayed = ts->cur == node;
         if (unplayed)
@@ -405,7 +412,7 @@ static void tape_merge(uint32_t dst, uint32_t src)
         *tp_link(dst, prev) = node;
         if (unplayed && next == td->cur)
             td->cur = node;
-        irq_restore(irq);
+        tp_irq_restore(irq);
         ts->count--;
         td->count++;
         prev = node;
@@ -419,12 +426,12 @@ static void tape_set_len(uint32_t bars)
     uint32_t len, irq;
     bars = bars < 1u ? 1u : bars > TAPE_BARS_MAX ? TAPE_BARS_MAX : bars;
     len = bars * TAPE_BAR;
-    irq = irq_save();
+    irq = tp_irq_save();
     tape_len = len;
     if (tape_head >= len)
         tape_head %= len;
     tp_seek_req = 1;
-    irq_restore(irq);
+    tp_irq_restore(irq);
 }
 
 /* a held node ends at (at, pass): its length across the passes, 1..L */
@@ -591,17 +598,17 @@ static void tape_load_begin(const uint16_t *counts)
 {
     uint32_t k, irq, epoch;
     for (k = 0; k < TAPE_TRACKS; k++) {
-        irq = irq_save();
+        irq = tp_irq_save();
         tp_trk[k].first = tp_trk[k].cur = TAPE_END;
         tp_trk[k].kill = 1;
-        irq_restore(irq);
+        tp_irq_restore(irq);
         tp_trk[k].count = 0;
         tp_ld.left[k] = counts[k];
         tp_ld.head[k] = tp_ld.tail[k] = TAPE_END;
     }
     tp_ld.track = 0;
     epoch = tp_epoch;
-    while (tp_epoch == epoch)
+    while (epoch && tp_epoch == epoch)         /* (epoch 0: the audio has not started, no ISR to wait for) */
         TAPE_YIELD();
     for (k = 0; k < TAPE_N; k++)
         tp_nx[k] = (uint16_t)(k + 1u < TAPE_N ? k + 1u : TAPE_END);
@@ -649,9 +656,9 @@ static void tape_load_end(void)
 {
     uint32_t k, irq;
     for (k = 0; k < TAPE_TRACKS; k++) {
-        irq = irq_save();
+        irq = tp_irq_save();
         tp_trk[k].first = tp_trk[k].cur = tp_ld.head[k];
-        irq_restore(irq);
+        tp_irq_restore(irq);
     }
     tp_seek_req = 1;
 }

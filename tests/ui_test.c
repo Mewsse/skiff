@@ -156,6 +156,7 @@ static void ui_power_on(void)
     memset(undo_ring, 0, sizeof undo_ring);   /* (Skiff: the undo ring, ui.c) */
     memcpy(dx_kit, DX_KIT_DEF, sizeof dx_kit);   /* ((Skiff phase 9) the factory kit: a DRUM-X preset loads others) */
     memset(bk_ram, 0xFF, sizeof bk_ram);         /* (Skiff: the pattern bank erased, as from a new unit) */
+    tape_init();                                  /* (.. the tape's free list: main.c felucca_main) */
     bank_boot();
     (void)arm_cancel();                           /* (.. nothing armed: launch.c) */
     seq_run = (uint8_t)((1u << NTRK) - 1u);
