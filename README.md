@@ -5,14 +5,19 @@
   </picture>
 </p>
 
-<p align="center"><b>A six-track groovebox firmware for the M-VAVE FM-1 and SMK-37 Pro</b><br>
+<p align="center"><b>A six-track groovebox firmware for the M-VAVE SMK-37 Pro</b><br>
 synths and drums, a note tape, live performance, and a screen that shows what every control does</p>
 
 <p align="center">
   <a href="https://github.com/illuminus5/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/illuminus5/skiff?label=release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="License: GPL-3.0-only"></a>
-  <img src="https://img.shields.io/badge/hardware-M--VAVE%20FM--1%20%7C%20SMK--37%20Pro-555" alt="Hardware: M-VAVE FM-1 | SMK-37 Pro">
+  <img src="https://img.shields.io/badge/hardware-M--VAVE%20SMK--37%20Pro-555" alt="Hardware: M-VAVE SMK-37 Pro">
 </p>
+
+**This fork targets the M-VAVE SMK-37 only.** It diverges from upstream [illuminus5/skiff](https://github.com/illuminus5/skiff),
+which supports the FM-1 too: the FM-1 build, its package and its tests are gone from here, so `./build.sh` makes the
+SMK-37 package. Where the text below says "the FM-1" it is upstream's wording for the unit, kept as it was (the history
+of each release, the shared behaviour); [SMK37.md](SMK37.md) says what the keyboard does.
 
 <p align="center"><b>New in 2.6:</b> the Skiff Editor's Screen tab: the FM-1's screen, large, on a computer or an
 Android tablet, following the unit as you play ·
@@ -59,9 +64,7 @@ an INSERT effect, LFO sync, SPREAD and more from Felucca 1.6.1 ·
 <a href="https://youtu.be/c0HFI7AvN1M">▶ Watch the 1.3 tour on YouTube (3:38)</a></p>
 
 <p align="center"><b>New to Skiff?</b> <a href="https://illuminus5.github.io/skiff/learn/">Learn Skiff</a>: the manual in chapters, each
-with a video that shows every press on the unit. Start with <a href="https://illuminus5.github.io/skiff/learn/#first-beat">your first beat</a>.<br>
-<b>Try it first:</b> <a href="https://illuminus5.github.io/skiff/try/">Skiff in your browser</a>, the firmware itself on a
-drawn FM-1, played with the mouse, a touch screen or the computer keyboard.</p>
+with a video that shows every press on the unit. Start with <a href="https://illuminus5.github.io/skiff/learn/#first-beat">your first beat</a>.</p>
 
 ![Skiff on the FM-1's screen: HOME, a step page, PERFORM, the MIXER, DELAY and the SHIFT map](docs/skiff.png)
 
@@ -83,30 +86,20 @@ Felucca: please report Skiff's behaviour [here](https://github.com/illuminus5/sk
 Custom firmware, at your own risk; the way back to the official firmware is below.
 
 **In the browser** (Chrome or Edge on a computer): open the [Skiff installer](https://illuminus5.github.io/skiff/webapp/installer/),
-connect the FM-1 by USB and follow it. The same page takes the FM-1 back to the official firmware (V15 or V16: the
-version it had before Skiff), saving a complete backup of your music first.
+connect the keyboard by USB and follow it. The same page takes the keyboard back to M-VAVE's official firmware,
+saving a complete backup of your music first.
 
-**With Python 3:** download `skiff-2.6.fwsc` from the [latest release](https://github.com/illuminus5/skiff/releases/latest)
-and, with this repository's `tools/` folder,
+**With Python 3:** download `skiff-2.6-smk37.fwsc` (`-elite`, `-mke` for those models) from the
+[latest release](https://github.com/illuminus5/skiff/releases/latest) and, with this repository's `tools/` folder,
 
 ```
 pip install mido python-rtmidi
-python tools/fm1_install.py skiff-2.6.fwsc
+python tools/fm1_install.py skiff-2.6-smk37.fwsc
 ```
 
-It takes about two minutes and the FM-1 restarts on Skiff.
-
-**Back to the official firmware:** the installer page above, `python tools/fm1_install.py FM-1.fwsc` with M-VAVE's
-file, or M-VAVE's own updater. An FM-1 that ran V16 before Skiff goes back to V16, one that only ever ran V15 to V15:
-its start-up part decides, and the installer says which one it needs. M-VAVE's download page has given V16 since
-October 21 (Skiff 2.0.2 and later; done on a unit: back to V16, then on to Skiff again); V15 is in M-VAVE's
-[fm1_open repository](https://github.com/m-vave/fm1_open) as `sdk/firmware/FM-1_015.fwsc`. The official firmware
-writes its Bluetooth settings anew on its first start, so pair Bluetooth devices again if they don't connect.
-
-**On the SMK-37 Pro:** the same installer finds the keyboard and picks its build (`skiff-2.6-smk37.fwsc` for
-Python). Two steps come first: M-VAVE's firmware V016 on the keyboard, and a backup of its flash, which holds the
-keyboard's own key calibration. [SMK37.md](SMK37.md#install) has both, the way back and what to do if it does not
-start.
+It takes about two minutes and the keyboard restarts on Skiff. Two steps come first: M-VAVE's firmware V016 on the
+keyboard, and a backup of its flash, which holds the keyboard's own key calibration. [SMK37.md](SMK37.md#install) has
+both, the way back to the official firmware and what to do if it does not start.
 
 **Updating to the note tape** (the pattern pool, lists, song, scenes and LAUNCH modes are gone): the unit converts
 nothing. A project saved before (Skiff's SKF2 to SKF4: its steps were pool patterns, which nothing reads now) shows
@@ -126,15 +119,6 @@ Playing the sequencers live is PERFORM's RUN and MUTE keys now, and REC records 
   input again in your recorder or DAW; it may be named "Line (2- Felucca)". MIDI apps find "Felucca" as before.
 - NOTES OUT is ALL from 2.2: what the sequencer plays goes out over USB MIDI too. For only the keys you play, as
   before, set MENU › MIDI › NOTES OUT KEYS ([MIDI implementation](#midi-implementation)).
-
-**Saves gone after switching off, or the installer can't update the FM-1 from Skiff:**
-- The cause: some newer FM-1s carry another flash chip, the UC25HQ80. Skiff before 2.2 didn't know it, so it kept
-  everything in RAM and refused updates ([#96](https://github.com/illuminus5/skiff/issues/96)). 2.2 knows the chip.
-- From the official firmware, the installer puts 2.2 on as usual.
-- From Skiff 2.1.1 or older on such a unit, the installer and M-VAVE's own updater are both refused by that old check.
-  Hold OCT- and OCT+ for 5 seconds: the FM-1 goes into the chip's boot mode, and a computer sees a USB disk named
-  WL82 UBOOT1.00. Put the official firmware back as [below](#if-the-fm-1-does-not-start) describes (FM-1
-  Transporter, or jl-uboot-tool), then install 2.2.
 
 **Updating to 2.0** from Skiff 1.x or Felucca: 2.0 reads what Skiff 1.0 and later saved, and keeps it in newer
 formats from then on. The installer page first takes a complete backup and saves it to your computer
@@ -884,38 +868,22 @@ and control behaves, rule by rule: [DESIGN.md](DESIGN.md). The editor's protocol
 | `firmware/` | firmware sources: `src/` app, `hal/` hardware layer, `loader/` update loader |
 | `tools/` | build script, generators, package maker, installer and sample uploader |
 | `assets/` | UI fonts, icon names, CC0 instrument samples |
-| `web/` | the web installer, the editor (`editor.html`, its protocol `EDITOR_PROTOCOL.md`) and the browser emulator (`web/emu/`) |
+| `web/` | the web installer, the editor (`editor.html`, its protocol `EDITOR_PROTOCOL.md`) and the browser builds of the firmware (`web/emu/`: the Screen tab's copy and its test) |
 | `design/` | the mockups the looks were chosen from, the logo's generator |
 | `tests/` | tests that run on the build machine |
 | `docs/` | the README's pictures, the logo, the controls card and key strip |
 | `LICENSES/` | licence texts of the bundled fonts, icons, ported DSP and SDK files |
 
-## If the FM-1 does not start
+## If it does not start
 
-On the SMK-37: [SMK37.md](SMK37.md#if-it-does-not-start).
+[SMK37.md](SMK37.md#if-it-does-not-start) has the recovery of the keyboard.
 
 **The screen says UPDATE MODE, or stays black while a computer sees a USB MIDI device named "Felucca
-Update":** an install was cut off, and the FM-1 waits in Skiff's update loader at every power-on. Nothing is
+Update":** an install was cut off, and the keyboard waits in Skiff's update loader at every power-on. Nothing is
 lost. Connect it by USB and run the [Skiff installer](https://illuminus5.github.io/skiff/webapp/installer/) again
-(or `python tools/fm1_install.py skiff-2.6.fwsc`): it finishes the install. If the installer can't find it, plug
-the FM-1 straight into the computer: a USB hub or USB-sharing software can lose it when it switches to update mode.
-M-VAVE's own updater does not see the FM-1 in this state. (Since 1.3.2 the loader says UPDATE MODE on the screen;
-one an older Skiff left there keeps it black.)
-
-**A computer sees a USB disk named WL82 UBOOT1.00** (or WL80UBOOT, a USB mass-storage device with ID 4C4A:8057):
-that is the chip's built-in boot mode, and the FM-1 can be brought back:
-
-- First try another USB data cable, and close every other app that uses MIDI, then run `tools/fm1_install.py`
-  again: it finishes an interrupted update.
-- If it stays in boot mode, [FM-1 Transporter](https://github.com/kurogedelic/FM-1-transporter) reads and
-  writes the FM-1's flash from a Mac through a Seeed XIAO RP2040 (three wires to the FM-1's USB lines). Back up
-  the flash first, then write the official firmware (M-VAVE's FM-1.fwsc). On Windows and Linux,
-  [jl-uboot-tool](https://github.com/kagaimiq/jl-uboot-tool) reads and writes it over the same USB cable, as
-  [SMK37.md](SMK37.md#back-up-first) describes for the keyboard (the FM-1's flash is 1 MiB too).
-
-**A computer sees nothing at all:** try another USB cable (a charge-only cable has no data lines) and another
-port, with the FM-1 charged, then restart the computer: Windows can leave a USB port dead after a device in boot
-mode goes away. FM-1 Transporter (above) reaches the chip's boot mode by itself.
+(or `python tools/fm1_install.py skiff-2.6-smk37.fwsc`): it finishes the install. If the installer can't find it, plug
+the keyboard straight into the computer: a USB hub or USB-sharing software can lose it when it switches to update mode.
+M-VAVE's own updater does not see the keyboard in this state.
 
 ## Support
 
@@ -932,8 +900,7 @@ Skiff stands on Felucca. If it is useful to you, support Felucca's author:
   Pack (the drum samples, GPL-3.0-only, not CC0); the [Fukiai](https://github.com/hugelton/Fukiai) icon
   font ([MIT](LICENSES/MIT-Fukiai.txt))
 - Fonts: [Barlow Condensed](https://github.com/jpt/barlow) by The Barlow Project Authors (the screen and the editor),
-  [SIL OFL 1.1](LICENSES/OFL-BarlowCondensed.txt); [Inter Tight](https://github.com/rsms/inter-tight) by The Inter Project Authors (the control card), [SIL OFL 1.1](LICENSES/OFL-InterTight.txt);
-  the browser emulator's labels: [DotGothic16](https://github.com/fontworks-fonts/DotGothic16) by The DotGothic16 Project Authors, [SIL OFL 1.1](LICENSES/OFL-DotGothic16.txt)
+  [SIL OFL 1.1](LICENSES/OFL-BarlowCondensed.txt); [Inter Tight](https://github.com/rsms/inter-tight) by The Inter Project Authors (the control card), [SIL OFL 1.1](LICENSES/OFL-InterTight.txt)
 - Samples: [Versilian Studios](https://versilian-studios.com/) [VSCO-2 Community Edition](https://github.com/sgossner/VSCO-2-CE) and [VCSL](https://github.com/sgossner/VCSL), CC0 1.0: the SAMPLE sets, also SLICE's PIANO ([attribution](assets/samples-cc0/ATTRIBUTION.txt))
 - SLICE's BREAK and FUNK: made with [YuE2](https://github.com/multimodal-art-projection/YuE) by Multimodal Art Projection ([how](assets/breaks/ATTRIBUTION.txt))
 - VOICE engine: after [klattsch](https://github.com/tgies/klattsch) by Tony Gies (MIT); formant data from Klatt (1980) and Hillenbrand et al. (1995)

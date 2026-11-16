@@ -86,17 +86,16 @@ stock. Credits: [LICENSING.md](LICENSING.md).
 ## Build
 
 ```sh
-BOARD=smk37 ./build.sh                  # build/skiff-smk37.fwsc        SMK-37 Pro_700
-BOARD=smk37 MODEL=elite ./build.sh      # build/skiff-smk37-elite.fwsc  SMK-37 Elite_700
-BOARD=smk37 MODEL=mke ./build.sh        # build/skiff-smk37-mke.fwsc    MKE-P37_700
-./build.sh                              # the FM-1 last: the tests read its binaries
+./build.sh                              # build/skiff-smk37.fwsc        SMK-37 Pro_700
+MODEL=elite ./build.sh                  # build/skiff-smk37-elite.fwsc  SMK-37 Elite_700
+MODEL=mke ./build.sh                    # build/skiff-smk37-mke.fwsc    MKE-P37_700
 sh tests/run_tests.sh
 ```
 
-Everything SMK sits behind `BOARD_SMK37` (default 0). The FM-1 app, package and loader stay byte-identical. Release
-builds take `--release X.Y` as on the FM-1: identity `SMK-37 Pro_7XY`, `skiff-smk37-X.Y.fwsc`.
+This fork builds only for the SMK-37 (`--board smk37` is accepted and does nothing; there is no FM-1 build). Release
+builds take `--release X.Y`: identity `SMK-37 Pro_7XY`, `skiff-smk37-X.Y.fwsc`.
 
-Sizes (Pro, with the note tape and the editor's Tape tab; `./build.sh --board smk37`): app 581,428 B of the SMK's
+Sizes (Pro, with the note tape and the editor's Tape tab; `./build.sh`): app 581,428 B of the SMK's
 620,544 B slot (about 39 KB to spare); RAM .data+.bss 87,372 of 94,208 B; pool 349,564 of 360,448 B; RAM code + .ramx
 30,664 of 32,512 B; the update loader 7,859 B (the limit: 7,936 B, below).
 
@@ -172,9 +171,7 @@ Sizes (Pro, with the note tape and the editor's Tape tab; `./build.sh --board sm
   loader must fit that (the stock app staged genkigenki's smaller one without touching BTIF or USRTRIM), and the build
   fails above it (`build.py` LDR_MAX). It is 7,859 B, with the UPDATE MODE screen. The loader is compiled at `-Oz`,
   its flash helpers are calls rather than inlined copies (it all runs from RAM), and the flash entry points it never
-  calls are left out (`fm1_flash.h`). The FM-1's loader is built the same way and held to the same limit: stock V15
-  stages a loader at 0xE6000 below its record at 0xE7F00, the same 7,936 B (a V15 dump, 2026-10-20). It also writes
-  the app's header last.
+  calls are left out (`fm1_flash.h`). It also writes the app's header last.
 - **The loader's start record:** each start of Skiff's SMK loader keeps, in RAM a reset keeps (0x01C7FD20, 48 B at
   the top of the app's NOINIT; `app.ld` leaves it free): the chip's reset reason, whether the app started it (warm)
   or the boot stage did from the flash record (cold), a count of starts, and how far each run got (its stage, the

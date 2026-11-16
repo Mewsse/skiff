@@ -1,6 +1,6 @@
 # Contributing to Skiff
 
-Thanks for helping! Skiff is firmware for the M-VAVE FM-1, a fork of
+Thanks for helping! Skiff is firmware for the M-VAVE SMK-37 Pro, a fork of
 [Felucca](https://github.com/hugelton/Felucca). Please report Skiff's behaviour here, not in Felucca's Issues.
 
 | What | Where |
@@ -21,7 +21,7 @@ Pull requests are welcome, including AI-assisted ones, with the same bar for all
 - make sure you understand the change and can explain it;
 - follow [DESIGN.md](DESIGN.md): it says how every screen and control behaves; change it first if your change
   changes a rule;
-- test it on a real FM-1;
+- test it on a real SMK-37;
 - run `tests/run_tests.sh` (see [BUILDING.md](BUILDING.md)): every host test passes;
 - new files carry the `SPDX-License-Identifier: GPL-3.0-only` header; mark changes to Felucca's files (Skiff);
 - bring in only code whose licence allows it (GPL-3.0-compatible, credited in [LICENSING.md](LICENSING.md)).

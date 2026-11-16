@@ -6,7 +6,7 @@ The build makes three files in `build/`:
 | --- | --- |
 | `felucca.bin` | the firmware app |
 | `loader/ota.bin` | the update loader |
-| `felucca.fwsc` | the installable package (app + loader) |
+| `skiff-smk37.fwsc` | the installable package (app + loader) |
 
 ## Prerequisites (macOS)
 
@@ -43,21 +43,21 @@ On Linux x86-64 the toolchain runs natively and Docker is not needed.
 `JIELI_TOOLCHAIN` and `AC79_SDK` override the default locations
 (`~/.jieli/toolchain`, `~/fw-AC79_AIoT_SDK`).
 
-`./build.sh --release 1.2` makes a release build: the package identity becomes `FM-1_712`
-(Skiff's 7XY; Felucca's are 9XY) and the version string `v1.2`; the package is `build/skiff-1.2.fwsc`, and
+`./build.sh --release 1.2` makes a release build: the package identity becomes `SMK-37 Pro_712`
+(Skiff's 7XY) and the version string `v1.2`; the package is `build/skiff-smk37-1.2.fwsc`, and
 `build/release-1.2/` holds what a release ships: the package, the app
-(`skiff-1.2-app.bin`), `SHA256SUMS`, the samples' attributions (`ATTRIBUTION.txt` for the CC0 sets,
+(`skiff-smk37-1.2-app.bin`), `SHA256SUMS`, the samples' attributions (`ATTRIBUTION.txt` for the CC0 sets,
 `ATTRIBUTION-BREAKS.txt` for SLICE's BREAK and FUNK), `LICENSE`, `LICENSING.md` and
 `LICENSES/` (the package contains Apache-2.0 SDK files, so the licence texts travel with it).
-`web/make_site.py build/skiff-1.2.fwsc 1.2 OUT` makes the GitHub Pages site from it: the browser installer, the
+`web/make_site.py build/skiff-smk37-1.2.fwsc 1.2 OUT` makes the GitHub Pages site from it: the browser installer, the
 editor and the package with its licences.
 
-`BOARD=smk37 ./build.sh` builds for the M-VAVE SMK-37 Pro instead ([SMK37.md](SMK37.md)): `build/skiff-smk37.fwsc`,
-identity `SMK-37 Pro_700` (a release `SMK-37 Pro_7XY`, `skiff-smk37-X.Y.fwsc`). `MODEL=elite` or `MODEL=mke` makes the
+This fork builds for the M-VAVE SMK-37 Pro only ([SMK37.md](SMK37.md)): `build/skiff-smk37.fwsc`, identity
+`SMK-37 Pro_700` (a release `SMK-37 Pro_7XY`, `skiff-smk37-X.Y.fwsc`). `./build.sh --board smk37` (or `BOARD=smk37`) is
+accepted and does nothing; the FM-1 is not built. `MODEL=elite` or `MODEL=mke` makes the
 same firmware under the SMK-37 Elite's or the MKE-P37's model name (`skiff-smk37-elite.fwsc`, `skiff-smk37-mke.fwsc`),
-so each unit's stock updater still takes its factory package later. The FM-1 build is unchanged by it, byte for byte.
-Both boards write the same files in `build/`: build the SMK first, copy its package out, build the FM-1 last, then
-run the tests (they read the FM-1's binaries; the SMK packages left in `build/` are checked too).
+so each unit's stock updater still takes its factory package later. The tests read the binaries and the package in
+`build/`: run `./build.sh` first.
 
 Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`, `core.h` and `icons.c`):
 
@@ -90,15 +90,11 @@ at the note's pitch instead, and the screen says NO SAMPLE.
 ```
 ./build.sh
 web/emu/build.sh
-python3 -m http.server -d build 8790        # open http://localhost:8790/emu/ (the page loads ../panel.js)
 ```
 
-`web/emu/felucca_web.c` builds the firmware's sources as the host tests do, against a simulated FM-1, and
-Emscripten compiles it to WebAssembly (`build/emu/felucca.wasm`, with `index.html`, `worklet.js` and the font in `fonts/`). The page
-keeps the flash's storage sectors (projects, user presets, settings) in the browser. Not emulated: USB (audio,
-MIDI out, the editor, updates), TRS MIDI and the user sample slots. The site has it at
-<https://illuminus5.github.io/skiff/try/> (`web/make_site.py` copies `build/emu` there: build it with `EMU_PREVIEW=0` after
-the release build). It is Felucca's, after X0X's: <https://hugelton.github.io/Felucca/webapp/try/> runs Felucca.
+`web/emu/felucca_web.c` builds the firmware's sources as the host tests do, against a simulated SMK-37 Pro, and
+Emscripten compiles it to WebAssembly (`build/emu/felucca.wasm`, which `web/emu/emu_test.mjs` runs). The editor's Screen tab
+copy (`build/cast/felucca_cast_smk.wasm`, from `web/emu/cast_follow.c`) is built with it. It is Felucca's, after X0X's.
 
 ## Tests
 
@@ -135,18 +131,18 @@ Use the web installer in Chrome or Edge:
 From the command line (needs `pip3 install mido python-rtmidi`):
 
 ```
-python3 tools/fm1_install.py build/felucca.fwsc
-python3 tools/fm1_install.py --info          # identity of the connected FM-1
+python3 tools/fm1_install.py build/skiff-smk37.fwsc
+python3 tools/fm1_install.py --info          # identity of the connected keyboard
 ```
 
 Or, to install your own build from the web installer, make a local copy of the site and open it from `localhost`
 (Web MIDI needs a secure context):
 
 ```
-python3 web/make_site.py build/felucca.fwsc dev /tmp/felucca-site
+python3 web/make_site.py build/skiff-smk37.fwsc dev /tmp/felucca-site
 cd /tmp/felucca-site && python3 -m http.server 8000
 # open http://localhost:8000/webapp/installer/
 ```
 
-Installing firmware is at your own risk. If an install fails and the FM-1 no longer
-starts, recovery needs [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter).
+Installing firmware is at your own risk. If an install fails and the keyboard no longer
+starts, see [SMK37.md](SMK37.md#if-it-does-not-start).

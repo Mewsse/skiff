@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Skiff version
-      description: Hold HOME > ABOUT on the FM-1
+      description: Hold HOME > ABOUT on the keyboard
       placeholder: "v1.0"
     validations:
       required: true
