@@ -59,7 +59,7 @@ static const layer_t LAYERS[LAYER_N] = {
     {B_EDIT, LK_SET, FAM_HOME, "[EDIT] SET", {{KC_KEYS, "ENGINE"}, {KC_OCTDN, "UNDO"}, {KC_EDIT, "DONE"}}},
     {B_SEQ, LK_SET, FAM_SEQ, "[SEQ] TOOLS", {{KC_KEYS, "TOOLS"}, {KC_OCTDN, "UNDO"}, {KC_SEQ, "DONE"}}},
     {B_REC, LK_SET, FAM_HOME, "[REC] SET", {{KC_KEYS, "RECORDING"}, {KC_OCTDN, "UNDO"}, {KC_REC, "DONE"}}},
-    {B_ARP, LK_SET, FAM_HOME, "[ARP] PERFORM", {{KC_SELECT, "LAUNCH"}, {KC_PRESETS, "KEYS"}, {KC_OCTDN, "CANCEL"}}},   /* (Skiff;
+    {B_ARP, LK_SET, FAM_HOME, "[ARP] PERFORM", {{KC_WHITE, "RUN"}, {KC_BLACK, "MUTE"}, {KC_OCTDN, "CANCEL"}}},   /* (Skiff;
                                                      * the footer drawn as the B mockup's: draw_layer; BLOCKS' header too:
                                                      * ui_blocks.c) */
 };
@@ -183,12 +183,10 @@ static void layer_let_go(uint32_t quiet)
 /* each pass before the layer's buttons are read: a locked layer closes. Its own button pressed: the lock goes, the
  * button held keeps it open (a peek: let go, it closes, no tap). Another button but PLAY, REC, HOME and OCT- / OCT+
  * (another page button, another layer's, SAVE, SEQ): closed now, and that button acts as always ((Skiff U2) HOME: SHIFT,
- * its tap goes HOME anyway and the lock with it, layer_allowed). (Skiff) PERFORM's KEYS SCENE: SAVE is the layer's
- * (held + a key stores), so it stays open */
+ * its tap goes HOME anyway and the lock with it, layer_allowed) */
 static void layer_lock_input(uint32_t pressed)
 {
-    uint32_t keep = 1u << panel.btn[B_PLAY] | 1u << panel.btn[B_REC] | 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP] |
-                    (ui.lock == LAYER_PERF && perf_scenes() ? 1u << panel.btn[B_SAVE] : 0u);
+    uint32_t keep = 1u << panel.btn[B_PLAY] | 1u << panel.btn[B_REC] | 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP];
     if (!ui.lock)
         return;
     if (pressed & ly_bit(ui.lock))
@@ -497,32 +495,38 @@ static void rec_key(uint32_t p)
     ui_say(r == 2u ? "CLICK LEVEL " : r ? "COUNT-IN " : "CLICK ", rl_name(r, v));
 }
 
-/* (Skiff) PERFORM's SELECT (ls) the LAUNCH point, PRESETS (lp) the KEYS: said, kept with the settings when the layer
- * lets go; the footer says them */
-static void perf_encoders(int32_t ls, int32_t lp)
+/* (Skiff) PERFORM's keys (launch.c, the arm table): track k's op, stopped (a count-in too) at once; playing at its
+ * next step. A second press of the same kind before it lands takes it back; the other kind replaces it. Said */
+static const char *const ARM_NAME[5] = {"", "RUN ON", "RUN OFF", "MUTE", "UNMUTE"};
+static void arm_set(uint32_t k, uint32_t op)
 {
-    uint32_t m = (uint32_t)clamp((int32_t)launch_mode() + ls, 0, LAUNCH_N - 1);
-    if (ls && m != launch_mode()) {
-        ui_launch = (uint8_t)m;
-        lys.rp_dirty = 1;
-        ui.force = 1;
-        ui_say("LAUNCH ", LAUNCH_NAME[m]);
+    char b[24] = {'T', (char)('1' + k % NTRK), ' ', 0};
+    uint32_t was;
+    k %= NTRK;
+    was = arm[k].op;
+    if (was && (was <= ARM_RUN_OFF) == (op <= ARM_RUN_OFF)) {
+        arm[k].op = ARM_NONE;
+        str_cpy(b + 3, ARM_NAME[was], sizeof b - 3u);
+        ui_say(b, " CANCELLED");
+        return;
     }
-    if (lp && (lp > 0) != perf_scenes()) {
-        ui_perf_keys = (uint8_t)(lp > 0);
-        lys.rp_dirty = 1;
-        ui.force = 1;
-        ui_say("KEYS ", perf_scenes() ? "SCENE" : "TRACK");
+    str_cpy(b + 3, ARM_NAME[op], sizeof b - 3u);
+    if (!song.playing) {
+        arm[k].op = ARM_NONE;
+        fm1_irq_off();
+        arm_do(&trk[k], op);
+        fm1_irq_on();
+        ui_message(b);
+        return;
     }
+    arm[k].op = ARM_NONE;
+    arm[k].at = song_ticks;
+    RING_PUBLISH();
+    arm[k].op = (uint8_t)op;
+    ui_say(b, " NEXT STEP");
 }
-
-/* (Skiff) PERFORM, KEYS TRACK: entry p's key: the selected track to that entry of its list (bank.c entry_ui) */
-static void perf_slot_key(uint32_t k, uint32_t p)
-{
-    (void)k;
-    entry_ui(p);
-}
-
+static void arm_run(uint32_t k) { arm_set(k, seq_running(k % NTRK) ? ARM_RUN_OFF : ARM_RUN_ON); }
+static void arm_mute(uint32_t k) { arm_set(k, trk[k % NTRK].p[P_MUTE] ? ARM_UNMUTE : ARM_MUTE); }
 /* GLO's white keys F3 .. G4 (the keys, their LEDs, the solo bits): SOLO T1..T6 on F3..D4, then E4 ALL, F4 FILL,
  * G4 TAP, in the screen's order (#11; 1.2 had T5/T6 on E4/G4 between them); a track's number, or GW_*. The black
  * keys F#3 .. F#4: MUTE T1..T6 */
@@ -536,8 +540,8 @@ static uint32_t glo_white(uint32_t k)
 }
 
 /* (2.0, D 1A, design/mockups/v2_mutes.png) the black keys 1..6 in GLO, FX and PERFORM: each track's MUTE, alike. A tap
- * (let go within MENU's HOLD) toggles it, latched and saved: GLO's and FX's at once, PERFORM's at its LAUNCH point
- * (mute_switch); held, the track is cut while it is: FX's from the press (the ISR: perf_held), GLO's from the press,
+ * (let go within MENU's HOLD) toggles it, latched and saved: GLO's and FX's at once, PERFORM's armed (arm_mute);
+ * held, the track is cut while it is: FX's from the press (the ISR: perf_held), GLO's from the press,
  * PERFORM's once it is a hold (perf_cut). Each pass, before the layer's keys */
 static struct { uint8_t dn, cut, l[NTRK]; uint32_t t0[NTRK]; } mk __attribute__((section(".pool")));
 static int trk_cut(uint32_t t)                          /* track t cut by a black key held now */
@@ -561,7 +565,7 @@ static void mute_keys(uint32_t l, uint32_t keys)
             mk.dn &= (uint8_t)~b;
             mk.cut &= (uint8_t)~b;
             if (now - mk.t0[p] < hold && mk.l[p] == LAYER_PERF)
-                mute_switch(p);
+                arm_mute(p);
             else if (now - mk.t0[p] < hold)
                 trk[p].p[P_MUTE] = (int16_t)!trk[p].p[P_MUTE];
         } else if ((mk.dn & b) && mk.l[p] == LAYER_PERF && now - mk.t0[p] >= hold) {
@@ -601,11 +605,9 @@ static void layer_key(uint32_t l, uint32_t k)
     } else if (l == LAYER_REC) {
         if (!key_black(k) && p < 4u)
             rec_key(p);
-    } else if (l == LAYER_PERF) {                       /* (Skiff) the white keys: the list's A..P or (KEYS SCENE) the */
-        if (!key_black(k) && p < BANK_SLOTS && perf_scenes())   /* scenes, SAVE held: stored (bank.c); the black */
-            scene_key(p, (fm1_in.buttons >> panel.btn[B_SAVE]) & 1u);   /* keys 1..6 the tracks' MUTEs, staged */
-        else if (!key_black(k) && p < BANK_SLOTS)
-            perf_slot_key(k, p);                        /* ((2.0) the black keys: mute_keys) */
+    } else if (l == LAYER_PERF) {                       /* (Skiff) the white keys 1..6: the tracks' SEQ RUN, armed; the */
+        if (!key_black(k) && p < NTRK)                  /* black keys: mute_keys */
+            arm_run(p);
     } else if (l == LAYER_SEQ) {
         if (!key_black(k))
             tools_key(p);
@@ -683,8 +685,7 @@ static void layer_knob(uint32_t k, int32_t s)
     }
 }
 
-/* PLAY with GLO held open: RESTART (from the top, playing on); stopped: PLAY. (Skiff phase 5) SONG on: each track
- * from its list's first entry (bank.c song_top). 1 = done here. GLO's lock is not held: PLAY starts and stops there
+/* PLAY with GLO held open: RESTART (from the top, playing on); stopped: PLAY. 1 = done here. GLO's lock is not held: PLAY starts and stops there
  * as in every layer (Felucca #183: locked, PLAY restarted and never stopped) */
 static int layer_play(void)
 {
@@ -694,14 +695,7 @@ static int layer_play(void)
         ui_message("RESTART: CLOCK EXTERNAL");
         return 1;
     }
-    if (lists.song)
-        song_top();
-    else if (song.playing)
-        transport_req = 3;
-    else {
-        chain_top();                                  /* ((2.0, #44) a chain from its first part) */
-        transport_req = 1;
-    }
+    transport_req = song.playing ? 3u : 1u;
     return 1;
 }
 
@@ -761,8 +755,8 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
             lys.loaded = 0;
             lys.cook = 0;
             ui_message(lys.l == LAYER_REC ? "UNDONE: REC" : "UNDONE: SEQUENCE");   /* ((Skiff U4) was PUT BACK) */
-        } else if (lys.l == LAYER_PERF) {               /* (Skiff) nothing staged to come in: patterns, mutes */
-            ui_message(stage_cancel() ? "CANCELLED" : "NOTHING STAGED");
+        } else if (lys.l == LAYER_PERF) {               /* (Skiff) nothing armed to come in: RUN, MUTE */
+            ui_message(arm_cancel() ? "CANCELLED" : "NOTHING ARMED");
         } else if (lys.l == LAYER_GLO) {
             for (k = 0; k < NTRK; k++) {
                 trk[k].p[P_MUTE] = lys.v[k];
@@ -830,15 +824,12 @@ static uint32_t layer_leds(uint32_t *br)
             on = (b && p < NLANE && drum_track(TSEL) && p == ui.lane) || (!b && p == TL_EUCLID && eu.on);   /* lit,
                                                          * the other lanes breathe ((1.3) EUCLID open: lit) */
             can = b ? p < NLANE && drum_track(TSEL) : tl_cell(TSEL, p);
-        } else if (l == LAYER_PERF && b && p < NTRK) {  /* (Skiff) a track sounding lit; a muted one, a staged one */
-            on = !trk[p].p[P_MUTE] && !mute_arm[p] && !trk_cut(p);   /* breathe ((2.0) a hold cutting too) */
+        } else if (l == LAYER_PERF && b && p < NTRK) {  /* (Skiff) a track sounding lit; a muted one, an armed one */
+            on = !trk[p].p[P_MUTE] && arm[p].op < ARM_MUTE && !trk_cut(p);   /* breathe ((2.0) a hold cutting too) */
             can = 1;
-        } else if (l == LAYER_PERF && !b && p < BANK_SLOTS && perf_scenes()) {   /* (Skiff) the scene recalled or */
-            on = p == scene_now();                      /* stored last lit, the other kept ones breathe */
-            can = scene_used(p);
-        } else if (l == LAYER_PERF && !b && p < BANK_SLOTS) {   /* (Skiff) the slot playing and the one staged lit, */
-            on = p == bank_cur(song.sel) || p == bank_next(song.sel);   /* the other kept ones breathe */
-            can = ent_on(song.sel, p);                   /* ((#28) a REST too: the track drops out) */
+        } else if (l == LAYER_PERF && !b && p < NTRK) { /* (Skiff) a track's sequencer running lit; stopped or armed: */
+            on = seq_running(p) && (arm[p].op == ARM_NONE || arm[p].op >= ARM_MUTE);   /* breathe */
+            can = 1;
         } else if (l == LAYER_REC && !b && p < 4u) {    /* a setting on (LEVEL: the click on) lit, the rest breathe; */
             on = p == 1u ? rp_get(RP_CLICK) != 0u : p == 2u ? rp_get(RP_COUNTIN) != 0u :   /* CLEAR: something to */
                  p == 3u && rp_get(RP_CLICK) != 0u;    /* clear */
@@ -1039,116 +1030,62 @@ static void layer_scl(void)                             /* KNOB 2's scales, 4 x 
         cv_text_in(x, y + CAP_IN(S, 25), LC_W, &AF_S, TP[P_SCALE].names[i], ink, fill);
     }
 }
-/* (Skiff) PERFORM, as the chosen mockup draws it (design/mock.py, B perform): a row per track, its number in its
- * colour, its list's 16 entries A..P across as the white keys run (F3 = A .. G5 = P): one naming a pattern its letter,
- * an empty one a dot, the one the track is on a tile of the track's colour (DIM: muted), the one staged to come in
- * that tile's outline (it wins where both: the new one is the news); at the row's end M
- * (REC) while muted, outlined while a MUTE is staged to turn (bank.c mute_switch: the M's colour says how it is now).
- * The selected track's row (the keys' and knobs' track) a band of its colour, everything on it INK, as on HOME. Under
- * the tracks SCN and the 16 scenes in the keys' order: a kept one its number in a box (TEXT while KEYS SCENE puts
- * them on the keys), the one recalled or stored last filled (outlined bright: still to come), an empty one a dot.
- * BLOCKS: on the black ground, as HOME's lanes; FLAT and LINE: on the panel, the band RAISE. (Phase 6) With six tracks
- * the rows of the four shown (ui.c trk_top), the scroll bar at x 238 over them (design/mock_p6.py perform) */
-#define PR_X(p) (17 + 13 * (int32_t)(p))              /* column p's tile, 12 wide (column 16: the MUTE's): x 17 .. 236 */
+/* (Skiff) PERFORM: a row per track, its number in its colour, its sequencer's SEQ RUN (RUN in a tile of the track's
+ * colour, OFF dim; outlined while a change is armed: launch.c), at the row's end M (REC) while muted, outlined while a
+ * MUTE is armed. The selected track's row (the keys' and knobs' track) a band of its colour, everything on it INK, as
+ * on HOME; on the black ground */
+#define PR_X(p) (17 + 13 * (int32_t)(p))              /* column p, 12 wide (column 16: the MUTE's): x 17 .. 236 */
 #define PR_W 12
-#define PR_SIX (NTRK > 4)                             /* ((Skiff U3, N1) every track and the scenes: 7 rows, 17 px, 19
-                                                       * apart, 13 px tiles; four tracks: 22, 27, 16 as before) */
-#define PR_TH (PR_SIX ? 13 : 16)
-#define PR_H (PR_SIX ? 17 : 22)                       /* a row; the tile in its middle */
-#define PR_Y(r) ((PR_SIX ? 3 : 4) + (PR_SIX ? 19 : 27) * (int32_t)(r))   /* row r (NTRK: the scenes) */
-#define PS_X(p) (28 + 13 * (int32_t)(p))              /* scene p's cell, after SCN: x 28 .. 234 */
-enum { PC_EMPTY, PC_KEPT, PC_ON, PC_NEXT };
-/* the cell at x in the row at y: s its letter (number), in state st; c a tile's fill and a staged one's outline and
- * letter, ink a tile's letter, kc a kept one's letter, dc an empty one's dot, g the ground; u: underlined */
-static void perf_cell(int32_t x, int32_t y, const char *s, uint32_t st, uint16_t c, uint16_t ink, uint16_t kc,
-                      uint16_t dc, uint16_t g, int u)
-{
-    int32_t ty = y + (PR_H - PR_TH) / 2, b[4];
-    uint16_t lc = st == PC_ON ? ink : st == PC_NEXT ? c : kc, on = st == PC_ON ? c : g;
-    if (st == PC_EMPTY) {
-        cv_rect(x + PR_W / 2 - 1, y + PR_H / 2 - 1, 2, 2, dc);
-        return;
-    }
-    if (st == PC_ON)
-        cv_rrect(x, ty, PR_W, PR_TH, 2, c, g);
-    else if (st == PC_NEXT)
-        cv_frame(x, ty, PR_W, PR_TH, c);
-    GFX_HOOK_ALIGN(x, ty, x + PR_W, ty + PR_TH, AL_HV, "perform cell letter centred");
-    cv_text_in(x, ty + CAP_IN(S, PR_TH), PR_W, &AF_S, s, lc, on);
-    if (u) {                                          /* (under the letter's ink, 2 px below its foot) */
-        text_ink(&AF_S, s, b);
-        cv_rect(x + ink_in(&AF_S, s, PR_W) + b[0], ty + PR_TH - 2, b[2] - b[0], 1, lc);
-    }
-}
+#define PR_RW (PR_X(3) - PR_X(0) - 1)                 /* RUN's tile: three columns */
+#define PR_TH 13
+#define PR_H 17                                       /* a row; the tile in its middle */
+#define PR_Y(r) (3 + 19 * (int32_t)(r))
 static void layer_perf(void)
 {
-    int blocks = 1;                                   /* ponytail: FLAT and LINE retired (U2); U3's six rows redraw this */
-    uint16_t g0 = blocks ? T_BG : T_SURF;
-    uint32_t k, p, pos, now = scene_now(), act = (uint32_t)perf_scenes();
-    if (blocks) {                                     /* (over the panel, as HOME: the rows are on the ground) */
-        cv_rect(0, 0, 240, H_GRAPH + (int32_t)foot_less(), T_BG);
-        cv_bg = T_BG;
-    }
-    for (pos = 0, k = 0; k < NTRK; pos++, k++) {        /* ((Skiff U3, N1) every track) */
-        int32_t y = PR_Y(pos), ty = y + (PR_H - PR_TH) / 2;
-        int band = k == song.sel % NTRK, cb = band && blocks, muted = trk[k].p[P_MUTE] != 0;
-        uint16_t col = T_TRK(k), g = cb ? col : band ? T_RAISE : g0;
+    uint32_t k;
+    cv_rect(0, 0, 240, H_GRAPH + (int32_t)foot_less(), T_BG);   /* (over the panel, as HOME: the rows on the ground) */
+    cv_bg = T_BG;
+    for (k = 0; k < NTRK; k++) {
+        int32_t y = PR_Y(k), ty = y + (PR_H - PR_TH) / 2;
+        int cb = k == song.sel % NTRK, muted = trk[k].p[P_MUTE] != 0, run = seq_running(k);
+        uint32_t op = arm[k].op;
+        uint16_t col = T_TRK(k), g = cb ? col : T_BG;
         uint16_t tile = cb ? T_INK : muted ? T_DIM : col;   /* (on the band: the M says it) */
-        uint32_t cur = bank_cur(k), nx = bank_next(k);
         char d[2] = {(char)('1' + k), 0};
-        if (cb && ux.neon) {                          /* (Skiff N3) NEON: the band its colour into violet; a muted row */
-            uint16_t st[2] = {col, ux_mix(col, NE_VIOLET, 70)};   /* in snow */
+        if (cb && ux.neon) {                          /* (Skiff N3) NEON: the band its colour into violet */
+            uint16_t st[2] = {col, ux_mix(col, NE_VIOLET, 70)};
             ne_hgrad(3, y, 234, PR_H, st, 2);
         } else if (cb)
             cv_rect(3, y, 234, PR_H, col);
-        else if (band)
-            cv_rrect(3, y, 234, PR_H, 3, T_RAISE, g0);
         if (ux.quark && muted)                        /* ((Skiff Q3) QUARK: a muted row dark matter, dotted) */
             qk_dotframe(16, y, 221, PR_H, cb ? T_INK : T_DIM);
         if (ux.neon && muted)                         /* ((Skiff N8) the band's too: dark snow on it) */
             ne_snow(17, y, 220, PR_H, k * 7u + 11u, cb ? col : T_BG, cb ? T_INK : T_MID);
         GFX_HOOK_ALIGN(0, y, 0, y + PR_H, AL_V, "perform track number on its row's middle");
         cv_text_on(6, y + CAP_IN(M, PR_H), &AF_M, d, cb ? T_INK : col, g);
-        for (p = 0; p < BANK_SLOTS; p++) {
-            char s[2] = {(char)('A' + p), 0};
-            uint32_t st = p == nx ? PC_NEXT : p == cur ? PC_ON : ent_on(k, p) ? PC_KEPT : PC_EMPTY;
-            perf_cell(PR_X(p), y, s, st, st == PC_ON ? tile : cb ? T_INK : col, cb ? col : muted ? T_TEXT : T_INK,
-                      cb ? T_INK : T_MID, cb ? ux_mix(col, T_INK, 55) : T_DIM, g, 0);   /* (on DIM: TEXT, the far end
-                                                     * from it in every palette) */
-        }
-        if (muted || mute_arm[k]) {
-            if (mute_arm[k])
+        if (run)
+            cv_rrect(PR_X(0), ty, PR_RW, PR_TH, 2, tile, g);
+        if (op == ARM_RUN_ON || op == ARM_RUN_OFF)
+            cv_frame(PR_X(0), ty, PR_RW, PR_TH, cb ? T_INK : T_TEXT);
+        GFX_HOOK_ALIGN(PR_X(0), ty, PR_X(0) + PR_RW, ty + PR_TH, AL_HV, "perform cell letter centred");
+        cv_text_in(PR_X(0), ty + CAP_IN(S, PR_TH), PR_RW, &AF_S, run ? "RUN" : "OFF",
+                   run ? (cb ? col : muted ? T_TEXT : T_INK) : cb ? T_INK : T_MID, run ? tile : g);
+        if (muted || op >= ARM_MUTE) {
+            if (op >= ARM_MUTE)
                 cv_frame(PR_X(16), ty, PR_W, PR_TH, cb ? T_INK : T_REC);
             GFX_HOOK_ALIGN(PR_X(16), ty, PR_X(16) + PR_W, ty + PR_TH, AL_HV, "perform cell letter centred");
             cv_text_in(PR_X(16), ty + CAP_IN(S, PR_TH), PR_W, &AF_S, "M", cb ? T_INK : muted ? T_REC : T_MID, g);
         }
     }
-    GFX_HOOK_ALIGN(0, PR_Y(NTRK), 0, PR_Y(NTRK) + PR_H, AL_V, "perform SCN on its row's middle");
-    cv_text_on(6, PR_Y(NTRK) + CAP_IN(S, PR_H), &AF_S, "SCN", act ? T_TEXT : T_MID, g0);
-    for (p = 0; p < BANK_SLOTS; p++) {                 /* (the 16 scenes: bank.c SCENES) */
-        char s[3];
-        uint32_t st = !scene_used(p) ? PC_EMPTY : p != now ? PC_KEPT : stage_pending() ? PC_NEXT : PC_ON;
-        fmt_int(s, (int32_t)p + 1);
-        perf_cell(PS_X(p), PR_Y(NTRK), s, st, T_TEXT, T_INK, act ? T_TEXT : T_MID, T_DIM, g0, 0);
-        if (st == PC_KEPT)                             /* (a kept one boxed, as the mockup's: after its number, the
-                                                        * outline over its edge) */
-            cv_frame(PS_X(p), PR_Y(NTRK) + (PR_H - PR_TH) / 2, PR_W, PR_TH, T_DIM);
-    }
 }
-/* what the PERFORM map shows of every track and the scenes (draw_layer: redrawn when it changes) */
+/* what the PERFORM map shows of every track (draw_layer: redrawn when it changes) */
 static uint32_t perf_sig(void)
 {
-    uint32_t k, p, h = 2166136261u, m;
-    for (k = 0; k < NTRK; k++) {
-        for (m = 0, p = 0; p < BANK_SLOTS; p++)
-            m |= (uint32_t)ent_on(k, p) << p;
-        h = (h ^ (bank_cur(k) | bank_next(k) << 8 | (uint32_t)(trk[k].p[P_MUTE] != 0) << 16 | (uint32_t)mute_arm[k] << 17))
-            * 16777619u;
-        h = (h ^ m) * 16777619u;
-    }
-    for (m = 0, p = 0; p < BANK_SLOTS; p++)
-        m |= (uint32_t)scene_used(p) << p;
-    return (h ^ m) * 16777619u;
+    uint32_t k, h = 2166136261u;
+    for (k = 0; k < NTRK; k++)
+        h = (h ^ ((uint32_t)(trk[k].p[P_MUTE] != 0) | (uint32_t)seq_running(k) << 1 | (uint32_t)arm[k].op << 2)) *
+            16777619u;
+    return h;
 }
 static void layer_edit(void)                            /* the engines from F3, INIT next (LY_INIT), the sound under them */
 {                                                        /* (cells show the engine's icon, not the key's note) */
@@ -1356,8 +1293,7 @@ static void draw_layer(void)
     else if (l == LAYER_REC)
         sig += (uint32_t)ui_rec_prefs * 31u + (uint32_t)rec_clearable() * 5u + song.sel * 977u;
     else if (l == LAYER_PERF)                           /* (Skiff) */
-        sig += bank_gen() * 31u + launch_mode() * 5u + song.sel * 977u + perf_sig() * 131u +
-               perf_scenes() * 1299709u + (scene_now() + 1u) * 15485863u + (uint32_t)stage_pending() * 32452843u;
+        sig += song.sel * 977u + perf_sig() * 131u;
     else if (l == LAYER_SEQ)
         sig += (uint32_t)drum_track(TSEL) * 31u + ui.lane * 5u + (uint32_t)TSEL->p[P_E0] * 131u + song.sel * 977u +
                (eu.on ? 7u + eu.hits * 13u + eu.steps * 1031u + eu.rot * 65537u + (uint32_t)TSEL->p[P_SLEN] * 257u : 0u);
@@ -1397,8 +1333,8 @@ static void draw_layer(void)
         if (rs) {                                       /* ((2.0) FX's macros, a throw out: LET GO .., OCT+: KEEP) */
             ret_hints(rs, foot_line_y());
         } else if (l == LAYER_PERF) {                   /* (Skiff) as the B mockup: what the keys do, on the names' */
-            const char *r = perf_scenes() ? "[SAVE] + WHITE: STORE" : "BLACK: MUTE";   /* line (SCENE: storing) */
-            cv_free_hint(8, foot_line_y(), perf_scenes() ? "WHITE: SCENE" : "WHITE: PATTERN", T_MID, T_BG, 110);
+            const char *r = "BLACK: MUTE";              /* line */
+            cv_free_hint(8, foot_line_y(), "WHITE: RUN", T_MID, T_BG, 110);
             cv_free_hint(232 - head_hint_w(r, 120), foot_line_y(), r, T_MID, T_BG, 120);
         } else {
             const khint_t *ft = l == LAYER_FX && perf_latch_on ? FX_LATCH_FOOT
@@ -1427,7 +1363,7 @@ static void shift_map(smap_t *m)
     const char *pj = ui.home || g == GR_BROWSE ? SND : sel ? "STEP" : g == GR_STEPS ? "DIR" : g == GR_DELAY || g == GR_FXDLY ? "MODE" :
                      g == GR_INS ? "MIX" :            /* ((2.5) INSERT 2's page before) */
                      g == GR_USER || g == GR_SLOTS ? "SLOT" : g == GR_BANK ? "PATTERN" : g == GR_EVENTS ? "ROW" :
-                     g == GR_SONG ? "ENTRY" : sh ? sh->pj : g == GR_SLICES ? "SLICE" : SND;
+                     sh ? sh->pj : g == GR_SLICES ? "SLICE" : SND;
     static const smap_t ALL[9] = {{"BUTTONS", "PAGES", 0}, {"HOLD ONE", "ITS LAYER", 0}, {"HOLD SAVE", "UNDO", 0},
                                   {"+ SAVE", "TAKE", 2}, {"+ REC", "REC SET", 2}, {"+ BUTTON", "LOCK", 2},
                                   {"+ PRESETS", "RANGE", 2}, {"+ OCT-", "COPY", 2}, {"+ OCT+", "PASTE", 2}};   /* ((2.0)
@@ -1456,10 +1392,6 @@ static void shift_map(smap_t *m)
         m[6 + i] = ALL[i < 3u && sel ? 6u + i : i];
     if (sel)                                         /* ((2.0) there SHIFT + EDIT deletes, ui_input.c sel_delete) */
         m[11] = (smap_t){"+ EDIT", "DELETE", 2};
-    if (g == GR_SONG) {                              /* ((2.5) SONG: + PLAY the song from the entry, + EDIT empties it) */
-        m[6] = (smap_t){"+ PLAY", "FROM HERE", 2};
-        m[11] = (smap_t){"+ EDIT", "CLEAR", 2};
-    }
 #if BOARD_SMK37
     {   /* (SMK-37 Pro, SMK37_UX.md question 10) the controls by the SMK's printed names: K2 SELECT, K3 ALGORITHM, K4
          * PRESETS, PARA EDIT, BT SAVE, SEQ REC REC, KNOB BANK SHIFT. PLAY stays PLAY: the SMK prints a play sign there,

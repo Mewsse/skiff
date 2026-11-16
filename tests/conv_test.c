@@ -514,7 +514,7 @@ int main(int argc, char **argv)
         n = conv_note(0);
         memcpy(note, conv_bytes, n); note[n] = 0;
         ok &= !!strstr(note, "T1 ANALOG filter TYPE") && !!strstr(note, "T1 T2 NUDGE") &&
-              !!strstr(note, "MIDI IN TRACK") && !strstr(note, "song") && conv_note(2) && !conv_note(3);
+              !!strstr(note, "MIDI IN TRACK") && !!strstr(note, "has no song now") && conv_note(2) && !conv_note(3);
         n = conv_note(6);
         memcpy(note, conv_bytes, n); note[n] = 0;
         ok &= !!strstr(note, "U04 ANALOG filter TYPE") && !!strstr(note, "categories: 2") && !strstr(note, "U03");
@@ -548,18 +548,15 @@ int main(int argc, char **argv)
         }
         bad += check("  its steps: NUDGE x4 (none where it did not play), RATCH, conditions; locks, automation",
                      ok && n == 3u);
-        a1 = lists.ent[0][0][0];
-        ok = a1 && a1 <= NPAT && lists.ent[0][0][1] == 1u && lists.ent[0][1][0] && lists.ent[0][1][0] != a1 &&
-             !lists.ent[0][1][1] && lists.ent[0][2][0] == a1 && lists.ent[0][2][1] == 3u && !lists.ent[0][3][0] &&
-             lists.cur[0] == 0u && trk_pid[0] == a1 && lists.ent[1][2][0] == lists.ent[1][1][0] &&
-             lists.ent[1][1][0] != lists.ent[1][0][0] && lists.ent[2][1][0] == PAT_REST && !lists.ent[2][1][1] &&
-             lists.ent[2][2][0] == lists.ent[2][0][0] && lists.ent[3][0][0] == PAT_REST && lists.ent[3][0][1] == 1u &&
-             lists.ent[3][2][0] == PAT_REST && lists.ent[3][2][1] == 3u && lists.cur[3] == 3u && !lists.ent[3][3][0] &&
-             lists.song == SONG_OFF;
-        bad += check("  the song's 3 sections on T1-T4's lists (repeats, REST lanes), each on its own", ok);
-        project_load(0);                           /* (slot 1: the music as saved, the song too) */
+        a1 = trk_pid[0];
+        ok = a1 && a1 <= NPAT && pool_used(a1 - 1u) && trk_pid[1] && trk_pid[2];
+        bad += check("  the music's tracks on their own patterns (its song: dropped, no lists since the song layer went)",
+                     ok);
+        project_load(0);                           /* (slot 1: the music as saved, the song on its lists) */
         ok = proj_cur == 0u && trk[0].p[P_LSYNC] == 3 && motion_base_value(&trk[0], P_SPRD) == 40 &&
-             lists.ent[0][2][1] == 3u && lists.ent[2][1][0] == PAT_REST && lists.ent[0][0][0] == a1;
+             proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) && proj_scratch.ent[0][2][1] == 3u &&
+             proj_scratch.ent[2][1][0] == PAT_REST &&
+             trk_pid[0] == proj_scratch.ent[0][proj_scratch.cur[0] % NENT][0];
         project_load(1);                           /* (slot 2: Felucca 1.4's) */
         ok &= proj_cur == 1u && trk[0].eng_req == 2u && trk[0].p[P_LSYNC] == 2 && trk[0].p[P_SPRD] == 20 &&
               trk[0].p[P_E0 + 2] == 99 && !trk[0].p[P_ITYPE] && !trk[0].p[P_ESYNC] && trk[0].step[8].note[0] == 62u &&

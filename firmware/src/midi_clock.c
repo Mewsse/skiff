@@ -23,6 +23,7 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
         midi_clock.interval_ms = 0;
         midi_clock.start_ms = ms;
         midi_clock.spp = 0;
+        tape_head = 0;
         seq_start();
     } else if (status == 0xFBu) {                  /* Continue: preserve the step ((2.2) or go where SPP said) */
         midi_clock.pos = midi_clock.rendered;
@@ -35,8 +36,10 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
             midi_clock.spp = 0;
             return;
         }
-        if (!song.playing)
+        if (!song.playing) {
             motion_begin();
+            tape_resume();
+        }
         song.playing = 1;
     } else if (status == 0xFCu) {
         seq_stop();
@@ -99,8 +102,6 @@ static __attribute__((noinline)) void midi_clock_tempo(uint32_t dt)
         }
         if (clk_pos < (uint32_t)FS * 2u)           /* (the metronome's beat as the steps) */
             clk_pos = (uint32_t)(((uint64_t)clk_pos * ratio + 2048u) >> 12);
-        if (launch_pos < (uint32_t)FS * 2u)        /* (Skiff: the launch points' too, launch.c) */
-            launch_pos = (uint32_t)(((uint64_t)launch_pos * ratio + 2048u) >> 12);
     }
     midi_beat_samples = new_beat;
 }

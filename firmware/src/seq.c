@@ -534,8 +534,6 @@ static __attribute__((noinline)) uint32_t arp_pick(track_t *t, uint32_t *list, u
 /* n: samples the arp advances by (the external clock's while it runs, 0 stopped); gate_n: samples its
  * gate counts down by (real time when the external transport stops: a tapped or latched note still ends) */
 static volatile uint32_t beat_pos, beat_n;      /* samples into the beat, the beat of the bar (0..3) */
-static volatile uint32_t launch_steps;          /* (Skiff) 1/16 steps since PLAY (launch.c launch_clock: BAR / BEAT) */
-static uint32_t launch_pos;                     /* (Skiff) .. samples into the one now (counted before the tracks tick) */
 
 /* the metronome (click.c) and the count-in (1.1, Discussion #131). The click follows the song tempo's quarter notes
  * (BPM, or the external clock's 24 pulses), 4 to the bar, the first accented, whatever a track's DIV or SWING: a beat is
@@ -1264,6 +1262,51 @@ static __attribute__((noinline)) void keyboard_block(void)
 static int clock_out(void) { return !song.g[G_CLOCK] && !(MSET(15, 17) & MO_CLOCK_OFF); }
 static void mo_rt(uint32_t b, uint32_t due) { (void)mo_put(0x0Fu | b << 8, due); }
 
+/* the tape's clock: ticks (TAPE_TPQ to the quarter) from the beat counters the ARP and the click use, so a tempo change
+ * or an external clock needs no rescaling. tape_beat counts the beats since PLAY / a locate (only while playing),
+ * song_ticks the ticks (due times: never wrapped), tape_head the same wrapped at tape_len, tape_pass the wraps.
+ * tape_frac is the last tick into the beat: it never goes back within one. In the pool, zero at boot: tape_len 0 means
+ * 4 bars until the tape's own (tape.c) sets it */
+static uint32_t tape_beat __attribute__((section(".pool"))), song_ticks __attribute__((section(".pool")));
+static uint32_t tape_head __attribute__((section(".pool"))), tape_len __attribute__((section(".pool")));
+static uint16_t tape_pass __attribute__((section(".pool"))), tape_frac __attribute__((section(".pool")));
+
+static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; }
+static __attribute__((noinline)) uint32_t tape_beat_frac(void)
+{
+    uint32_t quarter = beat_samples(), frac = (beat_pos * TAPE_TPQ + quarter / 2u) / quarter;   /* (rounded: a pulse is 20) */
+    return frac < TAPE_TPQ ? frac : TAPE_TPQ - 1u;
+}
+/* PLAY, Start, a locate: the clock to a tick (a bar line for PLAY), the head with it */
+static __attribute__((noinline)) void tape_locate(uint32_t tick)
+{
+    song_ticks = tick;
+    tape_head = tick % tape_length();
+    tape_beat = tick / TAPE_TPQ;
+    tape_frac = (uint16_t)(tick % TAPE_TPQ);
+    tape_pass = 0;
+}
+/* Continue: where the beat is now, nothing counted for the time stopped (beat_pos runs free then) */
+static void tape_resume(void)
+{
+    tape_frac = (uint16_t)tape_beat_frac();
+    song_ticks = tape_beat * TAPE_TPQ + tape_frac;
+}
+/* the head on, once a block while playing (events_block). Not inlined: the audio ISR's loop keeps its shape */
+static __attribute__((noinline)) void tape_clock(void)
+{
+    uint32_t frac = tape_beat_frac(), now, len = tape_length();
+    frac = frac > tape_frac ? frac : tape_frac;
+    tape_frac = (uint16_t)frac;
+    now = tape_beat * TAPE_TPQ + frac;
+    tape_head += now - song_ticks;
+    song_ticks = now;
+    while (tape_head >= len) {
+        tape_head -= len;
+        tape_pass++;
+    }
+}
+
 static void seq_start(void)
 {
     uint32_t i;
@@ -1290,7 +1333,7 @@ static void seq_start(void)
     }
     song.tick = 0;
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
-    launch_steps = 0; launch_pos = CLK_START;      /* (Skiff) the launch points' steps from the top, as the click's */
+    tape_locate(tape_head);                        /* the tape from its head (PLAY snapped it to a bar line) */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
     song.playing = 1;
     slicer_start();                                /* slicer.c: its step 0 with the sequencer's */
@@ -1349,7 +1392,6 @@ static __attribute__((noinline)) void seq_gate_end(track_t *t)
     seq_h2[k] = 0;
     t->seq_hold = t->seq_n ? 2u : 0u;               /* (seq_tm kept: a RATCH part's repeat knows its tied notes) */
 }
-static const step_t *launch_next(const track_t *t, uint32_t len, const step_t *own);   /* ((2.0, #44) launch.c) */
 /* (#25) the notes of seq_notes the next step s ties (as it will play them: QNT SEQ): bit i, seq_notes[i] goes on into
  * it */
 static uint32_t seq_ties_of(track_t *t, const step_t *s, uint32_t qseq, int32_t qtrn)
@@ -1396,11 +1438,10 @@ static void seq_stop(void)
 
 /* (2.2) Song Position (an external clock's SPP, then Continue; midi_clock.c): from the top as PLAY, then every track
  * moved on, silently, to where pos 16ths put it: its steps (N_DIV in 48ths of a quarter: DIV_48) in its direction, its
- * passes (TAKES, the trig conditions), a step part-way waiting for the next; the click, the launch points and the beat
- * with them. SONG lists stay on their entries. ponytail: the straight grid (a swung step lands a few ms off until the
- * next); PING / RAND walk their cycle, the rest of a long way skipped in whole cycles. DIV_48: voice.c.
- * (2.5) at: each track's own place, in 48ths of a quarter (SPP: pos's for all; SHIFT + PLAY on SONG: each where its
- * list is then, bank.c song_from); a track at 0 as PLAY left it */
+ * passes (TAKES, the trig conditions), a step part-way waiting for the next; the click and the beat with them.
+ * ponytail: the straight grid (a swung step lands a few ms off until the next); PING / RAND walk their cycle, the rest
+ * of a long way skipped in whole cycles. DIV_48: voice.c. (2.5) at: each track's own place, in 48ths of a quarter
+ * (SPP: pos's for all); a track at 0 as PLAY left it */
 static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t pos)
 {
     uint32_t i, k, rem, adv, len, per, u;
@@ -1426,11 +1467,11 @@ static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t
         }
         t->seq_pos = rem ? rem * div_samples((uint32_t)t->p[P_SDIV]) / u : 0x7FFFFFFFu;
     }
+    tape_locate(pos * (TAPE_BAR / 16u));
     if (!pos)
         return;
     clk_step = (pos - 1u) & 15u;                    /* (the click's next 1/16: pos's) */
     clk_pos = div_samples(2);
-    launch_steps = pos;
     beat_n = (uint8_t)((pos >> 2) & 3u);
     beat_pos = (pos & 3u) * div_samples(2);
 }
@@ -1441,19 +1482,12 @@ static __attribute__((noinline)) void seq_locate(uint32_t pos)
         at[i] = pos * 12u;
     seq_locate_at(at, pos);
 }
-/* (2.5) SHIFT + PLAY on SONG (bank.c song_from): each track's place (48ths) and the song's (16ths) for the PLAY request
- * that follows (sl_on, until a start uses it: seq_go; a PLAY press or a stop from the main loop drops it) */
-static uint32_t sl_at[NTRK] __attribute__((section(".pool"))), sl_pos __attribute__((section(".pool")));
-static volatile uint8_t sl_on __attribute__((section(".pool")));
 /* PLAY's start (events_block, the count-in's end): from the top, or there. Not inlined: events_block and cin_block keep
  * their shape (tests/target_budget.py reads their loops from the layout) */
 static __attribute__((noinline)) void seq_go(void)
 {
-    if (sl_on) {
-        sl_on = 0;
-        seq_locate_at(sl_at, sl_pos);
-    } else
-        seq_start();
+    tape_head -= tape_head % TAPE_BAR;
+    seq_start();
 }
 
 /* play one step: TIE extends, REST releases, NOTE (re)triggers its notes, then its lane hits (their GM
@@ -1483,8 +1517,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     uint32_t len = t->p[P_SLEN] ? (uint32_t)t->p[P_SLEN] : 1u, f = t->fire_idx, k = trk_index(t);
     /* (Skiff) the step after it in its direction (played early by its NUDGE, it is the one after the playing one) */
     uint32_t nx = f == t->seq_idx ? seq_peek(t, len) : seq_after((uint32_t)t->p[P_DIR], f % len, f < t->seq_idx, len);
-    /* ((2.0, #44) a LOOP switch at its end, a chain's next part: that pattern's first, so a note goes on across it) */
-    const step_t *ns = f == t->seq_idx ? launch_next(t, len, &t->step[nx]) : &t->step[nx];
+    const step_t *ns = &t->step[nx];
     uint32_t next_tie = ns->time == ST_TIE;
     uint32_t hits = step_ratchet(s), grace = (s->flags & SF_FLAM) && !(skip & SEQ_REP);   /* (Skiff) FLAM */
     uint8_t nn[4 + NLANE], vv[4 + NLANE];           /* the notes it plays: its notes, then its hits */
@@ -1705,9 +1738,7 @@ static __attribute__((noinline)) void seq_fire(track_t *t, uint32_t idx, uint32_
 /* (Skiff) NUDGE: a step plays its nudge (64ths of its own length) from its start, later or earlier. On entering a
  * step: it plays now (on the grid), later (NUD_LATE at late_at) or has already (NUD_DONE: early, in the step before).
  * Then the next step, if it comes early, is set to play in this one (NUD_EARLY at early_at): not in RAND (the next is
- * not known) nor where a staged pattern may come in (launch.c launch_ahead: the next would be the outgoing one's). A
- * NOTE step's nudge only: a TIE or a REST keeps to the grid */
-static int launch_ahead(const track_t *t, uint32_t len);
+ * not known). A NOTE step's nudge only: a TIE or a REST keeps to the grid */
 static int32_t nudge_samples(int32_t nudge, uint32_t len) { return nudge * (int32_t)(len / 64u); }
 static int32_t step_nudge(const step_t *s) { return s->time == ST_NOTE ? s->nudge : 0; }
 /* (1.3, from Felucca 1.5.6's #213) the matrix's TIME on step idx: how late it plays (samples, 0: on time). A NOTE step
@@ -1735,7 +1766,7 @@ static __attribute__((noinline)) void seq_enter(track_t *t, uint32_t period, uin
         seq_fire(t, i, period, 0u);
     }
     t->nud &= (uint8_t)~(NUD_EARLY | NUD_DONE);
-    if (t->p[P_DIR] != DIR_RAND && !launch_ahead(t, len)) {
+    if (t->p[P_DIR] != DIR_RAND) {
         uint32_t nx = seq_peek(t, len);
         d = step_nudge(&t->step[nx]);
         if (d < 0) {
@@ -1761,7 +1792,7 @@ static __attribute__((noinline)) void seq_nudge(track_t *t, uint32_t period, uin
     }
 }
 
-#include "launch.c"                                 /* Skiff: live pattern switching (the bank's, at launch points) */
+#include "launch.c"                                 /* Skiff: the arm table (PERFORM's SEQ RUN and MUTE keys) */
 
 static void seq_tick(track_t *t, uint32_t n)
 {
@@ -1790,12 +1821,8 @@ static void seq_tick(track_t *t, uint32_t n)
             seq_fire(t, t->seq_idx, period, 0u);
         }
         t->seq_pos = t->seq_pos >= 0x7FFFFFFFu ? 0u : t->seq_pos - cur_len;
-        if ((launch_q[trk_index(t)].armed | mute_arm[trk_index(t)]) && launch_step(t, ln, period)) {   /* (Skiff) a
-                                                     * pattern from the bank came in (a mute: launch_step turns it) */
-            period = div_samples((uint32_t)t->p[P_SDIV]);
-            len = (uint32_t)t->p[P_SLEN];
-            ln = len ? len : 1u;
-        }
+        if (arm[trk_index(t)].op)
+            arm_apply(t);                           /* (Skiff) an armed SEQ RUN or MUTE (launch.c) */
         t->seq_idx = (uint16_t)seq_next(t, ln);    /* (Skiff) the next step in its direction (seq_next) */
         if (t->p[P_DIR] == DIR_FWD ? !t->seq_idx : !t->seq_cnt || t->seq_cnt >= ln) {
             t->seq_cnt = 0;
@@ -1803,7 +1830,8 @@ static void seq_tick(track_t *t, uint32_t n)
         }
         t->seq_cnt++;
         rec_hold(t, t->seq_idx, ln);
-        seq_enter(t, period, ln);                   /* (Skiff) it plays: now, later or already (NUDGE) */
+        if (seq_running(trk_index(t)))
+            seq_enter(t, period, ln);               /* (Skiff) it plays: now, later or already (NUDGE) */
     }
     if (t->nud)
         seq_nudge(t, period, len ? len : 1u);
@@ -2069,15 +2097,20 @@ static __attribute__((noinline)) void events_block(uint32_t n)
             seq_go();                               /* ((2.5) from the top, or SONG's entry: seq_go) */
         transport_req = 0;
     } else if (transport_req == 2u) {
+        if (!song.playing && !cin_left)
+            tape_head = 0;                            /* STOP when stopped: the tape to its start */
         seq_stop();
         transport_req = 0;
     } else if (transport_req == 3u) {                 /* GLO + PLAY: from the top without stopping (INT clock) */
         if (!clock_mode) {
+            tape_head = 0;
             seq_stop();
             seq_start();
         }
         transport_req = 0;
     }
+    if (song.playing)
+        tape_clock();
     pulse = mo_block_begin(n);                         /* ((2.2) MENU > MIDI changed: what no longer applies, let go;
                                                          * CLOCK OUT's pulse) */
     pr = panic_req;
@@ -2146,8 +2179,6 @@ static __attribute__((noinline)) void events_block(uint32_t n)
     }
     if (clock_mode)
         seq_n = clock_ext_block();
-    if (song.playing)
-        launch_clock(seq_n);                          /* (Skiff) the steps a BAR / BEAT launch waits for */
     if (aud_req)
         seq_audition();                               /* ((1.3) STEP PREVIEW: a step sounds, stopped) */
     for (i = 0, ord = fol_order(); i < NTRK; i++, ord >>= 4)   /* ((2.1) the tracks followed first: follow.c) */
@@ -2165,6 +2196,10 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         beat_pos -= beat_samples();
         beat_pos = beat_pos < beat_samples() ? beat_pos : 0u;
         beat_n = (beat_n + 1u) & 3u;
+        if (song.playing) {
+            tape_beat++;
+            tape_frac = 0;
+        }
     }
     if (song.playing)
         song.tick++;

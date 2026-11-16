@@ -492,7 +492,7 @@ static void fr_close(int keep)
 static void take_commit(uint32_t k)
 {
     track_t *t = &trk[k % NTRK];
-    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, want, i, e, b0, b1, j, chain = 0, tied = 0, mine;
+    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, want, i, j, tied = 0, mine;
     uint32_t notes = 0, moves = 0, full = 0, from;
     int own = rec_poly(t);                            /* ((2.0, #25) notes overlap: each held note its own tie) */
     step_t tmp[NSTEP];
@@ -514,26 +514,15 @@ static void take_commit(uint32_t k)
         return;
     }
     want = take_pass[k % NTRK] - 1u;                  /* the pass before the one playing (or stopped in) */
-    if ((e = trk_ent(k)) < NENT && ent_block(k, e, &b0, &b1)) {   /* ((2.0, #44) on a chain: its last whole round, */
-        if (!chain_pl[k % NTRK]) {                                 /* each part's pass into it (the others' first, */
-            ui_message("PLAY ONE LOOP FIRST");                     /* each with an undo copy of its own) */
-            return;
-        }
-        chain = 1;
-        want = chain_pl[k % NTRK] + e - b0;
-        for (j = b0; j <= b1; j++)
-            if (j != e)
-                take_part(k, j, chain_pl[k % NTRK] + j - b0, tmp, &notes, &moves, &full);
-    }
-    if (!chain && want <= take_p0[k % NTRK]) {        /* ((2.5) that pass was another pattern's: the one now came in */
-        ui_message("PLAY ONE LOOP FIRST");            /* after it (launch.c launch_swap), so it isn't put in this one */
+    if (want <= take_p0[k % NTRK]) {                  /* ((2.5) that pass was another pattern's: the one now came in */
+        ui_message("PLAY ONE LOOP FIRST");            /* after it, so it isn't put in this one */
         return;
     }
-    from = chain ? chain_pl[k % NTRK] : want;
+    from = want;
     memcpy(tmp, t->step, sizeof tmp);
     if (own)                                          /* ((2.0) unfolded: a note played into a long one goes beside it) */
         ed_open(tmp, t, len);
-    mine = take_notes(k, tmp, len, want, own, (int)chain, &tied);
+    mine = take_notes(k, tmp, len, want, own, 0, &tied);
     for (i = 0, j = 0; i < (take_kv_n < TAKE_KV ? take_kv_n : TAKE_KV); i++)
         j += take_kv[i].trk == k && take_kv[i].pass == want && take_kv[i].step < len;
     notes += mine;

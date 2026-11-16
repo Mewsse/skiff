@@ -198,7 +198,7 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
-| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4; Skiff phase 6: 6), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, Skiff U2: 16) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) and (Skiff phase 6) `54 01 tracks e0 e1 e2` (light tracks) (below) and (Skiff W1) `43 01 count` (a step's FLAM, COND, NUDGE; count: the trig conditions) and (Skiff W3) `4B 01 8` (the DRUM-X kit, below) and (Skiff W3) `57 01 caps` (bit 0 TRANSPORT, bit 1 PROJ_NAME, bit 2 POOL, bit 3 LIST, bit 4 PERFORM, (#21) bit 5 SMP_MIX, (2.0) bit 6 a step's ties, below) and (Skiff 1.3) `49 01 c0 c1 e0 e1` (wide ids: P_COUNT and P_E0, above) and (2.0) `58 01 caps` (bit 0: LIST2, NEW, COPY+, CHAIN, SONG ONCE, the pool's EMPTY and CLEAR UNUSED; (#30) bit 1: the entries' sounds, LIST2's op 9 and its reply's sound bytes; "Pool, lists, PERFORM" below) ; older firmware ends earlier |
+| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4; Skiff phase 6: 6), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, Skiff U2: 16) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) and (Skiff phase 6) `54 01 tracks e0 e1 e2` (light tracks) (below) and (Skiff W1) `43 01 count` (a step's FLAM, COND, NUDGE; count: the trig conditions) and (Skiff W3) `4B 01 8` (the DRUM-X kit, below) and (Skiff W3) `57 01 caps` (bit 0 TRANSPORT, bit 1 PROJ_NAME, bit 2 POOL, (#21) bit 5 SMP_MIX, (2.0) bit 6 a step's ties, below; bits 3 LIST and 4 PERFORM: gone) and (Skiff 1.3) `49 01 c0 c1 e0 e1` (wide ids: P_COUNT and P_E0, above) and (2.0) `58 01 caps` (bit 0: the pool's EMPTY and CLEAR UNUSED; "Pool" below) ; older firmware ends earlier |
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine: its defaults, then its first preset (as on the device) |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
@@ -506,7 +506,7 @@ grid lives in the steps themselves, so every engine has it:
   (92..94), (2.1) FOLLOW (135..137). It does drop the track's recorded
   motion (the device's SAVE held brings it back). (Before 1.0 a preset also
   set the arp and replaced the steps with its pattern; a factory preset turned the SLICER off.) The byte
-  layout of every command is unchanged. Patterns are loaded on the device (SAVE > PATTERNS, PERFORM) or
+  layout of every command is unchanged. Patterns are loaded on the device (a project load) or
   written by the editor with `STEP_SET` / `TRACK_STEP`.
   The device keeps one copy of the track from before the last load (any track); SAVE held 0.7 s on the
   device swaps back what the load changed (the sound; after a pattern load, the steps and LEN / DIV
@@ -957,45 +957,28 @@ the state as its keep-alive (instead of PING). SAVE AS and RENAME write flash: a
 the transport first (the device's own SAVE refuses while playing). SAVE AS is the device's SAVE with a name (the
 music's name after it); RENAME changes a stored project's name only (the music's too, when it is that slot's).
 
-## Pool, lists, PERFORM (78, 79, 80, (2.0) 82; Skiff W3)
+## Pool (78; Skiff W3)
 
-The pattern pool (SAVE › PATTERNS), each track's list (SEQ › SONG) and PERFORM's scenes, staged mutes and LAUNCH, as
-the device has them (DESIGN.md "Patterns, lists and the song", "PERFORM layer"). INFO's `57 01 caps` bits 2, 3, 4;
-(2.0) `58 01` bit 0: 82 LIST2 and the ops marked 2.0. Each change acts as the device's own control does, through the
-same code, and the device says so on its screen. A request of the wrong length, an op it doesn't know or a value out
-of range gets no reply. Patterns are 1..64 in an entry (0: empty) and 0..63 elsewhere. Don't resend a change that
-timed out (a COPY sent twice copies twice): read again.
+The pattern pool (SAVE › PATTERNS) as the device has it. INFO's `57 01 caps` bit 2; (2.0) `58 01` bit 0: POOL's ops 2
+and 3. A change acts as the device's own control does, through the same code, and the device says so on its screen. A
+request of the wrong length, an op it doesn't know or a value out of range gets no reply. Patterns are 0..63. Don't
+resend a change that timed out: read again.
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
-| 78 POOL | none (the pool), or 1, pattern 0..63: CLEAR it (only one nothing uses, only stopped; it can't be undone); (2.0, `58 01` bit 0) 2, pattern: EMPTY it (its steps, NUDGEs and automation; the pattern and every entry naming it stay; only stopped); 3: CLEAR UNUSED (every pattern nothing uses; only stopped) | op, rc (0 done, 1 nothing to clear / to empty / unused, 2 in use, 3 playing, 4 failed), then for each of the 64 patterns: its LEN (0: empty), how many use it (the entries naming it in the lists and the saved projects, and a track on it that no entry names; at most 127) |
-| 79 LIST | none (the lists), or op, track, entry 0..15 [, value]: 1 SET (value: a kept pattern 1..64, or (#28) 65 a REST; the track on that entry: it comes in as a launch), 2 COPY (a new pattern, a copy of the entry's; a track on it goes on with the copy), 3 PLAY (the track to the entry: at once stopped, at the LAUNCH point playing), 4 CLEAR (only stopped; its pattern is erased when nothing else names it; a track on it goes empty; a REST at once, playing too), 5 REPS (value 1..16; an empty entry's too, a rest's length in the song since Skiff 1.2.1; (2.0) 0: CHAIN, the entry goes on into the next as one pattern: one naming a pattern or a REST with an entry after it, else rc 1), (2.0) 7 NEW (a new empty pattern, the first free number, the track's LEN; then as SET), 8 COPY+ (the entry's pattern copied into the first empty entry after its block, its REPS too; on a chain all of it into as many empty entries in a row, a chain again; rc 1 when it names no pattern or no such entries follow); or 6, song: SONG (0 off, 1 on, (2.0) 2 ONCE) | op, rc (0 done, 1 empty: an empty entry, nothing to copy, a pattern not kept, no room after, can't chain; 2 done without its automation; 3 playing; 4 PATTERNS FULL; 5 failed), SONG 0/1 (on), then for each track: the entry it is on (127: on no entry's pattern), the entry staged (127: none), the pattern it is on (0..63, 127 none), then its 16 entries: pattern (1..64, 65 a REST, 0 empty), REPS − 1 (an entry on CHAIN: 0) |
-| 82 LIST2 | as 79 (2.0, `58 01` bit 0); (2.0, #30, `58 01` bit 1) also 9 SOUND, track, entry, s0, s1: the entry's sound (s0 0: none, takes it off; 1..63: engine s0 − 1, its preset s1; 64..127: the user preset in slot s0 − 64, s1 0); a sound on an empty entry, an engine the track may not play (DIGITAL, PHYS or GRAIN on a light track), a preset or a user slot that isn't there: rc 1 | as 79, but SONG 0..2 (2: ONCE) and each entry's REPS byte as the device keeps it: REPS − 1 (0..15), or 16 for an entry on CHAIN; (bit 1) after each entry's two bytes its sound's two, as op 9 takes them (0 0: none) |
-| 80 PERFORM | none (the state), or op [, value]: 1 STORE (scene 0..15: the entry each track is on, its mute), 2 RECALL (scene), 3 MUTE (track: the other way, staged while playing; a staged one taken back), 4 CANCEL (all that is staged: entries, mutes; the song's next stays), 5 LAUNCH (0 LOOP, 1 BAR, 2 BEAT, 3 NOW; saved with the settings) | op, rc (RECALL: 0 done or staged, 1 empty, 2 a pattern without its automation, 4 PATTERNS FULL; LAUNCH: as UI_SET's), LAUNCH, the scene recalled or stored last (127 none), the scenes kept (16 bits, 7 a byte, low first), then for each track: muted 0/1, its mute staged (0 none, 1 to unmute, 2 to mute) |
+| 78 POOL | none (the pool), or 1, pattern 0..63: CLEAR it (only one nothing uses, only stopped; it can't be undone); (2.0, `58 01` bit 0) 2, pattern: EMPTY it (its steps, NUDGEs and automation; the pattern stays; only stopped); 3: CLEAR UNUSED (every pattern nothing uses; only stopped) | op, rc (0 done, 1 nothing to clear / to empty / unused, 2 in use, 3 playing, 4 failed), then for each of the 64 patterns: its LEN (0: empty), how many use it (the saved projects naming it, a track on it; at most 127) |
 
-Nothing is pushed: the editor reads LIST and PERFORM again about once a second while it shows them (with TRANSPORT;
-POOL every fourth time) and after each change. A store over a kept scene and the CLEARs ask on the device's screen
-there; the editor asks before it sends them.
+Nothing is pushed: the editor reads POOL again while it shows it (with TRANSPORT about once a second; POOL every fourth
+time) and after each change. The CLEARs ask on the device's screen there; the editor asks before it sends them.
 
-(2.0) Firmware with `58 01` bit 0 takes the new ops on both 79 and 82 (an editor before never sends them) and answers
-82; an editor reads the lists with 82 then, so it sees SONG ONCE and the chains. 79 answers SONG on and a chain's REPS
-as 1x, as before: an editor before 2.0 reads its reply unchanged, and its REPS 1..16 on an entry on CHAIN splits it, as
-the device's KNOB 3 turned right. The tag is the last of INFO's, after `49 01`: an editor before reads up to `49 01`
-and stops. A chain is drawn as the device does: its entries on a box of their own, from one on CHAIN to the first after
-it not on CHAIN, each of them naming a pattern or a REST.
-
-(2.0, #30) An entry's sound (`58 01` bit 1; DESIGN.md "An entry's sound") is loaded when the track comes onto the entry,
-as PRESETS or USER would load it, the track's own settings kept; playing, on the entry's first step. The device keeps
-a user preset as 0x80 + its slot (SKF4's entry bytes); on the wire that is 64 + the slot, 7 bits. 79's reply has no
-sounds: an editor before reads it as it was. The device's SEQ › SONG puts the track's sound now on an entry (KNOB 2's
-SOUND), only as it was loaded (an edited one refused); op 9 puts any preset or user preset the track may play. A CLEAR
-takes the entry's sound with it, a COPY+ copies it. The editor marks an entry with a sound as the device does, its
-tile's top right corner cut.
+79 LIST, 80 PERFORM and (2.0) 82 LIST2 (the tracks' lists, SEQ › SONG, PERFORM's scenes, staged mutes and LAUNCH) went
+with the song layer: firmware since answers none of them and clears `57 01` bits 3 and 4 and `58 01` bit 1. The `58
+01` tag stays (bit 0) and is the last of INFO's, after `49 01`: an editor before reads up to `49 01` and stops.
 
 ## THEME CUSTOM (39; Skiff #27)
 
 MENU › DISPLAY › THEME has the user's colours as its last value, CUSTOM, once the editor has stored a set (after
-Felucca 1.6's CUSTOM palette and its PALETTE_GET / PALETTE_SET by Leo Kuroshita; Skiff's 80 is PERFORM, so here one
+Felucca 1.6's CUSTOM palette and its PALETTE_GET / PALETTE_SET by Leo Kuroshita; Skiff's 80 was PERFORM, so here one
 command does both). A set is eleven colours: BG SURF TEXT THEME ACCENT, then the six tracks' (T1..T6), each RGB565,
 22 bytes low byte first as the device stores them and sent as pack7 (26 bytes; Felucca sends three 7-bit bytes a
 colour, which costs the FM-1 more code), and a look: the built-in THEME (0..5, the order of

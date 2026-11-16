@@ -68,6 +68,19 @@ static int check(const char *what, int ok)
     return !ok;
 }
 
+/* track k's pattern kept as pattern id, the track on it, written now (stopped): 0 done (SAVE > PATTERNS' put, before the
+ * song layer went) */
+static int keep_as(uint32_t k, uint32_t id)
+{
+    if (!trk_rec(k) || pat_keep_now(id, bk_rec))
+        return 4;
+    trk_pid[k] = (uint8_t)(id + 1u);
+    trk_sig[k] = proj_hash(bk_rec, BK_REC);
+    while (pend_free() < PEND_N)
+        if (pat_flush_one())
+            return 2;
+    return 0;
+}
 static void reset(void)
 {
     memset(nor, 0xFF, sizeof nor);
@@ -89,7 +102,7 @@ static void reset(void)
     erases = 0;
     ed_bk_valid = ed_bk_put = 0;
     bank_boot();                                         /* (Skiff: the pattern bank, from the erased flash: empty) */
-    lists_clear();                                       /* (phase 5: the lists, power-on's) */
+    memset(trk_pid, 0, sizeof trk_pid);                  /* (phase 5: no track on a pattern, power-on's) */
     motion_lost = 0;
 }
 
@@ -198,7 +211,7 @@ int main(void)
                  "bank), runtime 2560 B ((2.0) SKF4, six tracks), the tracks' patterns written first",
                  list(0, &len, &crc) == 0 && rep[2] == 29u && rep[3 + 10u * 11u] == 16u && rep[3 + 25u * 11u] == 31u &&
                  len == PROJ_SKF->size && len == 2560u && crc == st_crc32(ED_BK_RAW, len) &&
-                 bank_used(0, 0) && keep_waiting() == 0u);
+                 trk_pid[0] && pool_used(trk_pid[0] - 1u) && keep_waiting() == 0u);
     bad += check("an empty project slot lists as length 0", list(2, &len, &crc) == 0 && len == 0);
     bad += check("GET of the runtime copy", get(0, 0, 64) == 0);
     project_save(0);
@@ -260,13 +273,13 @@ int main(void)
         memset(&po, 0, sizeof po);
         po.magic = PERSIST_MAGIC; po.palette = palette_to_stored(2); po.lowcut = 1; po.panel = panel;
         po.favorites.factory[15][24] = 0xA5u;
-        po.favorites.factory[15][26] = LAUNCH_BEAT;
+        po.favorites.factory[15][26] = 2u;               /* (a byte nothing reads now: kept as it came) */
         po.favorites.factory[9][0] = 4;                  /* (PHYS's third preset starred) */
         bad += check("(2.0) settings of a PER4 archive restore, stored as SKS1",
                      put_all(1, &po, sizeof po, st_crc32(&po, sizeof po)) == 0 && settings.palette == 2u &&
-                     settings.lowcut == 1u && launch_mode() == LAUNCH_BEAT && favorites.factory[9][0] == 4u &&
+                     settings.lowcut == 1u && favorites.factory[15][26] == 2u && favorites.factory[9][0] == 4u &&
                      st_load(OBJ_SETTINGS, &got, sizeof got) == (int)sizeof got && got.magic == SKS_MAGIC &&
-                     got.s.launch == LAUNCH_BEAT && got.fav[9][0] == 4u && !memcmp(&got, &persist_saved, sizeof got));
+                     got.s.launch == 2u && got.fav[9][0] == 4u && !memcmp(&got, &persist_saved, sizeof got));
         before = erases;
         po.magic = SKS_MAGIC;
         bad += check("  a PER4-sized record of another magic is refused, nothing written",
@@ -512,7 +525,7 @@ int main(void)
     reset();
     {
         static uint8_t got[16][BK_LEN];
-        uint32_t lens[16], crcs[16], c, k;
+        uint32_t lens[16], crcs[16], c, k, t2;
         step_t want[NSTEP];
         int ok = 1;
         for (k = 0; k < NTRK; k++) {
@@ -525,12 +538,11 @@ int main(void)
             motion_set_lock(t, 3, P_REV, (int16_t)(40 + k));
         }
         memcpy(want, trk[2].step, sizeof want);
-        lists.ent[0][1][0] = 1u + 1u;                    /* (phase 5: the entries naming patterns 02, 42, 64: chunks */
-        lists.ent[2][9][0] = 41u + 1u;                   /* 0, 10, 15, as the bank's slots T1 B, T3 J, T4 P were) */
-        lists.ent[3][15][0] = 63u + 1u;
-        ok &= bank_put(0, 1, 0) == 0 && bank_put(2, 9, 0) == 0 && bank_put(3, 15, 0) == 0;
+        ok &= keep_as(0, 1u) == 0 && keep_as(2, 41u) == 0 && keep_as(3, 63u) == 0;   /* (phase 5: patterns 02, 42, 64:
+                                                         * chunks 0, 10, 15, as the bank's slots T1 B, T3 J, T4 P were) */
         for (c = 0; c < 16u; c++)
             ok &= list(16u + c, &lens[c], &crcs[c]) == 0;
+        t2 = trk_pid[1];
         ok &= lens[0] == BK_LEN && lens[2 * 4u + 2u] == BK_LEN && lens[3 * 4u + 3u] == BK_LEN && !lens[1] && !lens[4];
         for (c = 0; c < 16u; c++)
             ok &= !lens[c] || (get_all(16u + c, got[c], lens[c]) == 0 && st_crc32(got[c], lens[c]) == crcs[c]);
@@ -547,21 +559,20 @@ int main(void)
         memset(nor + 0xE7000, 0xFF, 0x2000);           /* a new unit: the bank's sectors erased */
         memset(nor + 0xEA000, 0xFF, 0x12000);
         bank_boot();
-        ok = !bank_used(2, 9);
+        ok = !pool_used(41);
         for (c = 0; c < 16u; c++)
             ok &= put_all(16u + c, got[c], lens[c], lens[c] ? crcs[c] : st_crc32(got[c], 0)) == 0;
         track_defaults_steps(&trk[1]);
-        ok &= bank_used(0, 1) && bank_used(2, 9) && bank_used(3, 15) && bank_used(1, 0);   /* (T2's: kept at LIST) */
-        lists.ent[1][0][0] = 41u + 1u;                   /* (T2's A names 42 too) */
-        ok &= ent_go(1, 0) == 0 && !memcmp(trk[1].step, want, sizeof want);
+        ok &= pool_used(1) && pool_used(41) && pool_used(63) && t2 && pool_used(t2 - 1u);   /* (T2's: kept at LIST) */
+        ok &= pat_load(&trk[1], 41) == 0 && !memcmp(trk[1].step, want, sizeof want);   /* (T2 onto 42 too) */
         bank_boot();
-        ok &= bank_used(2, 9);
+        ok &= pool_used(41);
         bad += check("  restored onto an empty bank: every chunk as it was (a pattern loads exactly), after a power cycle",
                      ok);
-        ok = put_all(16u, got[0], 0, st_crc32(got[0], 0)) == 0 && !bank_used(0, 1);
+        ok = put_all(16u, got[0], 0, st_crc32(got[0], 0)) == 0 && !pool_used(1);
         bad += check("  an empty object over a kept chunk empties it", ok);
         got[2 * 4u + 2u][BK_REC + BK_STEPS + 4u] = 7u;   /* (pattern J of track 3: a step with n 7, no firmware wrote) */
-        ok = put_all(16u + 10u, got[10], BK_LEN, st_crc32(got[10], BK_LEN)) == 2u && bank_used(2, 9);
+        ok = put_all(16u + 10u, got[10], BK_LEN, st_crc32(got[10], BK_LEN)) == 2u && pool_used(41);
         bad += check("  a chunk holding a step no firmware wrote: refused (2), the bank as it was", ok);
         got[10][BK_REC + BK_STEPS + 4u] = 0;
         song.playing = 1;

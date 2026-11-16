@@ -6,7 +6,7 @@
  *   - FUNA projects ("FUN10", written since Felucca 1.2; its project.c, the top and proj_pack / proj_unpack): read here
  *     into project_t (fel_funa), their four tracks' steps and automation patterns in the pool as bank.c proj_migrate
  *     makes them, each with its own automation (fel_pats), then SKF4 (a slot) or the music (fel_put); their songs'
- *     sections onto the lists where they map, after every object (fel_songs);
+ *     sections onto the slots' lists where they map, after every object (fel_songs; the music's: dropped, noted);
  *   - user presets of versions 4 and 5 that Felucca 1.2+ wrote (np 103, 104, 111), by parameter name: conv_fix writes
  *     them as version 6 (fel_up_values), an FM6 sound's patch kept.
  * The page says whose an archive is (conv_source: Felucca's hold no pattern bank; both report "FELUCCA vX.Y"); a FUNA
@@ -327,12 +327,8 @@ static void fel_songs(void)
     for (id = 0; id < 6u; id++) {
         if (!((fel_ids >> id) & 1u) || !fel_chain[id][0])
             continue;
-        if (!id) {
-            for (k = 0; k < PROJ_NT; k++) {
-                own[k] = trk_pid[k];
-                ol[k] = fel_len(trk[k].p[P_SLEN], trk[k].p[P_SDIV]);
-            }
-            fel_drop[0].song = !fel_song(fel_chain[0], lists.ent, lists.cur, own, ol, pat, len, ok, &fel_drop[0].after);
+        if (!id) {                                 /* (the music: no lists since the song layer went) */
+            fel_drop[0].song = 1;
             continue;
         }
         fel_drop[id].song = 1;
@@ -433,7 +429,8 @@ EXPORT uint32_t conv_note(uint32_t id)
     }
     if (d->song) {
         fel_sep();
-        fel_say("the song's sections (a slot empty, or lengths that do not fill them)");
+        fel_say(d == fel_drop ? "the song's sections (the music has no song now)"
+                              : "the song's sections (a slot empty, or lengths that do not fill them)");
     }
     if (d->midi) {
         fel_sep();

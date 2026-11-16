@@ -66,8 +66,7 @@ rev_side_mix 8
 cho_mode 168
 duck_block 123
 duck_apply 13
-launch_step 28
-launch_swap 68
+arm_apply 0
 throw_on 187
 throw_off 15
 mix_part 1576
@@ -76,6 +75,7 @@ track_insert 3
 ins_drive 280
 ins_swept 228
 ins_filter 74
+tape_clock 0
 strum_tick 139
 strum_flush 531
 mix_spread 143

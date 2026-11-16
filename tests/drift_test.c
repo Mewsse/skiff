@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* (2.5, #107) Host test: the tracks' step clocks, the click and the launch points stay on one grid however long they
+/* (2.5, #107) Host test: the tracks' step clocks and the click stay on one grid however long they
  * play, through the same sources as the firmware (hostsim.c):
  *   build/host/drift_test
  * 1. the quarter (core.h bpm_quarter): a multiple of 24 at every BPM (40..240), within 12 samples of FS * 60 / BPM, and
  *    every straight and triplet DIV (fx.c div_samples) a whole share of it.
  * 2. T1 1/8 (8 steps), T2 1/16 (16), T3 8T (12), T4 1/32 (32), T5 16T (24): each loops a bar. Run 30 minutes at 120 BPM
  *    and 10 at 40 97 128 140 174 240: at every bar start all five wrap to step 0 in the same block, the same samples into
- *    it, and the click's bar and the launch points' bar start as many blocks from it as at the third bar. 2.2 (each
+ *    it, and the click's bar starts as many blocks from it as at the third bar. 2.2 (each
  *    DIV rounded on its own) fails: at 120 BPM its 1/16 track gained 2 samples a beat on the 1/8 one (#107: they met
  *    after ~30 minutes). */
 #define main hostsim_main
@@ -55,8 +55,8 @@ static uint32_t run(uint32_t bpm, uint32_t minutes, uint32_t *bad)
 {
     static const uint8_t DIV[5] = {1, 2, 4, 3, 5};      /* 1/8 1/16 8T 1/32 16T (N_DIV) */
     static const uint8_t LEN[5] = {8, 16, 12, 32, 24};  /* a bar each */
-    uint32_t k, blk, nblk = minutes * 60u * (uint32_t)FS / CTL, bars = 0, last[5], bar_blk = 0, clk_last = 0, ls_last = 0;
-    int32_t clk_off = NO_OFF, ls_off = NO_OFF;
+    uint32_t k, blk, nblk = minutes * 60u * (uint32_t)FS / CTL, bars = 0, last[5], bar_blk = 0, clk_last = 0;
+    int32_t clk_off = NO_OFF;
     host_tracks_init();
     song.g[G_BPM] = (int16_t)bpm;
     for (k = 0; k < 5u; k++) {
@@ -87,10 +87,7 @@ static uint32_t run(uint32_t bpm, uint32_t minutes, uint32_t *bad)
         }
         if (bars >= 3u && clk_step == 0 && clk_last != 0)                       /* the click's bar */
             bar_offset(&clk_off, blk, bar_blk, bad);
-        if (bars >= 3u && launch_steps != ls_last && !(launch_steps % 16u))   /* the launch points' bar */
-            bar_offset(&ls_off, blk, bar_blk, bad);
         clk_last = clk_step;
-        ls_last = launch_steps;
     }
     transport_req = 2;
     events_block(CTL);
@@ -105,7 +102,7 @@ int main(void)
     fails += test_quarter();
     for (i = 0; i < 7u; i++) {
         uint32_t bad, min = i ? 10u : 30u, bars = run(BPM[i], min, &bad);
-        snprintf(what, sizeof what, "%u BPM, %u min: 1/8 1/16 8T 1/32 16T, the click, the launch points: %u bars, %u off",
+        snprintf(what, sizeof what, "%u BPM, %u min: 1/8 1/16 8T 1/32 16T, the click: %u bars, %u off",
                  (unsigned)BPM[i], (unsigned)min, (unsigned)bars, (unsigned)bad);
         fails += check(what, !bad && bars + 1u >= min * BPM[i] / 4u);
     }

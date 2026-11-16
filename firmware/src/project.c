@@ -1369,11 +1369,8 @@ static void project_capture(project_t *p)
 #endif
     motion_unguard(f);
     memcpy(p->name, proj_name, str_len(proj_name));
-    memcpy(p->ent, lists.ent, sizeof p->ent);      /* (phase 5) each track's list, the entry it is on, SONG */
-    memcpy(p->snd, lists.snd, sizeof p->snd);      /* ((2.0, #30) the entries' sounds) */
-    memcpy(p->cur, lists.cur, sizeof p->cur);
-    p->song = lists.song;
-    memcpy(p->scene, lists.scene, sizeof p->scene);  /* (the scenes too: the project's) */
+    for (i = 0; i < NTRK; i++)                     /* (the song layer gone: each track's pattern its entry A, on it) */
+        p->ent[i][0][0] = trk_pid[i];
     if (memcmp(dx_kit, DX_KIT_DEF, sizeof dx_kit)) {   /* (phase 7) the DRUM-X kit, when not the factory's (none: */
         p->dx_on = 1;                              /* the factory's when loaded; a project of before as it was) */
         memcpy(p->dx, dx_kit, sizeof p->dx);
@@ -1503,7 +1500,7 @@ static int project_restore_runtime(const project_t *input)
     panic_req = (1u << NTRK) - 1u;
     fm1_irq_off();                                      /* the audio ISR must not see half a project */
     seq_stop();
-    launch_drop();                                      /* (Skiff) the bank's staged patterns: not over it (launch.c) */
+    (void)arm_cancel();                                 /* (Skiff) nothing armed comes in over it (launch.c) */
     transport_req = 0;
 #if FELUCCA_LEGACY
     motion = p->motion;
@@ -1512,12 +1509,6 @@ static int project_restore_runtime(const project_t *input)
 #endif
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;
-    memcpy(lists.ent, p->ent, sizeof lists.ent);       /* (phase 5) the lists; the tracks on no pattern yet */
-    memcpy(lists.snd, p->snd, sizeof lists.snd);       /* ((2.0, #30) the entries' sounds) */
-    memcpy(lists.cur, p->cur, sizeof lists.cur);
-    lists.song = p->song;
-    memcpy(lists.scene, p->scene, sizeof lists.scene);
-    scene_forget();
     memset(trk_pid, 0, sizeof trk_pid);
     motion_lost = 0;
     for (i = 0; i < G_COUNT; i++)                       /* ((Skiff U3, R8) not the unit's CLOCK MIDI IN TUNE: ui.c) */
@@ -1577,7 +1568,7 @@ static int project_restore_runtime(const project_t *input)
         }
 #endif
         {   /* (phase 5) the pattern of the entry it is on (SKF2); none: the record's steps (a format before) */
-            uint32_t id = ent_pat(k, lists.cur[k]);
+            uint32_t v = p->ent[k][p->cur[k] % NENT][0], id = v && v <= NPAT ? v - 1u : PAT_NONE;
             if (id != PAT_NONE && pool_used(id))
                 (void)pat_load(t, id);
         }
@@ -1601,9 +1592,8 @@ static void project_load(uint32_t slot)
         return;
     }
     proj_bound(&proj_scratch);                          /* a retained RAM slot of an older format: as from flash */
-    transport_stop_now();                               /* (phase 5) stopped first (the ISR swaps nothing more, the */
-    (void)stage_cancel();                               /* steps are still while kept), nothing staged comes in; */
-                                                        /* what the tracks have kept (a swap made: what went out) */
+    transport_stop_now();                               /* (phase 5) stopped first (the steps are still while kept), */
+    (void)arm_cancel();                                 /* nothing armed comes in; what the tracks have kept */
     if (keep_all() == 1) {
         ui_way("PATTERNS FULL", WAY_PATTERNS);
         return;
@@ -1785,8 +1775,7 @@ static uint32_t autosave_sig(void)
         if (i != G_SLOT && i != G_NAME && i != G_LOAD && i != G_SAVE && !unit_g_id(i))
             h = as_mix(h, &song.g[i], sizeof song.g[i]);
     h = as_mix(h, &motion, sizeof motion);
-    h = as_mix(h, &lists, sizeof lists);              /* (phase 5) the lists, the patterns the tracks are on */
-    h = as_mix(h, trk_pid, sizeof trk_pid);
+    h = as_mix(h, trk_pid, sizeof trk_pid);           /* (phase 5) the patterns the tracks are on */
     i = (ui_prefs & PREF_RESTORE_OFF) != 0;           /* (RESTORE LAST back ON: a round, the project written) */
     h = as_mix(h, &i, sizeof i);
     return as_mix(h, proj_name, sizeof proj_name);
@@ -1889,7 +1878,7 @@ static void project_new(void)
     mom_back(0);                                  /* ((1.3) MOMENTARY: as project_load) */
     memset(drum_mute, 0, sizeof drum_mute);
     transport_stop_now();
-    (void)stage_cancel();
+    (void)arm_cancel();
     if (keep_all() == 1) {
         ui_way("PATTERNS FULL", WAY_PATTERNS);
         return;
@@ -1898,14 +1887,13 @@ static void project_new(void)
     panic_req = (1u << NTRK) - 1u;
     fm1_irq_off();
     seq_stop();
-    launch_drop();
+    (void)arm_cancel();
     transport_req = 0;
     memset(&motion, 0, sizeof motion);
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;
     motion_lost = 0;
-    lists_clear();
-    scene_forget();
+    memset(trk_pid, 0, sizeof trk_pid);
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE && !unit_g_id(i))
             song.g[i] = GP[i].def;

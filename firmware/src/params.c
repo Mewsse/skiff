@@ -305,7 +305,7 @@ static int32_t param_fit(const param_desc_t *d, int32_t v)
 }
 
 /* the track's settings, not the sound's: what a sound load (factory or user preset, an engine jump,
- * TOOLS INIT, (2.0, #30) a song entry's sound: launch.c esnd_put, in the audio ISR) leaves alone. The mix (LEVEL,
+ * TOOLS INIT) leaves alone. The mix (LEVEL,
  * PAN, MUTE: the TRACKS faders), the arpeggiator (ARP, ARP 2), the scale and key map (SCL), the pattern parameters
  * (LEN, DIV, SWING, GATE) and the SLICER insert, which chops whatever the track plays in time with its sequencer */
 /* (2.5) MENU > CONTROL > KEEP SENDS ON (a free bit of the settings' MIDI byte, ui.c ks_io; a build without the UI: OFF):
@@ -515,7 +515,6 @@ enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_
                                     * SAVE > TOOLS (R3) and the AUTOMATION page of before are gone) */
        GR_BANK,                    /* (Skiff) SAVE > PATTERNS: the bank's 16 slots of the track (bank.c) */
        GR_DUCK,                    /* (Skiff) FX > DUCK: the track's level over a bar of its source's hits */
-       GR_SONG,                    /* (Skiff phase 5) SEQ > SONG: the tracks' lists (bank.c), ENTRY PATTERN REPS SONG */
        GR_DXSND,                   /* (Skiff phase 7, 8) EDIT > SOUND: a sound of the DRUM-X kit, the sheet (ui_dx.c) */
        GR_LANES,                   /* (Skiff U3, R6) EDIT > LANES (DRUM): the eight lane levels, KNOB 1 the lane (ui.lane) */
        GR_DELAY, GR_REVERB, GR_CHORUS, GR_GLOBAL, GR_VOICE, GR_VOICE2,   /* ((2.0) ENV DEST LFO DEST: MOD) */
@@ -598,7 +597,6 @@ static const page_t PAGES[] = {
     {"FEEL", FAM_SEQ, SC_STEP, GR_FEEL, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P_SDIV, P_SSWING, P_SGATE}},   /* (2.0) PRESETS: the track's DIR */
     {"AUTOMATION", FAM_SEQ, SC_TRACK, GR_EVENTS, {0xFF, 0xFF, 0xFF, 0xFF}},   /* 1.1.5's AUTO LIST: the locks and events */
-    {"SONG", FAM_SEQ, SC_TRACK, GR_SONG, {0xFF, 0xFF, 0xFF, 0xFF}},   /* (Skiff phase 5) the lists (ui_input.c song_knob) */
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
 /* (2.0, D 1A) the MOD page: the route KNOB 1 picks (0..10): the seven fixed routings (LFO DEST's and ENV DEST's of

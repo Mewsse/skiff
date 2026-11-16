@@ -558,7 +558,7 @@ static int test_spp(void)
     ext_pulses(40);
     bad += check("(2.2) SPP 10 + Continue: T1 (1/16) on with its step 11, T2 (1/8, LEN 4) its step 2, T3 (1/4) its step 4",
                  first_note(at, 0) == 50u && first_note(at, 1) == 61u && first_note(at, 2) == 83u);
-    bad += check("  the click's and launch points' 1/16 there too", launch_steps >= 10u);
+    bad += check("  the tape's clock there too (SPP 10: 1,200 ticks on)", song_ticks >= 1200u);
     midi_enqueue(0x0Fu | 0xFCu << 8, 1);
     blk(2);
     song.g[G_CLOCK] = 0;

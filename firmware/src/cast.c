@@ -85,14 +85,14 @@ static __attribute__((noinline)) void cast_smk(void)
     }
 }
 #endif
-/* the music (each track's values and steps, the globals, the lists) and what the UI shows, hashed */
+/* the music (each track's values and steps, the globals) and what the UI shows, hashed */
 static __attribute__((noinline)) uint32_t cast_hash(void)
 {
     uint32_t h = song.sel | (uint32_t)ui.page << 4 | (uint32_t)ui.home << 12 | (uint32_t)ui.menu << 14 |
                  (uint32_t)ui.layer << 16 | (uint32_t)ui.cursor << 24, k;
     for (k = 0; k < NTRK; k++)
         h = h * 31u + st_crc32(trk[k].p, sizeof trk[k].p) + st_crc32(trk[k].step, sizeof trk[k].step);
-    return h * 31u + st_crc32(song.g, sizeof song.g) + st_crc32(&lists, sizeof lists);
+    return h * 31u + st_crc32(song.g, sizeof song.g);
 }
 /* (t5) the sound: the last SCOPE_N samples of the output (audio.c's scope), oldest first, hashed; 0: the audio ISR ran
  * since F (the copy compares at F's block), not checked */

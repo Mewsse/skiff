@@ -79,25 +79,14 @@
   .browser select[size] { min-width: 150px; }
   .slots { display: grid; grid-template-columns: auto auto auto auto; gap: 3px 8px; align-items: center; justify-content: start; }
   .slots.named { grid-template-columns: auto auto auto auto auto; }   /* ((Skiff W3) RENAME too) */
-  /* ((Skiff W3) the Song tab: an entry, a pattern: the one a track is on filled, the one staged dashed, the one picked
-     ringed; empty dim; a pattern nothing uses dashed and dim) */
-  .lists td { padding: 2px 1px; }   /* ((2.0, #44, the chain sheet's A) round its tile: a chain's box, its tiles on it, the
-                                       track's colour dimmed, as on the device; two side by side, a notch between them) */
-  .lists td.chain { background: color-mix(in srgb, var(--s, var(--fg)) 35%, var(--tile)); }
-  .lists td.cp { box-shadow: inset 2px 0 var(--tile); }
-  .lists td.cn { box-shadow: inset -2px 0 var(--tile); }
-  .lists button, .pool button { min-width: 2.6em; padding: 1px 2px; background: var(--bg); color: var(--fg); border: 1px solid var(--line);
+  /* ((Skiff W3) the Song tab's pool: the one picked ringed; empty dim; a pattern nothing uses dashed and dim) */
+  .pool button { min-width: 2.6em; padding: 1px 2px; background: var(--bg); color: var(--fg); border: 1px solid var(--line);
     font-variant-numeric: tabular-nums; }
-  .lists button.on, .pool button.on { background: var(--fg); color: var(--bg); }
-  .lists button.next, .lists button.tog.next { outline: 2px dashed var(--fg); outline-offset: -4px; }
-  .lists button.pick, .pool button.pick { box-shadow: 0 0 0 2px var(--fg); }
-  .lists button.empty, .pool button.empty, .seg button.empty { color: var(--dim); }
-  .lists button.snd { clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%); }   /* ((2.0, #30) an entry
-                                                 with a sound: its corner cut, as on the device) */
+  .pool button.on { background: var(--fg); color: var(--bg); }
+  .pool button.pick { box-shadow: 0 0 0 2px var(--fg); }
+  .pool button.empty { color: var(--dim); }
   .pool button.unused { color: var(--dim); border-style: dashed; }
-  .lists sub { font-size: 70%; }
   .pool { display: grid; grid-template-columns: repeat(8, 2.8em); gap: 3px; }
-  .seg button.kept { font-weight: 700; }
   table { border-collapse: collapse; }
   th { font-weight: 400; color: var(--dim); text-align: left; padding: 0 6px 2px 0; }
   td { padding: 1px 6px 1px 0; }
@@ -238,13 +227,13 @@
   .seg button, button.tog { background: var(--raise); border: 0; margin-right: 2px; border-radius: 4px; }
   .seg button + button { border-left: 0; }
   .seg button[aria-pressed="true"], button.tog[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
-  #trackbtns button:nth-child(1), .mixer .strip:nth-child(1), .lists tbody tr:nth-child(1) { --s: var(--t1); }
-  #trackbtns button:nth-child(2), .mixer .strip:nth-child(2), .lists tbody tr:nth-child(2) { --s: var(--t2); }
-  #trackbtns button:nth-child(3), .mixer .strip:nth-child(3), .lists tbody tr:nth-child(3) { --s: var(--t3); }
-  #trackbtns button:nth-child(4), .mixer .strip:nth-child(4), .lists tbody tr:nth-child(4) { --s: var(--t4); }
-  #trackbtns button:nth-child(5), .mixer .strip:nth-child(5), .lists tbody tr:nth-child(5) { --s: var(--t5); }
-  #trackbtns button:nth-child(6), .mixer .strip:nth-child(6), .lists tbody tr:nth-child(6) { --s: var(--t6); }
-  #trackbtns button, .lists tbody th, .strip .num { color: color-mix(in srgb, var(--s) var(--txmix), var(--fg)); }
+  #trackbtns button:nth-child(1), .mixer .strip:nth-child(1) { --s: var(--t1); }
+  #trackbtns button:nth-child(2), .mixer .strip:nth-child(2) { --s: var(--t2); }
+  #trackbtns button:nth-child(3), .mixer .strip:nth-child(3) { --s: var(--t3); }
+  #trackbtns button:nth-child(4), .mixer .strip:nth-child(4) { --s: var(--t4); }
+  #trackbtns button:nth-child(5), .mixer .strip:nth-child(5) { --s: var(--t5); }
+  #trackbtns button:nth-child(6), .mixer .strip:nth-child(6) { --s: var(--t6); }
+  #trackbtns button, .strip .num { color: color-mix(in srgb, var(--s) var(--txmix), var(--fg)); }
   #trackbtns button { font: 700 16px "Barlow Condensed", sans-serif; min-width: 32px; }
   #trackbtns button[aria-pressed="true"] { background: var(--s); color: var(--on-trk); }
   .strip { background: var(--tile); border: 0; border-radius: 6px; }
@@ -253,11 +242,8 @@
   .strip .num[aria-pressed="true"] { background: var(--s); color: var(--on-trk); }   /* (selected: as the track bar's) */
   .strip input[type=range] { accent-color: var(--s); }
   .grid button.on { background: var(--trk); border-color: var(--trk); color: var(--on-trk); }
-  .lists tbody th { font: 700 15px "Barlow Condensed", sans-serif; }
-  .lists button, .pool button { background: var(--raise); border-color: var(--raise); border-radius: 3px; }
-  .lists button.empty, .pool button.empty { background: var(--tile); border-color: var(--tile); }
-  .lists button.on { background: var(--s); border-color: var(--s); color: var(--on-trk); }
-  .lists button.next { outline-color: var(--s); }
+  .pool button { background: var(--raise); border-color: var(--raise); border-radius: 3px; }
+  .pool button.empty { background: var(--tile); border-color: var(--tile); }
   #trec[aria-pressed="true"] { background: var(--rec); color: var(--on-trk); }
   .list tr.sel td { background: var(--trk); color: var(--on-trk); }
   /* (Skiff #27) THEME CUSTOM: the colour wells, each role under its well */
@@ -280,7 +266,7 @@
   body { font-family: "Barlow Condensed", -apple-system, sans-serif; font-weight: 500; font-size: 15px; letter-spacing: .02em; }
   main { max-width: 1320px; }
   button, select, input[type=text], input[type=number], input[type=search], .group, .strip, .tabs button,
-  .seg button, button.tog, .lists button, .pool button { border-radius: 0; }
+  .seg button, button.tog, .pool button { border-radius: 0; }
   button { font: 700 15px "Barlow Condensed", sans-serif; letter-spacing: .03em; text-transform: uppercase; }
   select { font: 700 15px "Barlow Condensed", sans-serif; text-transform: uppercase; }
   label, th, h3, #status, #version, #live, #tstate, #mock, .hint, #ctlhelp { text-transform: uppercase; }
@@ -542,23 +528,6 @@
   </section>
 
   <section class="panel" id="p-song" data-tab="song" data-dev hidden>
-    <p class="dim" data-t="sgHelp"></p>
-    <div class="group" id="sg-lists" hidden>
-      <h2 data-t="sgLists" data-ic="control_arrow_loop"></h2>
-      <p class="bar"><label><span data-t="sgSong"></span> <select id="sgsong"><option value="0">OFF</option>
-          <option value="1">ON</option><option value="2">ONCE</option></select></label>
-        <label><span data-t="sgLaunch"></span> <select id="sglaunch"><option value="0">LOOP</option><option value="1">BAR</option>
-          <option value="2">BEAT</option><option value="3">NOW</option></select></label>
-        <button id="sgcancel" data-t="sgCancel"></button></p>
-      <div id="sglists"></div>
-      <p class="dim" id="sgapc" data-t="sgApc" hidden></p>
-      <p class="bar" id="sgentry"></p>
-    </div>
-    <div class="group" id="sg-scenes" hidden>
-      <h2 data-t="sgScenes"></h2>
-      <p class="bar"><span class="seg" id="sgscenes" role="group"></span>
-        <label><input type="checkbox" id="sgstore"> <span data-t="sgStore"></span></label></p>
-    </div>
     <div class="group" id="sg-pool" hidden>
       <h2 data-t="sgPool" data-ic="symbol_folder"></h2>
       <p class="dim" data-t="sgPoolHelp"></p>
@@ -696,13 +665,12 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
   TRACK_PARAM: 31, TRACK_CHANGED: 32, SONG: 33,
   UI_STATE: 34, UI_SET: 35, UI_PALETTES: 36, FAV_GET: 37, FAV_SET: 38, COLORS: 39,
   MOTION: 64, BACKUP_LIST: 65, BACKUP_GET: 66, BACKUP_PUT: 67,
-  FM6_GET: 68, FM6_PUT: 69, FM6_LIST: 70, FM6_ERASE: 71, MENU_DESC: 72, MENU_SET: 73, KIT_GET: 74, KIT_PUT: 75, TRANSPORT: 76, PROJ_NAME: 77, POOL: 78, LIST: 79, PERFORM: 80,
-  SMP_MIX: 81, LIST2: 82, CAST: 83 };
+  FM6_GET: 68, FM6_PUT: 69, FM6_LIST: 70, FM6_ERASE: 71, MENU_DESC: 72, MENU_SET: 73, KIT_GET: 74, KIT_PUT: 75, TRANSPORT: 76, PROJ_NAME: 77, POOL: 78,
+  SMP_MIX: 81, CAST: 83 };
 /* frames the device sends on its own (while WATCH is on); never replies */
 const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANGED]);
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
 const UP = { NAME_MAX: 12, PAT: 16, LIST_MAX: 16 };
-const PAT_REST = 65;                              /* (#28) LIST: an entry that is a REST (patterns 1..64, 0 empty) */
 const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13, ST16: 14 };
 /* (Skiff #27) THEME CUSTOM: the colours a set holds (COLORS, cmd 39), each theme's own to start from (tools/gen_ui_palettes.py:
    BG SURF TEXT THEME ACCENT, then the six tracks', RGB565; test_web.mjs checks them against build/gen/ui_palettes.h), the
@@ -875,10 +843,10 @@ const parse = {
     o.locks = false;                              /* (1.1, INFO 4C 01) MOTION ops 5..7: locks, their kinds */
     o.menuCount = 0;                              /* (1.0.4, INFO 4E 01 count) the MENU settings MENU_DESC offers */
     o.kitLanes = 0;                               /* (Skiff W3, INFO 4B 01 8) KIT_GET / KIT_PUT: the DRUM-X kit's lanes */
-    o.skiff = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 POOL, 3 LIST,
-                                                     4 PERFORM, (#21) 5 SMP_MIX, (2.0, #25) 6 a step's ties */
-    o.song2 = 0;                                  /* (2.0, INFO 58 01 caps) bit 0: LIST2, NEW, COPY+, CHAIN, ONCE, the pool's
-                                                     EMPTY and CLEAR UNUSED */
+    o.skiff = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 POOL, (#21)
+                                                     5 SMP_MIX, (2.0, #25) 6 a step's ties (3 LIST, 4 PERFORM: gone) */
+    o.song2 = 0;                                  /* (2.0, INFO 58 01 caps) bit 0: the pool's EMPTY and CLEAR UNUSED (a unit
+                                                     of 2.0 on) */
     o.cast = 0;                                   /* (Skiff Studio, INFO 59 01 caps) bit 0: the cast (cmd 83), the Screen tab;
                                                      bit 1: an SMK-37's (its copy: felucca_cast_smk.wasm) */
     for (const p of [8, 11]) if (o.motionMax && trailer[p] === 0x46 && trailer[p + 1] === 1) {   /* for the editor's */
@@ -903,7 +871,7 @@ const parse = {
         o.pe0 = trailer[r + 4] | trailer[r + 5] << 7;
         r += 6;
       }
-      if (trailer[r] === 0x58 && trailer[r + 1] === 1) { o.song2 = trailer[r + 2] & 127; r += 3; }   /* (2.0) the song's */
+      if (trailer[r] === 0x58 && trailer[r + 1] === 1) { o.song2 = trailer[r + 2] & 127; r += 3; }   /* (2.0) the pool's */
       if (trailer[r] === 0x59 && trailer[r + 1] === 1) o.cast = trailer[r + 2] & 127;   /* (Skiff Studio) the cast, last */
     }
     o.light = o.light || { tracks: 0, engines: 0 };   /* the tracks that may not play some engines, and those engines */
@@ -993,33 +961,6 @@ const parse = {
   [CMD.POOL](a) {
     const r = new Reader(a), o = { op: r.b(), rc: r.b(), pats: [] };
     for (let i = 0; i < 64; i++) o.pats.push({ len: r.b(), refs: r.b() });
-    return o;
-  },
-  /* (Skiff W3) LIST: op, rc (0 done, 1 empty, 2 without its automation, 3 playing, 4 PATTERNS FULL, 5 failed), SONG, each
-     track: the entry it is on, the one staged (-1: none), its pattern (0..63, -1 none), its 16 entries (pattern 1..64,
-     (#28) PAT_REST a REST, 0 empty; REPS 1..16). (2.0) LIST2 the same, SONG 0..2 (2 ONCE) and a REPS byte 16 an entry on
-     CHAIN (chain: its REPS 1); ((#30) snd: INFO 58 01 bit 1, each entry's sound after it, [0 none; 1..63 an engine + 1,
-     its preset; 64 + a user slot, 0]) */
-  [CMD.LIST](a, two = false, snd = false) {
-    const r = new Reader(a), o = { op: r.b(), rc: r.b(), song: two ? r.b() : +!!r.b(), tracks: [] }, n = (v) => (v === 127 ? -1 : v);
-    while (r.i < a.length) {
-      const x = { cur: n(r.b()), next: n(r.b()), pat: n(r.b()), ent: [] };
-      for (let e = 0; e < 16; e++) {
-        const p = r.b(), v = r.b(), chain = two && v === 16;
-        x.ent.push({ pat: p, reps: chain ? 1 : (v & 15) + 1, chain, snd: snd ? [r.b(), r.b()] : [0, 0] });
-      }
-      o.tracks.push(x);
-    }
-    return o;
-  },
-  [CMD.LIST2](a, snd = false) { return parse[CMD.LIST](a, true, snd); },
-  /* (Skiff W3) PERFORM: op, rc, LAUNCH (0 LOOP .. 3 NOW), the scene last recalled or stored (-1 none), the scenes kept
-     (a bit each), each track: muted, its mute staged (0 none, 1 to unmute, 2 to mute) */
-  [CMD.PERFORM](a) {
-    const r = new Reader(a), o = { op: r.b(), rc: r.b(), launch: r.b(), last: r.b(), scenes: 0, tracks: [] };
-    if (o.last === 127) o.last = -1;
-    o.scenes = r.b() | r.b() << 7 | r.b() << 14;
-    while (r.i < a.length) o.tracks.push({ muted: !!r.b(), staged: r.b() });
     return o;
   },
   [CMD.PROJECT](a) { const r = new Reader(a); return { op: r.b(), slot: r.b(), used: r.b() }; },
@@ -1129,9 +1070,6 @@ const parse = {
   },
   [CMD.FM6_ERASE](a) { return { index: a[0], rc: a[1] }; },
 };
-/* ((2.0, #30) a Song tab reply (request r) as device d sends it: LIST2's with each entry's sound when INFO 58 01 has bit 1) */
-const songReply = (d, r, a) => (r[0] === CMD.LIST2 ? parse[CMD.LIST2](a, !!(d.info.song2 & 2)) : parse[r[0]](a));
-
 /* a name the device accepts: printable ASCII, 1..12 characters */
 /* (Skiff W3) a project's name as the device keeps it: upper case, printable ASCII, 12 at most ("" = none) */
 function cleanProjName(s) { return String(s ?? "").toUpperCase().replace(/[^\x20-\x7E]/g, "").trim().slice(0, 12); }
@@ -1220,12 +1158,6 @@ const req = {
   transport: (op = 0) => [CMD.TRANSPORT, op ? [op] : []],            /* 1 PLAY, 2 STOP, 3 RESTART, 4 REC; none: the state */
   /* id: CLEAR it ((2.0, INFO 58 01) op 2: EMPTY it; 3, no id: CLEAR UNUSED); none: the pool */
   pool: (id, op = 1) => [CMD.POOL, op === 3 ? [3] : id == null ? [] : [op === 2 ? 2 : 1, id & 63]],
-  /* 1 SET (v: pattern 1..64), 2 COPY, 3 PLAY, 4 CLEAR, 5 REPS (v: 1..16; (2.0) 0 CHAIN) entry e of track k, ((2.0) 7 NEW, 8
-     COPY+; (#30, LIST2's, INFO 58 01 bit 1) 9 SOUND, v: its two bytes); 6 SONG (k: 0 off, 1 on, (2.0) 2 ONCE); none: the
-     lists. two: (2.0, INFO 58 01) as LIST2 (82) */
-  list: (op = 0, k = 0, e = 0, v = null, two = false) => [two ? CMD.LIST2 : CMD.LIST,
-    !op ? [] : op === 6 ? [6, Math.max(0, Math.min(2, +k | 0))] : v == null ? [op, k, e] : [op, k, e, ...[v].flat().map((x) => x & 0x7F)]],
-  perform: (op = 0, v = 0) => [CMD.PERFORM, !op ? [] : op === 4 ? [4] : [op, v]],   /* 1 STORE, 2 RECALL, 3 MUTE, 4 CANCEL, 5 LAUNCH */
   projName: (op = 0, slot = 0, name = "") => [CMD.PROJ_NAME, op ? [op, slot & 3, ...strEnc(cleanProjName(name))] : []],   /* 1 SAVE AS, 2 RENAME */
 };
 /* (Skiff W3) the device's MENU settings, each as MENU_DESC describes it (none asked of firmware without them) */
@@ -1246,7 +1178,7 @@ function replyMatches(cmd, args, a) {
     case CMD.MENU_DESC: return a[0] === args[0];
     case CMD.MENU_SET: return a[1] === args[0];
     case CMD.KIT_GET: case CMD.KIT_PUT: return a[0] === args[0];
-    case CMD.PROJ_NAME: case CMD.POOL: case CMD.LIST: case CMD.LIST2: case CMD.PERFORM: return a[0] === (args[0] || 0);
+    case CMD.PROJ_NAME: case CMD.POOL: return a[0] === (args[0] || 0);
     case CMD.BACKUP_GET: return a[0] === args[0] && a.slice(2, 7).every((v, i) => v === args[i + 1]);
     case CMD.BACKUP_PUT: return a[0] === args[0] && a[1] === args[1];
     case CMD.UI_SET: return a[1] === args[0] && a[2] === args[1];
@@ -1283,82 +1215,6 @@ function portPairs(access) {
     if (o) pairs.push([i, o]);
   }
   return pairs.sort((a, b) => /felucca/i.test(b[0].name) - /felucca/i.test(a[0].name));
-}
-
-/* An Akai APC mini mk2 plays the Song tab: its pads and buttons do what the tab's own controls do, its LEDs show the
-   device's lists and scenes as they are read back. Columns 1..6: T1..T6, the top row the page's first entry; columns 7,
-   8: scenes 1..8, 9..16, top down; the bottom buttons 1..6: T1..T6's MUTE; the side buttons: the top two the page (A..H,
-   I..P), the bottom one PLAY; faders 1..6: T1..T6's LEVEL. It has a port for the pads ("Control") and one for its note
-   and drum modes ("Notes"). LEDs: a note-on, the status's channel a pad's brightness or blink, the velocity its colour;
-   a button's velocity 1 on, 2 flashing */
-const APC_PORT = /apc mini mk2/i;
-const APC = { MUTE: 100, PAGE: 112, PLAY: 119, FADER: 48, FULL: 0x96, KEPT: 0x92, REST: 0x91, BLINK: 0x9E, BTN: 0x90,
-  GREEN: 87, WHITE: 3 };   /* (statuses: 100 %, 50 %, 25 %, blinking 1/4; velocities: the palette's) */
-/* the velocities' colours (Akai's APC mini mk2 protocol v1.0). Its SysEx colours aren't used: even values reportedly
-   turn a pad off */
-const APC_PALETTE = "0000001e1e1e7f7f7fffffffff4c4cff0000590000190000ffbd6cff5400591d00271b00ffff4cffff0059590019190088ff4c54ff001d5900142b004cff4c00ff000059000019004cff5e00ff1900590d0019024cff8800ff5500591d001f124cffb700ff990059350019124cc3ff00a9ff0041520010194c88ff0055ff001d590008194c4cff0000ff000059000019874cff5400ff1900640f0030ff4cffff00ff590059190019ff4c87ff005459001d220013ff150099350079510043640003390000573500547f0000ff00454f2500cc7f7f7f202020ff0000bdff2dafed0664ff09108b0000ff8700a9ff002aff3f00ff7a00ffb21a7d402100ff4a0088e10672ff1500ff003bff2659ff7138ffcc5b8aff3151c6877fe9d31dffff005dff7f00b9b00090ff00835d07392b00144c100d503815152a16205a693c1ca8000ade513dd86a1cffe1269ee12f67b50f1e1e30dcff6b80ffbd9a99ff8e66ff404040757575e0ffffa000003500001ad000074200b9b0003f3100b35f004b1502";
-/* the velocity nearest a colour as an editor's token has it (not #rrggbb: white) */
-function apcNear(s) {
-  const m = /^#([0-9a-f]{6})$/i.exec(String(s).trim());
-  if (!m) return APC.WHITE;
-  const part = (x, i) => parseInt(x.slice(i, i + 2), 16);
-  let best = APC.WHITE, least = Infinity;
-  for (let v = 0; v < 128; v++) {
-    let d = 0;
-    for (let i = 0; i < 6; i += 2) d += (part(m[1], i) - part(APC_PALETTE, v * 6 + i)) ** 2;
-    if (d < least) { least = d; best = v; }
-  }
-  return best;
-}
-/* its Control port: the first input with an output of its name ((2.5) Windows names the second port, Notes', "MIDIIN2
-   (APC mini mk2)" and "MIDIOUT2 (APC mini mk2)": it never pairs, whichever Chrome lists first) */
-function apcPorts(access) {
-  const free = (p) => p.state !== "disconnected" && APC_PORT.test(p.name || "") && !/notes/i.test(p.name);
-  const outs = [...access.outputs.values()].filter(free);
-  for (const i of access.inputs.values()) {
-    const o = free(i) && outs.find((x) => x.name === i.name);
-    if (o) return [i, o];
-  }
-  return null;
-}
-/* what a message from it asks for (null: nothing) */
-function apcAction([st, d1, d2], page) {
-  const kind = st & 0xF0;
-  if (kind === 0xB0) return d1 >= APC.FADER && d1 < APC.FADER + 6 ? { do: "level", k: d1 - APC.FADER, v: d2 } : null;
-  if (kind !== 0x90 || !d2) return null;
-  if (d1 < 64) {
-    const c = d1 % 8, row = 7 - (d1 >> 3);
-    return c < 6 ? { do: "entry", k: c, e: row + 8 * page } : { do: "scene", s: row + 8 * (c - 6) };
-  }
-  if (d1 >= APC.MUTE && d1 < APC.MUTE + 6) return { do: "mute", k: d1 - APC.MUTE };
-  if (d1 === APC.PAGE || d1 === APC.PAGE + 1) return { do: "page", page: d1 - APC.PAGE };
-  return d1 === APC.PLAY ? { do: "play" } : null;
-}
-/* every LED as the song says: note -> [status, velocity]. Playing is green: an entry on, the next one blinking, the
-   scene last recalled or stored. A track's others in its colour at 50 % (a REST 25 %), a scene's white, an empty one
-   dark. list, perf: LIST's and PERFORM's replies, or none; tracks: T1..T6's colours as velocities (apcNear) */
-function apcLeds(list, perf, page, playing, tracks = []) {
-  const m = new Map(), off = [APC.FULL, 0];
-  for (let n = 0; n < 64; n++) {
-    const c = n % 8, row = 7 - (n >> 3), x = c < 6 && list && list.tracks[c], e = row + 8 * page, en = x && x.ent[e];
-    let led = off;
-    if (c >= 6) {
-      const s = row + 8 * (c - 6);
-      if (perf && perf.scenes >> s & 1) led = perf.last === s ? [APC.FULL, APC.GREEN] : [APC.KEPT, APC.WHITE];
-    } else if (en) {
-      if (x.next === e) led = [APC.BLINK, APC.GREEN];
-      else if (x.cur === e) led = [APC.FULL, APC.GREEN];
-      else if (en.pat) led = [en.pat === PAT_REST ? APC.REST : APC.KEPT, tracks[c] ?? APC.WHITE];
-    }
-    m.set(n, led);
-  }
-  for (let k = 0; k < 6; k++) {
-    const y = perf && perf.tracks[k];
-    m.set(APC.MUTE + k, [APC.BTN, !y ? 0 : y.staged ? 2 : +y.muted]);
-  }
-  for (let k = 0; k < 2; k++) m.set(APC.PAGE + k, [APC.BTN, list && page === k ? 1 : 0]);
-  m.set(APC.PLAY, [APC.BTN, playing ? 1 : 0]);
-  return m;
 }
 
 class Link {
@@ -2689,15 +2545,10 @@ function makeMockDevice(opt = {}) {
     g: GP.map((d) => d.def),
     slots: [null, null, null, null], songRows: [], chainPlaying: false, chainRow: 0, chainRemaining: 0,
     slotNames: ["", "", "", ""], projCur: -1, projName: "", projSig: "", playing: false,   /* ((Skiff W3) PROJ_NAME, TRANSPORT) */
-    /* ((Skiff W3) the pool (each pattern's LEN, 0 empty: 01 02 T1's A B, 03 T4's A, 04 kept and unused), the lists
-       ([pattern 1..64 or 0, REPS - 1]), the entry each track is on, its pattern + 1, the entry staged (127 none), SONG;
-       the scenes ({cur, mutes}), the last one, LAUNCH, the mutes staged (bank.c) */
+    /* ((Skiff W3) the pool (each pattern's LEN, 0 empty: 01 T1's, 03 T4's, 02 04 kept and unused), each track's pattern
+       + 1 (bank.c) */
     pool: [16, 16, 16, 8].concat(new Array(60).fill(0)),
-    lists: Array.from({ length: NTRK }, (_, k) => Array.from({ length: 16 }, (_, e) => [k === 0 && e < 2 ? e + 1 : k === 3 && !e ? 3 : 0, 0])),
-    snds: Array.from({ length: NTRK }, () => Array.from({ length: 16 }, () => [0, 0])),   /* ((2.0, #30) the entries' sounds, as
-                                                     LIST2 says them: 0 none; an engine + 1, its preset; 64 + a user slot) */
-    cur: new Array(NTRK).fill(0), pid: [1, 0, 0, 3, 0, 0], staged: new Array(NTRK).fill(127), song: 0,
-    scenes: new Array(16).fill(null), sceneLast: -1, launch: 0, muteArm: new Array(NTRK).fill(0),
+    pid: [1, 0, 0, 3, 0, 0],
     smp: [0, 1, 2].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF,
       mix: SMP.MIX0() })),                            /* ((#21) LEVEL x 16, REV x 16, DLY x 16) */
     bank: new Array(opt.slots || 32).fill(null),     /* user presets: {engine, name, p, pattern, grid, fm6 (FM6: its patch)} */
@@ -2795,10 +2646,9 @@ function makeMockDevice(opt = {}) {
   const locksOn = () => ratchetOn() && !opt.noLocks;   /* (1.1, INFO 4C 01 01) MOTION ops 5..7 */
   const kitOn = () => stepxOn() && !opt.noKit;         /* (Skiff W3, INFO 4B 01 08) the DRUM-X kit */
   const projOn = () => kitOn() && !opt.noProj;         /* (Skiff W3, INFO 57 01 03) TRANSPORT, PROJ_NAME */
-  const songOn = () => projOn() && !opt.noSong;        /* (Skiff W3, INFO 57 01 31) POOL, LIST, PERFORM */
+  const songOn = () => projOn() && !opt.noSong;        /* (Skiff W3, INFO 57 01 bit 2) POOL */
   const tiesOn = () => songOn() && !opt.noTies;        /* ((2.0, #25) INFO 57 01 bit 6) a step's ties after its NUDGE */
-  const song2On = () => songOn() && !opt.noSong2;      /* ((2.0) INFO 58 01: LIST2, NEW, COPY+, CHAIN, ONCE, the pool's 2 3) */
-  const sndM = () => song2On() && !opt.noSnd;         /* ((2.0, #30) INFO 58 01 bit 1: LIST2's entry sounds, its op 9) */
+  const song2On = () => songOn() && !opt.noSong2;      /* ((2.0) INFO 58 01: the pool's 2 3) */
   const stepOut = (x, b) => { b(x.n); x.notes.forEach(b); b(x.time); b(x.flags); b(x.vel); hitsEnc(x.hit, x.acc).forEach(b); if (!opt.legacy && !opt.v3 && !opt.v5) b(x.chance ?? 100); if (ratchetOn()) b(x.ratchet ?? 1);
     if (stepxOn()) { b(x.flam ? 1 : 0); b(x.cond | 0); b(((x.nudge | 0) + 32) & 63); } if (tiesOn()) b(x.ties | 0); };
   function stepIn(x, a) {                         /* editor.c ed_step_put: n, 4 notes, time, flags, vel [, hits (3) [, chance [, ratchet]]] */
@@ -2828,63 +2678,8 @@ function makeMockDevice(opt = {}) {
   st.tracks[1].p[39] = -24; st.tracks[2].p[39] = 20; st.tracks[2].p[0] = 92;
   const project = () => JSON.parse(JSON.stringify({ tracks: st.tracks, sel: st.sel, g: st.g, songRows: st.songRows }));
   st.slots[0] = project();
-  /* ((Skiff W3) bank.c, as the mock needs it: the entry track k is on (127: on no entry's pattern), what uses pattern
-     id, track k to entry e (at once stopped, staged playing; 1: empty), a MUTE to m (staged playing), STOP landing what
-     is staged) */
-  const bankCur = (k) => { const p = st.lists[k][st.cur[k]][0]; return p && p === st.pid[k] ? st.cur[k] : 127; };
-  const refsOf = (id) => st.lists.reduce((n, l) => n + l.filter((x) => x[0] === id + 1).length, 0) +
-    st.pid.filter((p, k) => p === id + 1 && bankCur(k) === 127).length;
-  const entryGo = (k, e) => {                   /* ((#28) a REST too: the track on no pattern) */
-    const p = st.lists[k][e][0];
-    if (!p || (p !== PAT_REST && !st.pool[p - 1])) return 1;
-    if (st.playing) st.staged[k] = e; else { st.cur[k] = e; st.pid[k] = p === PAT_REST ? 0 : p; st.staged[k] = 127; }
-    return 0;
-  };
-  /* ((2.0) bank.c song_put's COPY+) entry e's pattern (its chain: all of it) into the first empty entries in a row after
-     it, a copy of each (the first free number after its original's, pool_free_after), their REPS too; rc 1 no pattern
-     there or no room after, 4 the pool full */
-  const copyPlus = (k, e) => {
-    const L = st.lists[k], on = (j) => L[j][0] !== 0, link = (j) => j < 15 && L[j][1] === 16 && on(j) && on(j + 1);
-    let b0 = e, b1 = e, f, ids = [];
-    if (!on(e) || L[e][0] === PAT_REST) return 1;
-    while (b0 > 0 && link(b0 - 1)) b0--;
-    while (link(b1)) b1++;
-    for (f = b1 + 1; f + b1 - b0 < 16 && L.slice(f, f + b1 - b0 + 1).some((x) => x[0]); f++);
-    if (f + b1 - b0 >= 16) return 1;
-    for (let j = b0; j <= b1; j++) {
-      const n = L[j][0] === PAT_REST ? PAT_REST - 1
-        : st.pool.map((_, i) => (L[j][0] + i) % 64).find((i) => !st.pool[i] && !ids.includes(i + 1)) ?? -1;
-      if (n < 0) return 4;
-      ids.push(n + 1);
-    }
-    ids.forEach((id, i) => {
-      if (id !== PAT_REST) st.pool[id - 1] = st.pool[L[b0 + i][0] - 1];
-      L[f + i] = [id, L[b0 + i][1]];
-      st.snds[k][f + i] = [...st.snds[k][b0 + i]];   /* ((#30) its sound too) */
-    });
-    return 0;
-  };
-  /* ((2.0, #30) bank.c song_snd_put) entry e of track k gets sound s (LIST2's two bytes; 0 0 none): rc 1 on an empty entry
-     or for a sound it can't carry (no such engine or preset, a user slot not used, PHYS or GRAIN on a light track) */
-  const sndPut = (k, e, s) => {
-    const [s0, s1] = s, light = k >= 4 && ["GRAIN", "PHYS"].includes((ENG[s0 >= 64 ? (st.bank[s0 - 64] || {}).engine : s0 - 1] || {}).name);
-    if (s0 && (!st.lists[k][e][0] || light || (s0 < 64 ? !ENG[s0 - 1] || ENG[s0 - 1].name === "-" || s1 >= ENG[s0 - 1].presets.length
-      : s0 - 64 >= st.bank.length || !st.bank[s0 - 64]))) return 1;
-    st.snds[k][e] = [s0, s0 >= 64 ? 0 : s1];          /* (a user sound's second byte: 0, as kept) */
-    return 0;
-  };
-  const muteTo = (k, m) => {
-    const tp = st.tracks[k].p;
-    st.muteArm[k] = 0;
-    if (!st.playing) tp[40] = m ? 1 : 0;
-    else if (!!tp[40] !== !!m) st.muteArm[k] = m ? 2 : 1;
-  };
-  const landStaged = () => {
-    st.staged.forEach((e, k) => {
-      if (e !== 127) { const p = st.lists[k][e][0]; st.cur[k] = e; st.pid[k] = p === PAT_REST ? 0 : p; st.staged[k] = 127; }
-    });
-    st.muteArm.forEach((m, k) => { if (m) st.tracks[k].p[40] = m - 1; st.muteArm[k] = 0; });
-  };
+  /* ((Skiff W3) bank.c pool_refs, as the mock needs it: the tracks on pattern id (no saved project names one here) */
+  const refsOf = (id) => st.pid.filter((p) => p === id + 1).length;
 
   function handle(cmd, a) {
     const out = [];
@@ -2894,10 +2689,9 @@ function makeMockDevice(opt = {}) {
       [0x54, 1, 0x30, e, e >> 7, e >> 14].forEach(b);
       if (stepxOn()) [0x43, 1, TC_NAMES.length].forEach(b);   /* (Skiff W1) */
       if (kitOn()) [0x4B, 1, 8].forEach(b);                    /* (Skiff W3) */
-      if (projOn()) [0x57, 1, songOn() ? (tiesOn() ? 127 : 63) : 3].forEach(b);   /* ((#21) 32: SMP_MIX, with the song's; (2.0) 64 the ties) */
+      if (projOn()) [0x57, 1, songOn() ? (tiesOn() ? 103 : 39) : 3].forEach(b);   /* ((#21) 32: SMP_MIX, with the pool's; (2.0) 64 the ties) */
       if (projOn()) [0x49, 1, P_COUNT & 127, P_COUNT >> 7, P_E0 & 127, P_E0 >> 7].forEach(b);   /* ((Skiff 1.3) wide ids) */
-      if (song2On()) [0x58, 1, sndM() ? 3 : 1].forEach(b);     /* ((2.0) LIST2, NEW, COPY+, CHAIN, ONCE, EMPTY, UNUSED;
-                                                                   (#30) bit 1 the entries' sounds) */
+      if (song2On()) [0x58, 1, 1].forEach(b);                  /* ((2.0) EMPTY, UNUSED) */
     };
     const wid = (s, i) => (s === 2 ? [0, i + 128] : [s, i]);   /* ((1.3) scope 2: a track id from 128 on) */
     if (opt.legacy && cmd >= CMD.UP_LIST) return null;
@@ -3047,7 +2841,7 @@ function makeMockDevice(opt = {}) {
         if (!projOn() || a.length > 1 || (a.length && (a[0] < 1 || a[0] > 4))) return null;
         if (a[0] === 4) { st.rec ^= 1 << st.sel; if (st.rec >> st.sel & 1) st.playing = true; }   /* (as its button) */
         else if (a[0] === 1 || a[0] === 3) st.playing = true;
-        else if (a[0] === 2) { st.playing = false; landStaged(); }   /* (stopped: what is staged comes in) */
+        else if (a[0] === 2) st.playing = false;
         [0, +st.playing, 0, 0, st.rec, st.sel].forEach(b);
         break;
       }
@@ -3085,45 +2879,6 @@ function makeMockDevice(opt = {}) {
         for (let i = 0; i < 64; i++) { b(st.pool[i]); b(Math.min(127, refsOf(i))); }
         break;
       }
-      case CMD.LIST: case CMD.LIST2: {         /* (Skiff W3) editor_song.c; ((2.0) LIST2: SONG 0..2, REPS bytes as kept) */
-        const [op, k, e, v] = a, L = st.lists, two = cmd === CMD.LIST2, s2 = song2On();
-        const good = !a.length || (op === 6 ? a.length === 2 && k <= (s2 ? 2 : 1) : a.length >= 3 && k < NTRK && e < 16 &&
-          (op === 1 || op === 5 ? a.length === 4 && v >= (op === 5 && s2 ? 0 : 1) && v <= (op === 1 ? PAT_REST : 16)
-            : op === 9 ? two && sndM() && a.length === 5   /* ((#30) SOUND: LIST2's) */
-            : a.length === 3 && ((op >= 2 && op <= 4) || (s2 && (op === 7 || op === 8)))));
-        if (!songOn() || (two && !s2) || !good) return null;
-        let rc = 0;
-        if (op === 1) { if (v !== PAT_REST && !st.pool[v - 1]) rc = 1; else { L[k][e][0] = v; if (st.cur[k] === e) rc = entryGo(k, e); } }
-        else if (op === 2) {
-          const id = L[k][e][0] - 1, n = st.pool.findIndex((x) => !x);
-          if (id < 0 || id >= 64) rc = 1;               /* ((#28) a REST: nothing to copy) */
-          else if (n < 0) rc = 4;
-          else { st.pool[n] = st.pool[id]; L[k][e][0] = n + 1; if (st.cur[k] === e && st.pid[k] === id + 1) st.pid[k] = n + 1; }
-        } else if (op === 3) rc = entryGo(k, e);
-        else if (op === 4) {
-          if (L[k][e][0] === PAT_REST) { L[k][e][0] = 0; st.snds[k][e] = [0, 0]; }   /* ((#28) a REST: at once, playing too; */
-          else if (st.playing) rc = 3;                                                 /* (#30) its sound with it) */
-          else {
-            const id = L[k][e][0] - 1, on = st.cur[k] === e && st.pid[k] === id + 1;
-            L[k][e] = [0, 0];
-            st.snds[k][e] = [0, 0];
-            if (on) st.pid[k] = 0;
-            if (id >= 0 && !refsOf(id)) st.pool[id] = 0;
-          }
-        } else if (op === 9) rc = sndPut(k, e, a.slice(3));
-        else if (op === 5) { if (!L[k][e][0] || (!v && e === 15)) rc = 1; else L[k][e][1] = v ? v - 1 : 16; }   /* ((2.0) 0: */
-        else if (op === 6) st.song = k;                                                                       /* CHAIN) */
-        else if (op === 7) {                           /* ((2.0) NEW: the first free number) */
-          const n = st.pool.findIndex((x) => !x);
-          if (n < 0) rc = 4; else { st.pool[n] = st.tracks[k].p[29] || 16; L[k][e][0] = n + 1; if (st.cur[k] === e) rc = entryGo(k, e); }
-        } else if (op === 8) rc = copyPlus(k, e);
-        b(a.length ? op : 0); b(rc); b(two ? st.song : st.song ? 1 : 0);
-        for (let t = 0; t < NTRK; t++) {
-          b(bankCur(t)); b(st.staged[t]); b(st.pid[t] ? st.pid[t] - 1 : 127);
-          L[t].forEach(([p, r], j) => { b(p); b(two ? r : r & 15); if (two && sndM()) st.snds[t][j].forEach(b); });
-        }
-        break;
-      }
       case CMD.COLORS: {                       /* (Skiff #27) editor_preferences.c ed_colors */
         if (!(st.uiCaps & 16)) return null;
         const cu = st.custom, save = opt.noFlash ? 3 : opt.deferSettings ? 4 : 0, o = a[0];
@@ -3138,28 +2893,6 @@ function makeMockDevice(opt = {}) {
         }
         b(rc); b(cu.flags & 3); b(cu.flags & 1 ? cu.look : 0);
         pack7(cu.c.flatMap((x) => [x & 255, x >> 8])).forEach(b);
-        break;
-      }
-      case CMD.PERFORM: {                      /* (Skiff W3) editor_song.c */
-        const [op, v] = a;
-        if (!songOn() || (a.length && !(op === 4 ? a.length === 1 : a.length === 2 &&
-          ((op >= 1 && op <= 2 && v < 16) || (op === 3 && v < NTRK) || (op === 5 && v < 4))))) return null;
-        let rc = 0;
-        if (op === 1) { st.scenes[v] = { cur: st.lists.map((_, k) => bankCur(k)), mutes: st.tracks.map((x) => x.p[40] ? 1 : 0) }; st.sceneLast = v; }
-        else if (op === 2) {
-          const sc = st.scenes[v];
-          if (!sc) rc = 1;
-          else {
-            sc.cur.forEach((e, k) => { if (e !== 127 && e !== bankCur(k)) entryGo(k, e); });
-            sc.mutes.forEach((m, k) => muteTo(k, m));
-            st.sceneLast = v;
-          }
-        } else if (op === 3) { if (st.muteArm[v]) st.muteArm[v] = 0; else muteTo(v, st.tracks[v].p[40] ? 0 : 1); }
-        else if (op === 4) { st.staged.fill(127); st.muteArm.fill(0); }
-        else if (op === 5) st.launch = v;
-        const bits = st.scenes.reduce((m, x, i) => m | (x ? 1 << i : 0), 0);
-        [a.length ? op : 0, rc, st.launch, st.sceneLast < 0 ? 127 : st.sceneLast, bits & 127, bits >> 7 & 127, bits >> 14 & 3].forEach(b);
-        st.tracks.forEach((x, k) => { b(x.p[40] ? 1 : 0); b(st.muteArm[k]); });
         break;
       }
       case CMD.KIT_GET: case CMD.KIT_PUT: {   /* (Skiff W3) editor.c: a lane; KIT_PUT its 15 values in range (else no reply) */
@@ -3713,22 +3446,16 @@ const TEXT = {
     noName: "（名前なし）", projNow: "現在", projChanged: "保存後に変更あり",
     projRefused: "本体が受け付けませんでした（空のスロット、またはパターンがいっぱい）", projFailed: "本体での保存に失敗しました",
     play: "再生", stop: "停止", playTitle: "再生（Shift+クリック: 頭から）", playing: "再生中", stopped: "停止中", countIn: "カウントイン",
-    sgTab: "ソング", sgHelp: "各トラックはリスト（A〜P）のエントリーを演奏し、各エントリーはプールのパターンを指します（本体の SEQ › SONG）。シーンとミュートは PERFORM と同じです。エントリーをクリックで編集、ダブルクリックで再生。停止中はすぐに、再生中は LAUNCH のタイミングで切り替わります。",
-    sgLists: "リスト", sgSong: "SONG（各トラックがリストを順に進む。ONCE: 一度だけ進んで停止）", sgLaunch: "LAUNCH", sgCancel: "予約を取り消す",
-    sgPattern: "パターン", sgSet: "設定", sgCopy: "新しいパターンにコピー", sgPlay: "再生", sgClear: "クリア", sgEmptyEntry: "空",
-    sgNew: "新しい空のパターン", sgCopyPlus: "後ろの空きにコピー", sgEmptyIt: "空にする", sgClearUnused: "未使用の {n} 個をクリア",
-    sgSound: "サウンド", sgNoSound: "なし（今の音色のまま）", sgUserSounds: "ユーザープリセット",
-    sgSndRefused: "本体が受け付けませんでした（空のエントリー、またはこのトラックで鳴らせない音色）",
-    sgScenes: "シーン", sgStore: "保存（次にクリックしたシーンに今のトラックを保存）",
+    sgTab: "ソング",
+    sgClear: "クリア",
+    sgEmptyIt: "空にする", sgClearUnused: "未使用の {n} 個をクリア",
     sgPool: "パターンプール", sgPoolHelp: "全プロジェクト共通の 64 パターン（本体の SAVE › PATTERNS）。どこからも使われていないパターンだけ、停止中にクリアできます。",
     sgUsedBy: "{n} か所で使用", sgUnused: "未使用（クリア可）", sgEmptyPat: "空",
-    sgConfirmEntry: "エントリー {e} をクリアしますか？ {what} 元に戻せません。", sgGoesToo: "パターン {n} も消えます。", sgStays: "パターン {n} は残ります（ほかで使用中）。",
-    sgConfirmPat: "パターン {n} をクリアしますか？ どこからも使われていません。元に戻せません。", sgConfirmScene: "シーン {n} に上書き保存しますか？",
-    sgConfirmEmpty: "パターン {n} を空にしますか？ ステップ、NUDGE、オートメーションが消えます。パターンとそれを使うエントリーは残ります。元に戻せません。",
+    sgConfirmPat: "パターン {n} をクリアしますか？ どこからも使われていません。元に戻せません。",
+    sgConfirmEmpty: "パターン {n} を空にしますか？ ステップ、NUDGE、オートメーションが消えます。パターンは残ります。元に戻せません。",
     sgConfirmUnused: "未使用のパターン {n} 個をクリアしますか？ どこからも使われていません。元に戻せません。",
-    sgEmpty: "空です", sgAutoFull: "完了（オートメーションなし: AUTOMATION FULL）", sgStopClear: "停止してからクリアしてください",
-    sgApc: "APC mini mk2 接続中: 1〜6列は T1〜T6 のエントリー、7・8列はシーン、下のボタン1〜6は MUTE、右上の2つはページ（A–H / I–P）、右下は PLAY、フェーダー1〜6は LEVEL",
-    sgFull: "パターンがいっぱいです: プールで未使用のものをクリアしてください", sgFailed: "本体で失敗しました", sgNothing: "クリアするものがありません", sgInUse: "使用中です",
+    sgStopClear: "停止してからクリアしてください",
+    sgFailed: "本体で失敗しました", sgNothing: "クリアするものがありません", sgInUse: "使用中です",
     sgNoFw: "このファームウェアにはソングのコマンドがありません。Skiff を更新してください。",
     confirmSave: "スロット {n} に上書き保存しますか？", confirmLoad: "スロット {n} を読み込みますか？ すべてのトラックの音色とシーケンスが置き換わります（元に戻せません）。",
     confirmLoadFile: "「{name}」を読み込みますか？ 今の音色は置き換わります（本体の SAVE 長押しで元に戻せます）。",
@@ -3868,22 +3595,16 @@ const TEXT = {
     noName: "(no name)", projNow: "Now", projChanged: "changed since saved",
     projRefused: "The device refused (an empty slot, or the patterns are full)", projFailed: "Saving failed on the device",
     play: "Play", stop: "Stop", playTitle: "Play (Shift+click: from the top)", playing: "Playing", stopped: "Stopped", countIn: "Count-in",
-    sgTab: "Song", sgHelp: "Each track plays the entries of its list (A to P), each naming a pattern of the pool, as on SEQ › SONG; the scenes and mutes are PERFORM's. Click an entry to edit it, double-click to play it. Stopped, a change is at once; playing, at the LAUNCH point.",
-    sgLists: "Lists", sgSong: "SONG (each track moves through its list; ONCE: once through, then stop)", sgLaunch: "LAUNCH", sgCancel: "Cancel staged",
-    sgPattern: "Pattern", sgSet: "Set", sgCopy: "Copy to a new pattern", sgPlay: "Play", sgClear: "Clear", sgEmptyEntry: "empty",
-    sgNew: "New empty pattern", sgCopyPlus: "Copy into the next empty", sgEmptyIt: "Empty", sgClearUnused: "Clear {n} unused",
-    sgSound: "Sound", sgNoSound: "None (the sound as it is)", sgUserSounds: "User presets",
-    sgSndRefused: "The device refused the sound (an empty entry, or a sound this track can't play)",
-    sgScenes: "Scenes", sgStore: "Store (the next scene clicked keeps the tracks as they are)",
+    sgTab: "Song",
+    sgClear: "Clear",
+    sgEmptyIt: "Empty", sgClearUnused: "Clear {n} unused",
     sgPool: "Pattern pool", sgPoolHelp: "The 64 patterns every project shares (SAVE › PATTERNS). Only a pattern nothing uses can be cleared, while stopped.",
     sgUsedBy: "used by {n}", sgUnused: "unused: can be cleared", sgEmptyPat: "empty",
-    sgConfirmEntry: "Clear entry {e}? {what} It can't be undone.", sgGoesToo: "Its pattern {n} is erased too.", sgStays: "Pattern {n} stays: something else uses it.",
-    sgConfirmPat: "Clear pattern {n}? Nothing uses it. It can't be undone.", sgConfirmScene: "Store over scene {n}?",
-    sgConfirmEmpty: "Empty pattern {n}? Its steps, NUDGEs and automation go; the pattern and the entries naming it stay. It can't be undone.",
+    sgConfirmPat: "Clear pattern {n}? Nothing uses it. It can't be undone.",
+    sgConfirmEmpty: "Empty pattern {n}? Its steps, NUDGEs and automation go; the pattern stays. It can't be undone.",
     sgConfirmUnused: "Clear the {n} unused patterns? Nothing uses them. It can't be undone.",
-    sgEmpty: "Empty", sgAutoFull: "Done, without its automation (AUTOMATION FULL)", sgStopClear: "Stop to clear",
-    sgApc: "APC mini mk2 connected: columns 1–6 T1–T6's entries, columns 7–8 the scenes, bottom buttons 1–6 MUTE, the top two side buttons the page (A–H, I–P), the bottom one PLAY, faders 1–6 LEVEL",
-    sgFull: "Patterns full: clear unused ones in the pool", sgFailed: "Failed on the device", sgNothing: "Nothing to clear", sgInUse: "In use",
+    sgStopClear: "Stop to clear",
+    sgFailed: "Failed on the device", sgNothing: "Nothing to clear", sgInUse: "In use",
     sgNoFw: "This firmware has no song commands: update Skiff.",
     confirmSave: "Overwrite slot {n}?", confirmLoad: "Load slot {n}? The sounds and sequences of every track are replaced (no undo).",
     confirmLoadFile: "Load \"{name}\"? It replaces the current sound (hold SAVE on the device to undo).",
@@ -3998,7 +3719,7 @@ function showTab(name) {
   if (name === "settings" && prev !== "settings" && dev && dev.dump && dev.info.menuCount) op(() => readMenu());   /* ((Skiff W3)) */
   if (name === "sound" && prev !== "sound" && kitShown()) op(() => readKit());
   if (name === "projects" && prev !== "projects" && dev && dev.dump && dev.info.skiff & 2) op(() => readProj());   /* ((Skiff W3)) */
-  if (name === "song" && prev !== "song" && dev && dev.dump && dev.info.skiff & 28) op(() => readSong());   /* ((Skiff W3) the kit as the device has it) */
+  if (name === "song" && prev !== "song" && dev && dev.dump && dev.info.skiff & 4) op(() => readSong());   /* ((Skiff W3) the kit as the device has it) */
   if (name === "fm6" && prev !== "fm6" && dev && dev.dump && dev.info.fm6 && !fm6Listing) op(fm6Refresh);
 }
 function renderPanels() {
@@ -4020,7 +3741,7 @@ function renderPanels() {
     if (mine && "dev" in p.dataset && !dev) hint = want === "fm6" ? "fm6NeedDevice" : "needDevice";   /* (while connecting the status line says it) */
     if (show && want === "fm6" && fm6Off) { show = false; hint = "fm6NoFw"; }
     if (show && want === "samples" && !dev.smp) { show = false; hint = "smpNone"; }
-    if (show && want === "song" && !(dev.info.skiff & 28)) { show = false; hint = "sgNoFw"; }   /* ((Skiff W3)) */
+    if (show && want === "song" && !(dev.info.skiff & 4)) { show = false; hint = "sgNoFw"; }   /* ((Skiff W3)) */
     p.hidden = !show;
   }
   $("hint").hidden = !hint;
@@ -4042,7 +3763,6 @@ function renderTransport(x) {
   const s = dev.transport;
   if (!s) return;
   const playing = transportPlaying(s);
-  apcShow();
   $("tplay").setAttribute("aria-pressed", String(playing));
   $("tplay").title = t("playTitle");
   $("trec").setAttribute("aria-pressed", String(!!(s.rec >> s.sel & 1)));
@@ -4064,122 +3784,32 @@ async function transportOp(n) {
 }
 $("tplay").addEventListener("click", (e) => transportOp(e.shiftKey ? 3 : 1));
 
-/* ((Skiff W3) the Song tab (INFO 57 bits 2..4): each track's list (SEQ › SONG), the scenes and the staged mutes
-   (PERFORM), the pattern pool (SAVE › PATTERNS), as the device has them: read when the tab opens, then as the
-   keep-alive while it shows (with the transport; the pool each 4th time), and after each change. A change acts as the
-   device's control does (it says so on its screen); no retries: a COPY sent twice would copy twice) */
-let sgPick = { k: 0, e: 0 }, poolPick = 0;
-const ENTS = "ABCDEFGHIJKLMNOP", pat2 = (n) => String(n).padStart(2, "0");
-const SG_RC = { list: [null, "sgEmpty", "sgAutoFull", "sgStopClear", "sgFull", "sgFailed"], snd: [null, "sgSndRefused"],
-  pool: [null, "sgNothing", "sgInUse", "sgStopClear", "sgFailed"], perf: [null, "sgEmpty", "sgAutoFull", null, "sgFull"] };
+/* ((Skiff W3) the Song tab (INFO 57 bit 2): the pattern pool (SAVE › PATTERNS), as the device has it: read when the tab
+   opens, then as the keep-alive while it shows (with the transport; the pool each 4th time), and after each change. A
+   change acts as the device's control does (it says so on its screen); no retries */
+let poolPick = 0;
+const pat2 = (n) => String(n).padStart(2, "0");
+const SG_RC = { pool: [null, "sgNothing", "sgInUse", "sgStopClear", "sgFailed"] };
 async function readSong(d = dev, pool = true, poll = false) {
-  if (!d || !d.info || !(d.info.skiff & 28)) return;
+  if (!d || !d.info || !(d.info.skiff & 4)) return;
   const o = poll ? { quiet: true, retries: 0 } : undefined, rqs = (r) => sessionRequest(d, r, o);
   if (poll && d.info.skiff & 1) { const x = parse[CMD.TRANSPORT](await rqs(req.transport())); if (d === dev) renderTransport(x); }
   const s = d.song = d.song || {};
-  if (d.info.skiff & 8) {
-    const r = req.list(0, 0, 0, null, !!(d.info.song2 & 1));
-    s.list = songReply(d, r, await rqs(r));
-  }
-  if (d.info.skiff & 16) s.perf = parse[CMD.PERFORM](await rqs(req.perform()));
-  if (d.info.skiff & 4 && (pool || !s.pool)) s.pool = parse[CMD.POOL](await rqs(req.pool()));
-  if (d === dev) { renderSong(); apcShow(); }
+  if (pool || !s.pool) s.pool = parse[CMD.POOL](await rqs(req.pool()));
+  if (d === dev) renderSong();
 }
-/* (2.0, INFO 58 01) the device has LIST2 (SONG ONCE, the chains), NEW, COPY+ and the pool's EMPTY, CLEAR UNUSED; a LIST
-   request as LIST2 then */
+/* (2.0, INFO 58 01) the device has the pool's EMPTY, CLEAR UNUSED */
 const song2 = () => !!(dev && dev.info && dev.info.song2 & 1);
-const lreq = (op, k, e, v) => req.list(op, k, e, v, song2());
-/* (2.0, #30, INFO 58 01 bit 1) an entry's sound (the wire's two bytes) by its name: a preset's, a user sound's ("" none);
-   the engines track k may play */
-const sndOn = () => !!(dev && dev.info && dev.info.song2 & 2);
-function sndName([s0, s1]) {
-  if (!s0) return "";
-  if (s0 >= 64) { const x = dev.bank && dev.bank.slots[s0 - 64]; return x && x.used ? x.name : slotName(s0 - 64); }
-  return (dev.names[s0 - 1] || [])[s1] || `${dev.info.engines[s0 - 1] || "?"} ${s1 + 1}`;
-}
-const trackEngineOk = (k, e) => !((dev.info.light.tracks >> k) & 1) || !((dev.info.light.engines >> e) & 1);
-/* (2.0) a list's chain (DESIGN.md "A chain"): entry j goes on into j + 1; the entries [b0, b1] of j's */
-const chainLink = (x, j) => j < 15 && x.ent[j].chain && !!x.ent[j].pat && !!x.ent[j + 1].pat;
-function chainOf(x, j) {
-  let b0 = j, b1 = j;
-  while (b0 > 0 && chainLink(x, b0 - 1)) b0--;
-  while (chainLink(x, b1)) b1++;
-  return [b0, b1];
-}
-/* .. its cells, a box behind them (cp: another chain ends just before it, cn: another starts just after it) */
-function chainCell(x, j) {
-  const a = chainLink(x, j), b = j > 0 && chainLink(x, j - 1);
-  if (!a && !b) return null;
-  return ["chain", !b && j > 1 && chainLink(x, j - 2) ? "cp" : "", !a && chainLink(x, j + 1) ? "cn" : ""].filter(Boolean).join(" ");
-}
-/* .. COPY+'s room: the first empty entries in a row after j's chain, as many as it has (-1 none) */
-function copyPlusAt(x, j) {
-  const [b0, b1] = chainOf(x, j), n = b1 - b0 + 1;
-  for (let f = b1 + 1; f + n <= 16; f++) if (x.ent.slice(f, f + n).every((en) => !en.pat)) return f;
-  return -1;
-}
 function songOp(r, kind) {
   const d = dev;
   op(async () => {
-    const x = songReply(d, r, await sessionRequest(d, r, { timeout: 4000, retries: 0 }));
+    const x = parse[r[0]](await sessionRequest(d, r, { timeout: 4000, retries: 0 }));
     await readSong(d, true);
-    const k = !(kind === "perf" && x.op === 5) && SG_RC[kind][x.rc];
+    const k = SG_RC[kind][x.rc];
     if (k) sayK(k);
   });
 }
-/* the APC mini mk2 (apcAction, apcLeds): found whenever the ports change; on it, the song is read every APC_POLL ms
-   whichever tab is open, so its LEDs follow the device (the keep-alive's read, more often) */
-const APC_POLL = 400;
-const apc = { input: null, output: null, page: 0, shown: new Map() };
 const transportPlaying = (s) => (s.pending ? s.pending !== 2 : s.playing || s.counting);
-function apcShow() {
-  if (!apc.output) return;
-  const s = dev && dev.song, tr = dev && dev.transport, css = getComputedStyle(document.documentElement);
-  const tracks = [1, 2, 3, 4, 5, 6].map((k) => apcNear(css.getPropertyValue(`--t${k}`)));   /* (they follow the THEME) */
-  try {
-    for (const [n, [st, v]] of apcLeds(s && s.list, s && s.perf, apc.page, tr && transportPlaying(tr), tracks)) {
-      if (apc.shown.get(n) === (st << 8 | v)) continue;
-      apc.output.send([st, n, v]);
-      apc.shown.set(n, st << 8 | v);
-    }
-  } catch (e) { console.debug("APC LEDs", e); }   /* (unplugged: onState says so next) */
-}
-function apcPress(data) {
-  const a = apcAction(data, apc.page), caps = dev && dev.info ? dev.info.skiff : 0;
-  if (!a) return;
-  if (a.do === "page") { apc.page = a.page; apcShow(); }
-  else if (a.do === "entry" && caps & 8) songOp(lreq(3, a.k, a.e), "list");
-  else if (a.do === "scene" && caps & 16) songOp(req.perform(2, a.s), "perf");
-  else if (a.do === "mute" && caps & 16) songOp(req.perform(3, a.k), "perf");
-  else if (a.do === "play" && caps & 1) transportOp(1);
-  else if (a.do === "level" && dev) dev.output.send([0xB0 | a.k, 7, a.v]);   /* (CC7 on T1..T6's default channels) */
-}
-function apcAttach() {
-  const p = access && apcPorts(access);
-  if (apc.input && (!p || p[0].id !== apc.input.id)) {
-    apc.input.onmidimessage = null;
-    apc.input = apc.output = null;
-  }
-  if (p && !apc.input) {
-    [apc.input, apc.output] = p;
-    apc.input.onmidimessage = (e) => apcPress(e.data);
-    if (apc.input.open) apc.input.open().catch(() => {});
-    apc.page = 0;
-    apc.shown.clear();
-    apcShow();
-  }
-  $("sgapc").hidden = !apc.input;
-}
-setInterval(() => {
-  const d = dev;
-  if (!apc.input || !d || !d.info || !(d.info.skiff & 28) || busy || !d.link.idle || keepAlive.song) return;
-  keepAlive.song = true;
-  readSong(d, false, true).catch(() => {}).finally(() => { keepAlive.song = false; });
-}, APC_POLL);
-window.addEventListener("pagehide", () => {
-  if (!apc.output) return;
-  try { for (const n of apcLeds(null, null, 0, false).keys()) apc.output.send([APC.BTN, n, 0]); } catch (e) { /* unplugged */ }
-});
 /* a list redrawn keeps the focus on the same control (data-key) */
 function keepFocus(box, draw) {
   const k = box.contains(document.activeElement) && document.activeElement.dataset.key;
@@ -4189,40 +3819,12 @@ function keepFocus(box, draw) {
 }
 function renderSong() {
   const d = dev, caps = d && d.info ? d.info.skiff : 0, s = d && d.song;
-  $("sg-lists").hidden = !(caps & 8);
-  $("sg-scenes").hidden = !(caps & 16);
   $("sg-pool").hidden = !(caps & 4);
   if (!s) return;
-  const sig = JSON.stringify([s.list, s.perf, s.pool, sgPick, poolPick, lang]);
+  const sig = JSON.stringify([s.pool, poolPick, lang]);
   if (sig === renderSong.sig) return;
   renderSong.sig = sig;
-  const L = s.list, P = s.perf, Q = s.pool, two = song2();
-  if (L) {
-    $("sgsong").value = String(+L.song);
-    $("sgsong").options[2].disabled = !two;               /* ((2.0) ONCE) */
-    $("sglaunch").disabled = $("sgcancel").disabled = !P;
-    if (P) $("sglaunch").value = String(P.launch);
-    keepFocus($("sglists"), () => $("sglists").replaceChildren(el("table", { class: "lists" },
-      el("thead", {}, el("tr", {}, el("th"), ...[...ENTS].map((c) => el("th", { text: c })), ...(P ? [el("th", { text: "M" })] : []))),
-      el("tbody", {}, ...L.tracks.map((x, k) => el("tr", {}, el("th", { text: `T${k + 1}` }),
-        ...x.ent.map((en, e) => el("td", { class: chainCell(x, e) }, el("button", {
-          type: "button", "data-key": `l${k}:${e}`, "aria-pressed": String(sgPick.k === k && sgPick.e === e),
-          class: [en.pat ? "" : "empty", x.cur === e ? "on" : "", x.next === e ? "next" : "", sgPick.k === k && sgPick.e === e ? "pick" : "",
-            en.snd[0] ? "snd" : ""].filter(Boolean).join(" ") || null,   /* ((2.0, #30) a sound: the corner cut, as on the device) */
-          "aria-label": `T${k + 1} ${ENTS[e]}: ${en.pat === PAT_REST ? "REST" : en.pat ? pat2(en.pat) : t("sgEmptyEntry")}${chainLink(x, e) ? ", CHAIN" : ""}` +
-            (en.snd[0] ? `, ${t("sgSound")} ${sndName(en.snd)}` : ""),
-          title: en.snd[0] ? `${t("sgSound")}: ${sndName(en.snd)}` : null,
-          onclick: () => { sgPick = { k, e }; renderSong(); }, ondblclick: () => songOp(lreq(3, k, e), "list"),
-        }, en.pat === PAT_REST ? "–" : en.pat ? pat2(en.pat) : "·", ...(en.pat && en.reps > 1 ? [el("sub", { text: "×" + en.reps })] : [])))),
-        ...(P && P.tracks[k] ? [el("td", {}, el("button", { type: "button", "data-key": `m${k}`, class: P.tracks[k].staged ? "tog next" : "tog",
-          "aria-pressed": String(P.tracks[k].muted), "aria-label": `MUTE T${k + 1}`, onclick: () => songOp(req.perform(3, k), "perf") }, "M"))] : [])))))));
-    renderEntry(L, Q);
-  }
-  if (P) keepFocus($("sgscenes"), () => $("sgscenes").replaceChildren(...Array.from({ length: 16 }, (_, i) => {
-    const kept = !!(P.scenes >> i & 1);
-    return el("button", { type: "button", "data-key": `s${i}`, class: kept ? "kept" : "empty", "aria-pressed": String(P.last === i),
-      onclick: () => sceneClick(i, kept) }, String(i + 1));
-  })));
+  const Q = s.pool, two = song2();
   if (Q) {
     keepFocus($("sgpool"), () => $("sgpool").replaceChildren(...Q.pats.map((p, i) => el("button", {
       type: "button", "data-key": `p${i}`, "aria-pressed": String(poolPick === i),
@@ -4240,72 +3842,6 @@ function renderSong() {
         onclick: () => { if (confirm(t("sgConfirmUnused").replace("{n}", un))) songOp(req.pool(null, 3), "pool"); } }, t("sgClearUnused").replace("{n}", un))] : []));
   }
 }
-/* the entry picked: its pattern (REST, the kept ones: the device's KNOB 2 order), SET, ((2.0) NEW), COPY, ((2.0) COPY+:
-   its chain's room shown), PLAY, REPS, CLEAR (a REST's at once: nothing goes with it); left alone while one of them has
-   focus */
-function renderEntry(L, Q) {
-  const box = $("sgentry"), { k, e } = sgPick, x = L.tracks[k], en = x && x.ent[e], two = song2();
-  if (!en || box.contains(document.activeElement)) return;
-  const kept = Q ? Q.pats.map((p, i) => (p.len ? i + 1 : 0)).filter(Boolean) : [], rest = en.pat === PAT_REST;
-  const sel = el("select", { "aria-label": t("sgPattern") }, el("option", { value: PAT_REST, text: "REST" }),
-    ...kept.map((i) => el("option", { value: i, text: pat2(i) })));
-  sel.value = String(en.pat || kept[0] || PAT_REST);   /* (an empty entry: the first kept pattern, as before) */
-  const reps = el("select", { "aria-label": "REPS" },   /* ((1.2.1, #12) an empty entry's: a rest's length; (2.0) CHAIN below 1x as */
-    ...((two && en.pat && e < 15) || en.chain ? [el("option", { value: 0, text: "CHAIN" })] : []),   /* KNOB 3's: an entry with one after it) */
-    ...Array.from({ length: 16 }, (_, i) => el("option", { value: i + 1, text: `${i + 1}x` })));
-  reps.value = String(en.chain ? 0 : en.reps);
-  reps.addEventListener("change", () => songOp(lreq(5, k, e, +reps.value), "list"));
-  const f = en.pat && !rest ? copyPlusAt(x, e) : -1, [b0, b1] = chainOf(x, e);
-  const what = () => {
-    const r = Q && Q.pats[en.pat - 1];
-    return t(r && r.refs > 1 ? "sgStays" : "sgGoesToo").replace("{n}", pat2(en.pat));
-  };
-  /* ((2.0, #30) its sound, on an entry with a pattern or a REST: none, a preset of an engine the track may play, a
-     user sound; loaded as the track comes onto the entry) */
-  let snd = null;
-  if (sndOn()) {
-    const now = `${en.snd[0]},${en.snd[1]}`, groups = dev.info.engines.map((name, ei) => {
-      const ns = dev.names[ei] || [];
-      return name === "-" || !trackEngineOk(k, ei) || !ns.length ? null : el("optgroup", { label: name },
-        ...ns.map((pn, pi) => (aliasOf(ns, pi) === pi ? el("option", { value: `${ei + 1},${pi}`, text: pn }) : null)).filter(Boolean));
-    }).filter(Boolean);
-    const users = dev.bank ? dev.bank.slots.filter((u) => u.used && trackEngineOk(k, u.engine)) : [];
-    snd = el("select", { "aria-label": t("sgSound"), disabled: !en.pat },
-      el("option", { value: "0,0", text: t("sgNoSound") }), ...groups,
-      ...(users.length ? [el("optgroup", { label: t("sgUserSounds") },
-        ...users.map((u) => el("option", { value: `${64 + u.slot},0`, text: `${slotName(u.slot)} ${u.name}` })))] : []));
-    if (![...snd.options].some((o) => o.value === now))   /* (one not offered: a user sound not read yet) */
-      snd.append(el("option", { value: now, text: sndName(en.snd) }));
-    snd.value = now;
-    snd.addEventListener("change", () => songOp(lreq(9, k, e, snd.value.split(",").map(Number)), "snd"));
-  }
-  box.replaceChildren(el("strong", { text: `T${k + 1} ${ENTS[e]}` }), " ",
-    el("label", {}, el("span", { class: "dim", text: t("sgPattern") }), " ", sel),
-    el("button", { type: "button", onclick: () => songOp(lreq(1, k, e, +sel.value), "list") }, t("sgSet")),
-    ...(two ? [el("button", { type: "button", disabled: !!Q && Q.pats.every((p) => p.len), onclick: () => songOp(lreq(7, k, e), "list") }, t("sgNew"))] : []),
-    el("button", { type: "button", disabled: !en.pat || rest, onclick: () => songOp(lreq(2, k, e), "list") }, t("sgCopy")),
-    ...(two ? [el("button", { type: "button", disabled: f < 0, onclick: () => songOp(lreq(8, k, e), "list") },
-      t("sgCopyPlus") + (f < 0 ? "" : ` → ${ENTS[f]}${b1 > b0 ? "-" + ENTS[f + b1 - b0] : ""}`))] : []),
-    el("button", { type: "button", disabled: !en.pat, onclick: () => songOp(lreq(3, k, e), "list") }, t("sgPlay")),
-    el("label", {}, el("span", { class: "dim", text: "REPS" }), " ", reps),
-    ...(snd ? [el("label", {}, el("span", { class: "dim", text: t("sgSound") }), " ", snd)] : []),
-    el("button", { type: "button", disabled: !en.pat, onclick: () => {
-      if (rest || confirm(t("sgConfirmEntry").replace("{e}", `T${k + 1} ${ENTS[e]}`).replace("{what}", what()))) songOp(lreq(4, k, e), "list");
-    } }, t("sgClear")));
-}
-function sceneClick(i, kept) {
-  if (!$("sgstore").checked) { songOp(req.perform(2, i), "perf"); return; }
-  if (kept && !confirm(t("sgConfirmScene").replace("{n}", i + 1))) return;
-  $("sgstore").checked = false;
-  songOp(req.perform(1, i), "perf");
-}
-$("sgsong").addEventListener("change", () => songOp(lreq(6, +$("sgsong").value), "list"));
-$("sgentry").addEventListener("focusout", (ev) => {   /* (the entry picked drawn again once its controls let go: REPS's */
-  const s = dev && dev.song;                            /* CHAIN changes COPY+'s room) */
-  if (s && s.list && !$("sgentry").contains(ev.relatedTarget)) renderEntry(s.list, s.pool);
-});
-$("sglaunch").addEventListener("change", () => songOp(req.perform(5, +$("sglaunch").value), "perf"));
-$("sgcancel").addEventListener("click", () => songOp(req.perform(4), "perf"));
 $("tstop").addEventListener("click", () => transportOp(2));
 $("trec").addEventListener("click", () => transportOp(4));
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); });
@@ -4425,7 +3961,6 @@ async function connect() {
         catch (e) { sayK("denied"); return; }
       }
       access.onstatechange = onState;
-      apcAttach();
     }
     const pairs = portPairs(access);
     let input = null, output = null, link = null;
@@ -4486,13 +4021,11 @@ function disconnect(reasonKey = "disconnected") {
   renderPreferences(true);
   $("version").textContent = "";
   setLabel($("connect"), t("connect"));
-  apcShow();                                        /* (no device: its LEDs dark) */
   sayK(reasonKey);
 }
 
 function onState(e) {
   const p = e.port;
-  apcAttach();
   if (!p || !UNIT_PORT.test(p.name || "")) return;   /* ((2.0.1, #50) the names connect() takes) */
   if (dev && p.state === "disconnected" && (p.id === dev.input.id || p.id === dev.output.id)) {
     disconnect("lost");
@@ -6485,7 +6018,7 @@ async function keepAlive() {
       else if (d === dev) { d.watch = false; renderLive(); }
     } catch (e) { /* closed */ } finally { keepAlive.run = false; }
   } else if (gap > 850 && d.link.idle) {
-    if (tab === "song" && d.info.skiff & 28) {     /* ((Skiff W3) on the Song tab: it as the keep-alive, the pool each 4th) */
+    if (tab === "song" && d.info.skiff & 4) {     /* ((Skiff W3) on the Song tab: it as the keep-alive, the pool each 4th) */
       if (!keepAlive.song) {
         keepAlive.song = true;
         keepAlive.n = (keepAlive.n | 0) + 1;

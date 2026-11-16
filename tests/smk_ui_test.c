@@ -4,7 +4,6 @@
  *   PADS     on HOME the step taps, in a layer and the DRUM grid the white keys; a tap sets a step to the last note
  *            (its velocity), again clears it, one undo a run; DRUM: the lane; past LEN nothing; the colours (A).
  *   FADERS   the four tracks shown, taking over once they reach the value, FADER BANK (its LED), the window.
- *   ENTRIES  > and < the selected track's entry after and before, the first's end said.
  *   KEYS     the outer keys' notes and velocity (KEY VELOCITY), out of the TRS jack too; the curves.
  *   MENU     KEY VELOCITY in CONTROL, no LEDS row, the editor's rows; USR2 / USR3 not offered.
  *   WHEELS   the wheels and the pedal as MIDI in on the selected track's channel, back to rest on a switch.
@@ -168,18 +167,16 @@ static void ui_power_on(void)
     memcpy(dx_kit, DX_KIT_DEF, sizeof dx_kit);   /* ((Skiff phase 9) the factory kit: a DRUM-X preset loads others) */
     memset(bk_ram, 0xFF, sizeof bk_ram);         /* (Skiff: the pattern bank erased, as from a new unit) */
     bank_boot();
-    memset(launch_q, 0, sizeof launch_q);        /* (.. nothing staged: launch.c) */
-    memset((void *)mute_arm, 0, sizeof mute_arm);
-    scene_last = 0xFFu;
+    (void)arm_cancel();                           /* (.. nothing armed: launch.c) */
+    seq_run = (uint8_t)((1u << NTRK) - 1u);
     memset(thr, 0, sizeof thr);
     thr_out = thr_on = 0;
 #if FELUCCA_SLICE
     memset(&sp, 0, sizeof sp);                    /* (SLICES: the marker, ui_slice.c) */
 #endif
     undo_clear();
-    lists_clear();                                /* (Skiff phase 5: no lists, no patterns on the tracks) */
+    memset(trk_pid, 0, sizeof trk_pid);           /* (Skiff phase 5: no patterns on the tracks) */
     motion_lost = 0;
-    memset(&sg, 0, sizeof sg);                    /* (.. SONG's entry A, no pick) */
     memset(proj_slot, 0, sizeof proj_slot);
     memset(up_bank, 0, sizeof up_bank);
     for (i = 0; i < G_COUNT; i++)
@@ -435,34 +432,6 @@ static int test_faders(void)
     fm1_in.fader[0] = 60;
     frame();
     bad += check("SMK faders follow the window: T6 selected, F1 is T3", trk[2].p[P_LEVEL] == 60);
-    return bad;
-}
-
-static int test_entries(void)
-{
-    int bad = 0;
-    uint32_t i;
-    smk_power_on();
-    sel_set(0);
-    for (i = 0; i < 3u; i++) {                    /* T1's entries A, B, C: patterns of their own (SAVE > PATTERNS) */
-        track_t *t = TSEL;
-        track_defaults_steps(t);
-        t->step[i].n = 1;
-        t->step[i].note[0] = (uint8_t)(60 + i);
-        t->step[i].time = ST_NOTE;
-        bank_put(0, i, 0);
-    }
-    (void)entry_go(0, 0);
-    frame();
-    frame();
-    press_id(SMK_BTN_RIGHT);
-    bad += check("SMK >: the next entry, at once when stopped", lists.cur[0] == 1u);
-    press_id(SMK_BTN_RIGHT);
-    press_id(SMK_BTN_LEFT);
-    bad += check("SMK < after >: back one", lists.cur[0] == 1u);
-    press_id(SMK_BTN_LEFT);
-    press_id(SMK_BTN_LEFT);
-    bad += check("SMK < on A: FIRST ENTRY, nowhere", lists.cur[0] == 0u && msg_is("FIRST ENTRY"));
     return bad;
 }
 
@@ -866,7 +835,6 @@ int main(void)
     bad += test_pad_taps();
     bad += test_pad_colours();
     bad += test_faders();
-    bad += test_entries();
     bad += test_outer_keys();
     bad += test_menu();
     bad += test_wheels();

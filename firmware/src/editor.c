@@ -426,7 +426,7 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
         return n == 3u;
     case ED_TRANSPORT: case ED_PROJ_NAME:
         return ed_project_args_ok(cmd, a, n);
-    case ED_POOL: case ED_LIST: case ED_PERFORM: case ED_LIST2:
+    case ED_POOL:
         return ed_song_args_ok(cmd, a, n);
     case ED_KIT_GET:                                   /* (Skiff W3) a lane; a lane and its 15 values, each in range */
         return n == 1u && a[0] < 8u;
@@ -563,9 +563,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             0x49, 1, P_COUNT & 127u, P_COUNT >> 7, P_E0 & 127u, P_E0 >> 7,   /* (Skiff 1.3) wide ids: P_COUNT and
                                          * P_E0 in two bytes; a track id from 128 on as scope 2 (ED_TID), a motion
                                          * record's from 128 on with bit 6 of its step byte */
-            0x58, 1, ED_SONG2,                          /* (2.0) the song's LIST2, NEW, COPY+, CHAIN, ONCE, the pool's
-                                                         * EMPTY, CLEAR UNUSED (editor_song.c; last: an editor before
-                                                         * reads up to 49 01 only) */
+            0x58, 1, ED_SONG2,                          /* (2.0) the pool's EMPTY, CLEAR UNUSED (editor_song.c; last: an
+                                                         * editor before reads up to 49 01 only) */
 #if FELUCCA_CAST
             0x59, 1, 1u | (BOARD_SMK37 ? 2u : 0u),     /* (Skiff Studio) the cast, cmd 83 (cast.c); bit 1: the SMK-37's
                                                          * layout (its copy: felucca_cast_smk.wasm) */

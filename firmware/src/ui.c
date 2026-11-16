@@ -27,65 +27,19 @@ static int project_rename(uint32_t slot, const char *name);
 static int project_erase(uint32_t slot);   /* (1.2.1, #6) SAVE > PROJECT: DELETE, NEW (project.c) */
 static void project_new(void);
 static int step_page(uint32_t g) { return g == GR_ROLL; }   /* (Skiff 2.0) NOTES: the keys write (REC) or pick there */
-#define BANK_SLOTS 16u                         /* Skiff: the pattern bank (bank.c): A..P a track */
-static int bank_used(uint32_t k, uint32_t s);
-static int ent_on(uint32_t k, uint32_t e);
-static uint32_t ent_free_after(uint32_t k, uint32_t e);   /* ((2.0, #33) COPY+'s entry: bank.c) */
-static uint32_t copy_ids(uint32_t k, uint32_t e, uint8_t *ids);
-static int ent_block(uint32_t k, uint32_t e, uint32_t *b0, uint32_t *b1);   /* ((2.0, #44) a chain: bank.c) */
-static uint32_t trk_ent(uint32_t k);
-static uint32_t chain_off(uint32_t k, uint32_t e, uint32_t *all, uint32_t u);
-static int32_t chain_cursor(int32_t c);
-static void chain_top(void);
-static int chain_tails(uint32_t k, const step_t *last, uint32_t cnt, const uint8_t *o, const uint8_t *p,
-                       const uint8_t *n);           /* ((2.0, #44) a note across a chain's parts: bank.c) */
-#define CT_SAME 255u                             /* (.. a tail as long as it was) */
-static void take_part(uint32_t k, uint32_t j, uint32_t pass, step_t *tmp, uint32_t *notes, uint32_t *moves,
-                      uint32_t *full);              /* (.. a TAKE on a chain, another part's) */
-/* (2.0, #44) the pass a chain's first part came in on this time round, and the round before's (0: no whole round of it
- * yet), for each track (bank.c bank_poll_trk; PLAY: 1, 0): ui_take.c's TAKE keeps that whole round */
-static uint16_t chain_p0[NTRK] __attribute__((section(".pool"))), chain_pl[NTRK] __attribute__((section(".pool")));
-static uint32_t chain_tail_len(uint32_t k, uint32_t p);
 static int keep_all(void);                       /* (Skiff phase 5) bank.c: keeping the tracks' patterns */
 static int keep_poll(void);
 static uint32_t keep_waiting(void);
 static int pat_load(track_t *t, uint32_t id);
 static int pool_used(uint32_t id);
-static uint32_t ent_len48(uint32_t k, uint32_t e);   /* ((2.5, 2B) bank.c: a song's bars) */
-static uint32_t ent_at48(uint32_t k, uint32_t e);
-static uint32_t song_at(uint32_t *k, uint32_t *at);
 static uint32_t pool_alloc(void);
-static uint32_t pool_alloc_after(uint32_t orig);   /* ((2.0, #34) a copy's number: bank.c) */
-static uint32_t bank_cur(uint32_t k);
 static uint32_t bank_gen(void);
-static void entry_ui(uint32_t e);
 static uint32_t pool_len(uint32_t id);         /* (Skiff phase 5) SAVE > PATTERNS, the pool view (bank.c) */
 static uint32_t pool_refs(uint32_t id);
 static void pool_clear(uint32_t id);
 static uint32_t pool_unused(void);               /* ((2.0, #46) its ACTION: EMPTY, CLEAR UNUSED) */
 static void pool_empty(uint32_t id);
 static void pool_clear_unused(void);
-static void bank_poll(void);                   /* (Skiff) live switching (bank.c, launch.c) */
-static void song_poll(void);                   /* (Skiff phase 5) the song: each track's list in turn (bank.c) */
-static void song_top(void);
-static void song_from(void);                   /* ((2.5) SHIFT + PLAY on SONG: from its entry, bank.c) */
-static void song_oct(void);                    /* .. SEQ > SONG's OCT+ OCT- and its dialog (bank.c) */
-static void song_back(void);
-static void song_clear(uint32_t e);
-static int song_clear_at(uint32_t k, uint32_t e);
-static uint32_t song_clear_text(uint32_t e, char l[3][32], int *gone);
-static uint32_t bank_next(uint32_t k);
-static int bank_cancel(uint32_t k);
-static int stage_cancel(void);
-static void mute_switch(uint32_t k);
-static int scene_used(uint32_t s);              /* (Skiff) scenes (bank.c) */
-static uint32_t scene_slot(uint32_t s, uint32_t k);
-static uint32_t scene_now(void);
-static void scene_forget(void);
-static void scene_key(uint32_t s, int store);
-static void scene_saved(uint32_t s);
-static void scene_store(uint32_t s);
-static int stage_pending(void);
 static void project_cur_name(char *b);
 static uint32_t project_mark(void);   /* (Skiff U3, A2) project.c: the slot's letter ('A'..'D', 0 none) | changed << 8 */
 static int project_dirty(void);
@@ -244,16 +198,6 @@ static void rp_put(uint32_t f, uint32_t v)
 }
 /* (favorites.factory[15][29] held MENU > STYLE, FLAT LINE BLOCKS: (Skiff U2) BLOCKS is the only look, the byte is left
  * as it was saved) */
-/* (Skiff) the PERFORM layer's KNOB 1, LAUNCH: where a pattern switched to while playing comes in (launch.c LAUNCH_*:
- * LOOP BAR BEAT NOW), a byte no engine uses (favorites.c), saved with the settings; 0 in older settings = LOOP */
-#define ui_launch (favorites.factory[15][26])
-static uint32_t launch_mode(void) { return ui_launch < LAUNCH_N ? ui_launch : LAUNCH_LOOP; }
-static const char *const LAUNCH_NAME[LAUNCH_N] = {"LOOP", "BAR", "BEAT", "NOW"};
-/* (Skiff) the PERFORM layer's KNOB 2, KEYS: its white keys the selected track's patterns (0) or the scenes (1)
- * (bank.c), saved with the settings, as LAUNCH; 0 in older settings */
-#define ui_perf_keys (favorites.factory[15][25])
-static uint32_t perf_scenes(void) { return ui_perf_keys == 1u; }
-
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
 
 #define ACC T_THEME                /* values, curves */
@@ -366,12 +310,11 @@ static struct {
 
 enum { CF_NONE, CF_CLEAR_SEQ, CF_OVR_PROJ, CF_OVR_USER,
        CF_INIT_SOUND, CF_CLEAR_MOTION, CF_ERASE_USER,
-       CF_ERASE_BANK, CF_CLEAR_ENTRY, CF_LOAD_PROJ, CF_STORE_SCENE, CF_RESET_SET, CF_ERASE_PROJ, CF_NEW_PROJ,
-       CF_EMPTY_BANK, CF_CLEAR_UNUSED, CF_CLEAR_SONG, CF_CLEAR_TRKS, CF_COUNT };   /* ui.confirm: TOOLS' clears; SAVE
-                                   * over a used slot; USER ERASE; (Skiff phase 5) SAVE > PATTERNS: CLEAR an unused pattern; SONG:
-                                   * CLEAR the entry; (Skiff U1) PROJECT LOAD over the session; ((2.0, #46) SAVE >
-                                   * PATTERNS: EMPTY a pattern, CLEAR every unused one; (2.5, 3A) SAVE > PROJECT's KNOB 3:
-                                   * CLEAR SONG, CLEAR TRACKS) */
+       CF_ERASE_BANK, CF_LOAD_PROJ, CF_RESET_SET, CF_ERASE_PROJ, CF_NEW_PROJ,
+       CF_EMPTY_BANK, CF_CLEAR_UNUSED, CF_CLEAR_TRKS, CF_COUNT };   /* ui.confirm: TOOLS' clears; SAVE
+                                   * over a used slot; USER ERASE; (Skiff phase 5) SAVE > PATTERNS: CLEAR an unused pattern;
+                                   * (Skiff U1) PROJECT LOAD over the session; ((2.0, #46) SAVE > PATTERNS: EMPTY a
+                                   * pattern, CLEAR every unused one; (2.5, 3A) SAVE > PROJECT's KNOB 3: CLEAR TRACKS) */
 /* (2.0, #46) SAVE > PATTERNS' KNOB 4, ACTION: CLEAR (an unused pattern, as before), EMPTY (its steps and automation, the
  * pattern and its entries kept), CLEAR UNUSED (every pattern nothing uses) */
 enum { BA_CLEAR, BA_EMPTY, BA_UNUSED, BA_N };
@@ -384,16 +327,6 @@ static void confirm_open(uint32_t kind, uint32_t trk)
     ui.act = 0;
     ui.force = 1;
 }
-/* (Skiff phase 5) SEQ > SONG (ui_input.c song_*, ui_graph.c graph_song): the entry KNOB 1 picked (A..P), KNOB 2's pick
- * for it (a pattern id + 1, (#28) PAT_REST, SPICK_COPY: a copy of the entry's; 0 none: OCT+ plays the entry) and where
- * it was made (1 + the track x 16 + the entry: another track or entry since, none) */
-#define SPICK_NEW (NPAT + 2u)                  /* ((2.0, #32) a new empty pattern for it) */
-#define SPICK_COPY (NPAT + 3u)
-#define SPICK_COPYP (NPAT + 4u)                /* ((2.0, #33) COPY+: a copy into the first empty entry after it) */
-#define SPICK_CLEAR (NPAT + 5u)                /* ((Skiff U2) the entry cleared: its dialog, was EDIT) */
-#define SPICK_SOUND (NPAT + 6u)                /* ((2.0, #30, the user's pick 2A) the track's sound now onto the entry, */
-#define SPICK_NOSND (NPAT + 7u)                /* its sound taken off: bank.c song_snd) */
-static struct { uint8_t entry, pick, pick_at; } sg __attribute__((section(".pool")));
 
 /* MENU > DISPLAY > SCREEN OFF (1.1.5): after a while with no input on the panel the screen and its backlight go off
  * (a picture held for hours can stay faintly on the panel); the sound, the sequencer, MIDI and USB go on, the LEDs
@@ -565,7 +498,7 @@ static uint32_t large_kind(void)
         return LK_TALL;
     g = cur_page()->graph;
     return g == GR_BROWSE || g == GR_SLOTS || g == GR_USER || g == GR_BANK || step_page(g) ||
-           g == GR_FEEL || g == GR_SLICES || g == GR_EVENTS || g == GR_SONG || sheet_of(g) ? LK_LABEL : LK_TALL;
+           g == GR_FEEL || g == GR_SLICES || g == GR_EVENTS || sheet_of(g) ? LK_LABEL : LK_TALL;
 }
 /* the geometry of the page shown: the cards' height, the panel's top and height */
 static uint32_t card_h(void) { return large_kind() == LK_TALL ? LG_CARD_H : CARD_H; }
@@ -811,7 +744,6 @@ static void transport_stop_now(void)
     fm1_irq_off();
     seq_stop();
     transport_req = 0;
-    sl_on = 0;                                    /* ((2.5) no SONG entry's start left waiting: seq.c seq_go) */
     fm1_irq_on();
 }
 
@@ -1171,8 +1103,6 @@ static int32_t len_get(const track_t *t, uint32_t i)
     for (k = 0; k < t->step[i].n && (!sel_voice(i, k) || step_tied(&t->step[i], k)); k++)
         ;
     n = k < t->step[i].n ? note_span(t, i, k) : step_span(t, i);
-    if (k < t->step[i].n && i + n == (uint32_t)t->p[P_SLEN])   /* ((2.0, #44) on into a chain's next part: all of it */
-        n += chain_tail_len(trk_index(t), t->step[i].note[k]);
     if (n > 1u)
         return LEN_STEPS + (int32_t)n - 2;
     if (!motion_lock_get(t, i, P_SGATE, &v))
@@ -1221,10 +1151,6 @@ static const char *feel_text(char *b, const step_t *s, uint32_t k)
 static void cursor_set(int32_t c)
 {
     int32_t len = TSEL->p[P_SLEN] > 0 ? TSEL->p[P_SLEN] : 1;
-    if (c >= len || c < 0) {
-        c = chain_cursor(c);
-        len = TSEL->p[P_SLEN] > 0 ? TSEL->p[P_SLEN] : 1;
-    }
     ui.cursor = (uint8_t)((c % len + len) % len);
     ui.bank = (uint8_t)(ui.cursor / 16u);
     ui.entry_open = 0;
@@ -1328,9 +1254,8 @@ static int page_step(int32_t dir)
  * the chain's (its LEN in none): the steps counted on through it; u 16: the grid's pages */
 static uint32_t step_off(uint32_t *all, uint32_t u)
 {
-    uint32_t k = song.sel % NTRK, e = trk_ent(k);
     *all = ((uint32_t)TSEL->p[P_SLEN] + u - 1u) / u;
-    return e < NENT ? chain_off(k, e, all, u) : 0u;
+    return 0u;
 }
 static const char *page_head(void)
 {
@@ -1388,9 +1313,7 @@ static int seq_is_empty(const track_t *t)
  * takes the copy too (UNDO_MOT: SAVE held puts the track's motion back, the sound and the steps stay; motion_undo_take).
  * A sound load keeps the track's motion on the parameters every engine has (load_end, motion.c motion_sound_loaded);
  * a pattern load drops it all (the steps it was on are gone) */
-enum { UNDO_SOUND = 1, UNDO_PAT = 2, UNDO_MOT = 4, UNDO_KIT = 8, UNDO_LISTS = 16 };   /* ((2.5, 3A) UNDO_LISTS: CLEAR
-                                                                     * SONG's, the song's lists in the copy's steps;
-                                                                     * UNDO_KIT, Skiff phase 7: INIT on DRUM-X,
+enum { UNDO_SOUND = 1, UNDO_PAT = 2, UNDO_MOT = 4, UNDO_KIT = 8 };   /* (UNDO_KIT, Skiff phase 7: INIT on DRUM-X,
                                                                      * the project's kit: sound_init) */
 typedef struct {
     uint8_t trk;                 /* track + 1, 0 = nothing to undo */
@@ -1462,31 +1385,9 @@ static void undo_push(uint32_t what)                       /* a new copy: the ca
 }
 static uint8_t undo_depth;       /* loads nest (an engine jump loads its first preset): the outer one counts;
                                   * felucca_init / project_load raise it to take no copy at all */
-/* (Skiff phase 5) each track's list (bank.c, DESIGN.md): NENT entries, byte 0 its pattern id + 1 (0: empty; (#28)
- * PAT_REST: a REST), byte 1 its repeats - 1; the entry each track is on; SONG on; the scenes (bank.c scene_*). A project
- * keeps the same bytes (SKF2). trk_pid: the pattern id + 1 the track's steps came from, where they are kept (0: none
- * yet, given an id when first kept). All 0 (power-on, a reset): nothing. ((2.0, #30) snd: each entry's sound, bank.c
- * esnd_make: 0 0 none, engine + 1 and its preset, 0x80 + a user slot and 0) */
-static struct {
-    uint8_t ent[NTRK][NENT][2];
-    uint8_t snd[NTRK][NENT][2];
-    uint8_t cur[NTRK];
-    uint8_t song;                /* SONG_* (core.h): off, on, ((2.0, #47) once through) */
-    uint8_t scene[PROJ_SCENES];
-} lists __attribute__((section(".pool")));
+/* (Skiff phase 5) trk_pid: the pattern id + 1 the track's steps came from, where they are kept (0: none yet, given an
+ * id when first kept) */
 static uint8_t trk_pid[NTRK] __attribute__((section(".pool")));   /* (.pool: off the ISR's merged globals) */
-_Static_assert(sizeof lists <= sizeof ((undo_t *)0)->step, "(2.5) an undo copy holds the song's lists (UNDO_LISTS)");
-static uint32_t ent_pat(uint32_t k, uint32_t e)        /* entry e of track k: its pattern id, PAT_NONE: empty (a REST) */
-{
-    uint32_t v = lists.ent[k % NTRK][e % NENT][0];
-    return v && v <= NPAT ? v - 1u : PAT_NONE;
-}
-static int ent_rest(uint32_t k, uint32_t e) { return lists.ent[k][e][0] == PAT_REST; }   /* ((#28) k, e in range) */
-static uint32_t ent_reps(uint32_t k, uint32_t e)       /* its REPS, 1..16 ((2.0, #44) on CHAIN: once) */
-{
-    uint32_t r = lists.ent[k % NTRK][e % NENT][1];
-    return r < 16u ? r + 1u : 1u;
-}
 static uint32_t trk_pat(uint32_t k) { return trk_pid[k % NTRK] ? trk_pid[k % NTRK] - 1u : PAT_NONE; }
 /* (Skiff phase 6) the first of the four tracks a screen shows (HOME, SONG, PERFORM, MIXER, the GLO cards): T1..T4, or
  * with T5 or T6 selected the four ending at it */
@@ -1503,11 +1404,6 @@ static void trk_bar(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
         cv_rect(x0, y0 + a, x1 - x0 + 1, b - a + 1, T_MID);
     else
         cv_rect(x0 + a, y0, b - a + 1, y1 - y0 + 1, T_MID);
-}
-static void lists_clear(void)                          /* no lists, no patterns on the tracks */
-{
-    memset(&lists, 0, sizeof lists);
-    memset(trk_pid, 0, sizeof trk_pid);
 }
 static uint8_t load_from;        /* a sound load (the outer one): the engine before it (load_end) */
 static uint8_t load_mo;          /* .. the track's motion paused while the sound changes: bit 0 set, bit 1 it was ON */
@@ -1782,16 +1678,6 @@ static int undo_swap(undo_t *c)
     track_t *t = &trk[(c->trk - 1u) % NTRK];
     uint32_t i;
     motion_store_t current_motion;
-    if (c->what & UNDO_LISTS) {                   /* ((2.5, 3A) CLEAR SONG's: the lists back; the tracks as they are) */
-        uint8_t l[sizeof lists];
-        fm1_irq_off();
-        memcpy(l, &lists, sizeof lists);
-        memcpy(&lists, c->step, sizeof lists);
-        memcpy(c->step, l, sizeof lists);
-        fm1_irq_on();
-        c->keep = 0;
-        return 1;
-    }
     if ((c->what & (UNDO_PAT | UNDO_MOT)) && c->pid != trk_pid[trk_index(t)]) {
         undo_other_pattern(c->pid);
         return 0;
@@ -2350,87 +2236,13 @@ static void track_select(uint32_t i)
  * shift the octave */
 static int go_id(uint32_t id) { return id == G_LOAD || id == G_SAVE; }
 
-/* (Skiff phase 5) SEQ > SONG: pattern id as the page writes it, "01" .. "64" (b: 3 bytes) */
+/* (Skiff phase 5) pattern id as the pages write it, "01" .. "64" (b: 3 bytes) */
 static void pat_num(char *b, uint32_t id)
 {
     b[0] = (char)('0' + (id + 1u) / 10u % 10u);
     b[1] = (char)('0' + (id + 1u) % 10u);
     b[2] = 0;
 }
-/* .. KNOB 2's pick for the entry picked, while it is that track's and entry's (0: none) */
-static uint32_t song_pick(void)
-{
-    return sg.pick && sg.pick_at == 1u + (song.sel % NTRK) * 16u + sg.entry % NENT ? sg.pick : 0u;
-}
-/* .. what OCT+ does there: the entry played ("PLAY"), the pick put into it ("SET 07", "SET REST"), a copy of its
- * pattern made for it ("COPY 06 TO 17"), ((2.0) a new one, "NEW 22"; COPY+'s after it, "COPY 06 TO 22 AT F"; (#30) the
- * track's sound on it, "SET SOUND PIANO", or "SET NO SOUND") */
-static void sound_name(const track_t *t, char *b);    /* (ui_draw.c) */
-/* (2.0, #30) a song entry's sound by its name (b: lists.snd's two bytes, bank.c esnd_make): a user sound's or a
- * preset's (s holds 16); "" none */
-static void esnd_name(const uint8_t *b, char *s)
-{
-    uint32_t e = b[0] - 1u, u = b[0] & 127u;
-    s[0] = 0;
-    if (b[0] & 128u) {
-        if (u < UP_SLOTS && up_used(u))
-            up_name(u, s);
-    } else if (eng_ok(e) && ENGINES[e]->npresets) {
-        str_cpy(s, ENGINES[e]->presets[preset_orig(ENGINES[e], b[1] % ENGINES[e]->npresets)].name, 16);
-    }
-}
-static const char *song_act_name(void)
-{
-    static char b[28] __attribute__((section(".pool")));   /* (.pool: off the ISR's merged globals) */
-    uint32_t p = song_pick(), id = ent_pat(song.sel, sg.entry), n, b0, b1;
-    if (!p)
-        return "PLAY";
-    if (p == SPICK_CLEAR)
-        return "CLEAR";
-    if (p == SPICK_NOSND)
-        return "SET NO SOUND";
-    if (p == SPICK_SOUND) {
-        str_cpy(b, "SET SOUND ", sizeof b);
-        sound_name(TSEL, b + 10);                    /* (16 at most) */
-        return b;
-    }
-    if (p == PAT_REST)
-        return "SET REST";
-    if (p == SPICK_NEW) {                        /* (the first free number: none, NEW alone) */
-        str_cpy(b, "NEW", sizeof b);
-        if ((n = pool_alloc()) < NPAT) {
-            b[3] = ' ';
-            pat_num(b + 4, n);
-        }
-        return b;
-    }
-    if (p == SPICK_COPYP && ent_block(song.sel, sg.entry, &b0, &b1) &&
-        (n = ent_free_after(song.sel % NTRK, sg.entry % NENT)) < NENT) {   /* ((#44) a chain's: "COPY A-B TO F-G") */
-        str_cpy(b, "COPY A-B TO F-G", sizeof b);
-        b[5] = (char)('A' + b0), b[7] = (char)('A' + b1);
-        b[12] = (char)('A' + n), b[14] = (char)('A' + n + b1 - b0);
-        return b;
-    }
-    if (p == SPICK_COPY || p == SPICK_COPYP) {
-        n = id != PAT_NONE ? pool_alloc_after(id) : NPAT;
-        str_cpy(b, "COPY ", sizeof b);
-        pat_num(b + 5, id);
-        if (n < NPAT) {
-            str_cpy(b + 7, " TO ", sizeof b - 7u);
-            pat_num(b + 11, n);
-            if (p == SPICK_COPYP && (n = ent_free_after(song.sel % NTRK, sg.entry % NENT)) < NENT) {
-                str_cpy(b + 13, " AT ", sizeof b - 13u);
-                b[17] = (char)('A' + n);
-                b[18] = 0;
-            }
-        }
-        return b;
-    }
-    str_cpy(b, "SET ", sizeof b);
-    pat_num(b + 4, p - 1u);
-    return b;
-}
-
 static uint32_t act_cols(void)                   /* the columns that are actions, a bit each; 0 = not such a page */
 {
     const page_t *pg = cur_page();
@@ -2439,7 +2251,6 @@ static uint32_t act_cols(void)                   /* the columns that are actions
         return 0;
     if (pg->graph == GR_EVENTS)                  /* AUTOMATION: no knob is an action, OCT+ adds / toggles (ev_oct); */
         return ui.ev_top ? 8u : 16u;             /* ((Skiff U3, R5) its top row: CLEAR on KNOB 4) */
-    if (pg->graph == GR_SONG) return 16u;       /* (Skiff phase 5) SONG: so too; OCT+ plays or sets (song_oct) */
     if (pg->graph == GR_USER)
         return 14u;                              /* LOAD ERASE (or NAME, ui.act2) SAVE */
     if (pg->graph == GR_SLOTS)
@@ -2458,7 +2269,7 @@ static uint32_t act_cols(void)                   /* the columns that are actions
 /* the action OCT+ does: its column + 1, 0 = none picked yet */
 static uint32_t act_col(void)
 {
-    if (!ui.home && ((cur_page()->graph == GR_EVENTS && !ui.ev_top) || cur_page()->graph == GR_SONG)) return 5u;
+    if (!ui.home && cur_page()->graph == GR_EVENTS && !ui.ev_top) return 5u;
     if (!ui.home && cur_page()->graph == GR_BANK) return 4u;
     return ui.act;
 }
@@ -2478,9 +2289,9 @@ static const char *bank_act_name(void)
     }
     return b;
 }
-/* (2.5, the user's 3A) SAVE > PROJECT's KNOB 3, what OCT+ does: LOAD (a used slot), NEW, CLEAR SONG, CLEAR TRACKS;
- * an empty slot's list starts at NEW. ui.act2: the step past the first while KNOB 3's picked (ui_input.c) */
-enum { PK3_LOAD, PK3_NEW, PK3_SONG, PK3_TRKS };
+/* (2.5, the user's 3A) SAVE > PROJECT's KNOB 3, what OCT+ does: LOAD (a used slot), NEW, CLEAR TRACKS; an empty
+ * slot's list starts at NEW. ui.act2: the step past the first while KNOB 3's picked (ui_input.c) */
+enum { PK3_LOAD, PK3_NEW, PK3_TRKS };
 static uint32_t proj_k3(void)
 {
     uint32_t a = (ui.act == 3u ? ui.act2 : 0u) + (project_used((uint32_t)song.g[G_SLOT] - 1u) ? 0u : 1u);
@@ -2491,14 +2302,13 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
     static const char *const UP_GO[3] = {"LOAD", "ERASE", "SAVE"};
     uint32_t id = cur_page()->id[c & 3u];
     if (cur_page()->graph == GR_EVENTS) return ui.ev_top ? "CLEAR" : ev_act_name();
-    if (cur_page()->graph == GR_SONG) return song_act_name();
     if (cur_page()->graph == GR_USER)
         return c == 2u && ui.act2 ? "NAME" : UP_GO[(c + 2u) % 3u];
     if (cur_page()->graph == GR_SLOTS && c == 1u)
         return ui.act == 2u && ui.act2 ? "NAME" : "DELETE";   /* ((1.2.1, #6) DELETE, one step further NAME) */
     if (cur_page()->graph == GR_SLOTS && id == G_LOAD) {   /* ((2.5, 3A) KNOB 3: LOAD, NEW ((1.2.1, #6) an empty */
-        static const char *const K3[4] = {"LOAD", "NEW", "CLEAR SONG", "CLEAR TRACKS"};   /* slot's), CLEAR SONG, */
-        return K3[proj_k3()];                                                         /* CLEAR TRACKS */
+        static const char *const K3[3] = {"LOAD", "NEW", "CLEAR TRACKS"};   /* slot's), CLEAR TRACKS */
+        return K3[proj_k3()];
     }
     if (cur_page()->graph == GR_BANK)
         return bank_act_name();
@@ -2509,18 +2319,12 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
 
 /* the picked action would do something now (OCT+ breathes): another pattern, a used slot, stopped for
  * a flash write, steps to clear */
-static int snd_of(uint32_t k, uint8_t *b);      /* (bank.c) */
 static int act_ready(void)
 {
-    uint32_t c = act_col(), s = song.sel, id;
-    uint8_t sb[2];
+    uint32_t c = act_col(), id;
     if (!c--)
         return 0;
     if (cur_page()->graph == GR_EVENTS) return ui.ev_top ? motion_count(TSEL) != 0u : ev_act_ready();
-    if (cur_page()->graph == GR_SONG)                   /* (Skiff phase 5) a pick, else an entry to play ((#28) a REST) */
-        return song_pick() >= SPICK_NEW && song_pick() < SPICK_CLEAR ? pool_alloc() < NPAT :   /* ((2.0) NEW, COPY+) */
-               song_pick() == SPICK_SOUND ? snd_of(s, sb) :   /* ((#30) a sound as it was loaded) */
-               song_pick() == SPICK_CLEAR ? ent_on(s, sg.entry) : song_pick() || ent_on(s, sg.entry);
     if (cur_page()->graph == GR_USER)
         return c == 3u ? !song.playing : up_used(ui.uslot) && (c == 1u || !song.playing);
     if (cur_page()->graph == GR_SLOTS && c == 1u)       /* ((Skiff U2) NAME; (1.2.1) DELETE) */

@@ -667,12 +667,6 @@ static void draw_foot(void)
         char ha[24], hb[16];
         foot_hint(ha, hb);
         sig += str_hash(str_hash(act_ready() ? 7u : 3u, ha), hb) + (uint32_t)ui.act2 * 7717u + (uint32_t)ui.ev_del * 1931u;
-        if (pg->graph == GR_SONG)                      /* ((Skiff phase 5) SONG's: the whole of it, EDIT's; (2.0, #30) */
-            sig += str_hash(5u, song_act_name()) + (uint32_t)bank_used(song.sel, sg.entry) * 6007u +   /* the entry's */
-                   ent_at48(song.sel % NTRK, sg.entry % NENT) * 13u +   /* ((2.5, 2B) its bars) */
-                   ent_len48(song.sel % NTRK, sg.entry % NENT) * ent_reps(song.sel % NTRK, sg.entry % NENT) * 7u +
-                   (uint32_t)lists.snd[song.sel % NTRK][sg.entry % NENT][0] * 131u +                     /* sound */
-                   (uint32_t)lists.snd[song.sel % NTRK][sg.entry % NENT][1] * 7u + up_gen * 0x3BD1u;
     }
     if (grid_on())
         sig += 0x51EDu + (uint32_t)black_held(GK_ACC) * 977u;
@@ -708,32 +702,7 @@ static void draw_foot(void)
         cv_blit(0, foot_y());
         return;
     }
-    if (act_cols() && pg->graph == GR_SONG) {         /* (Skiff phase 5) SONG: what OCT+ does, then EDIT CLEAR (not with
-                                                       * a pick), side by side (the mockup's), the title right */
-        khint_t kh[1] = {{KC_OCTUP, song_act_name()}};   /* ((Skiff U2) CLEAR: KNOB 2's, no EDIT) */
-        uint32_t n = 1u;
-        int32_t r = foot_hint_r(ti), w = kh_w(kh[0].key, kh[0].act);
-        char sn[40], so[24];
-        uint32_t ek = song.sel % NTRK, ee = sg.entry % NENT, el = ent_len48(ek, ee) * ent_reps(ek, ee), ea;
-        cv_key_row(8, 8 + w < r ? 8 + w : r, ly - KC_TY, kh, n,
-                   (act_ready() ? 1u : 0u) | (bank_used(song.sel, sg.entry) ? 2u : 0u), T_BG);
-        str_cpy(so, "SOUND ", sizeof so);              /* ((2.0, #30, the user's pick 2A) no pick: the entry's sound */
-        esnd_name(lists.snd[ek][ee], so + 6);           /* named after it) */
-        sn[0] = 0;
-        if (el) {                                       /* ((2.5, the user's 2B) its bars in the song, before it */
-            ea = ent_at48(ek, ee);
-            str_cpy(sn, "BARS ", sizeof sn);
-            fmt_int(sn + 5, (int32_t)(ea / 192u) + 1);
-            str_cpy(sn + str_len(sn), "-", sizeof sn - str_len(sn));
-            fmt_int(sn + str_len(sn), (int32_t)((ea + el + 191u) / 192u));
-            if (so[6])
-                str_cpy(sn + str_len(sn), "  ", sizeof sn - str_len(sn));
-        }
-        if (so[6])
-            str_cpy(sn + str_len(sn), so, sizeof sn - str_len(sn));
-        if (!song_pick() && sn[0] && 8 + w + 10 < r)
-            cv_free_text(8 + w + 10, ly, &AF_S, sn, T_MID, T_BG, r - (8 + w + 10));
-    } else if (act_cols()) {                          /* the OCT+ / OCT- hint ((Skiff U2) EDIT's NAME / DELETE gone) */
+    if (act_cols()) {                                 /* the OCT+ / OCT- hint ((Skiff U2) EDIT's NAME / DELETE gone) */
         char ha[24], hb[16];
         khint_t kh[2];
         foot_hint(ha, hb);                            /* "OCT+ LOAD", "OCT- HOME": their words */
@@ -975,34 +944,6 @@ static void draw_columns(void)
         sheet_of(cur_page()->graph)->cards();
         return;
     }
-    if (cur_page()->graph == GR_SONG) {                  /* (Skiff phase 5) ENTRY PATTERN REPS SONG (ui_input.c song_knob):
-                                                         * the selected track's entry picked; its pattern (KNOB 2's pick
-                                                         * while there is one), its repeats; SONG */
-        uint32_t k = song.sel % NTRK, e = sg.entry % NENT, p = song_pick();
-        uint32_t v = p ? p : lists.ent[k][e][0], r = (uint32_t)lists.ent[k][e][1] + 1u;
-        val[0] = (char)('A' + e);
-        val[1] = 0;
-        draw_column(0, "ENTRY", val, "", VR_LIVE, ((int32_t)e * 2 + 1) * 1000 / 32, ICON_AUTO);
-        if (v >= SPICK_NEW || v == PAT_REST)            /* ((#28) REST: below 01, its gauge empty; (2.0) NEW, COPY+; (#30)
-                                                         * SOUND, NO SOUND: no gauge) */
-            str_cpy(val, v == PAT_REST ? "REST" : v == SPICK_NEW ? "NEW" : v == SPICK_COPY ? "COPY" :
-                         v == SPICK_COPYP ? "COPY+" : v == SPICK_CLEAR ? "CLEAR" : v == SPICK_SOUND ? "SOUND" :
-                         "NO SOUND", sizeof val);
-        else if (v)
-            pat_num(val, v - 1u);
-        else
-            str_cpy(val, "--", sizeof val);
-        draw_column(1, "PATTERN", val, "", v ? VR_LIVE : VR_DIM, v >= SPICK_SOUND ? -1 : v >= SPICK_NEW ? 1000 :
-                    v == PAT_REST ? 0 : v ? (int32_t)(v * 1000u / NPAT) : -1, ICON_AUTO);
-        fmt_int(val, (int32_t)r);                        /* ((1.2.1, #12) an empty entry's too: a rest's length) */
-        if (r > 16u)                                     /* ((2.0, #44) on CHAIN into the next: below 1x, no gauge */
-            draw_column(2, "REPS", "CHAIN", "", VR_LIVE, -1, ICON_AUTO);
-        else
-            draw_column(2, "REPS", val, "x", VR_LIVE, (int32_t)(r * 1000u / 16u), ICON_AUTO);
-        draw_column(3, "SONG", lists.song == SONG_ONCE ? "ONCE" : lists.song ? "ON" : "OFF", "", VR_LIVE,
-                    lists.song ? 1000 : 0, ICON_AUTO);   /* ((2.0, #47) OFF ON ONCE) */
-        return;
-    }
     if (cur_page()->graph == GR_BANK) {                  /* (Skiff phase 5) the pool view: PATTERN, its LEN, how many
                                                          * use it, ((2.0) ACTION; was CLEAR) (bank.c pool_refs) */
         uint32_t id = ui.bslot % NPAT, len = pool_len(id), n = len ? pool_refs(id) : 0u;
@@ -1164,9 +1105,9 @@ static void draw_columns(void)
             continue;
         }
         if (cur_page()->graph == GR_SLOTS && c == 2u) {   /* ((2.5, the user's 3A) KNOB 3: LOAD, NEW ((1.2.1, #6) */
-            uint32_t a = proj_k3();                       /* an empty slot's first), CLEAR SONG, CLEAR TRACKS: */
-            if (a >= PK3_SONG)                            /* CLEAR over what goes */
-                draw_column(2, "CLEAR", a == PK3_SONG ? "SONG" : "TRACKS", "", VR_ACCENT, -1, ICON_AUTO);
+            uint32_t a = proj_k3();                       /* an empty slot's first), CLEAR TRACKS: CLEAR over */
+            if (a == PK3_TRKS)                            /* what goes */
+                draw_column(2, "CLEAR", "TRACKS", "", VR_ACCENT, -1, ICON_AUTO);
             else
                 draw_act_column(2, a == PK3_LOAD ? "LOAD" : "NEW", VR_THEME, ICON_AUTO);
             continue;
@@ -1358,22 +1299,13 @@ static void confirm_text(char *a, char *b)
         if (!project_name(k & 3u, b))                   /* the project's name */
             b[0] = 0;
         break;
-    case CF_CLEAR_SONG:                                 /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
-        str_cpy(a, "CLEAR THE SONG?", 24);
-        str_cpy(b, "its lists; the patterns stay", 40);
-        break;
-    case CF_CLEAR_TRKS:
+    case CF_CLEAR_TRKS:                                 /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
         str_cpy(a, "CLEAR ALL TRACKS?", 24);
         str_cpy(b, "the patterns stay in PATTERNS", 40);
         break;
     case CF_RESET_SET:                                  /* ((Skiff U4, A3) MENU > SYSTEM > RESET SETTINGS) */
         str_cpy(a, "RESET SETTINGS?", 24);
         str_cpy(b, "the MENU's; the music stays", 40);
-        break;
-    case CF_STORE_SCENE:                                /* (Skiff U2) PERFORM's scene stored over */
-        str_cpy(a, "OVERWRITE SCENE ", 24);
-        fmt_int(a + 16, (int32_t)k + 1);
-        str_cpy(a + str_len(a), "?", 2);
         break;
     case CF_ERASE_PROJ:                                 /* ((1.2.1, #6) SAVE > PROJECT's DELETE) */
         str_cpy(a, "DELETE PROJECT A?", 24);
@@ -1411,16 +1343,6 @@ static void confirm_text(char *a, char *b)
         str_cpy(a + str_len(a), "?", 2);
         up_name(k, b);
         break;
-    case CF_CLEAR_ENTRY: {                              /* (Skiff phase 5) SONG: "CLEAR ENTRY C?", its first line (the
-                                                         * rest: draw_confirm, ui_blocks.c) */
-        char l[3][32];
-        int gone;
-        str_cpy(a, "CLEAR ENTRY A?", 24);
-        a[12] = (char)('A' + k % NENT);
-        (void)song_clear_text(k, l, &gone);
-        str_cpy(b, l[0], 24);
-        break;
-    }
     case CF_ERASE_BANK:                                 /* (Skiff phase 5) the pool view: "CLEAR PATTERN 23?" */
         str_cpy(a, "CLEAR PATTERN ", 24);
         pat_num(a + 14, k);

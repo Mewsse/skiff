@@ -133,6 +133,7 @@ static void cast_piece(void);
 #if FELUCCA_UART
 #include "midi_uart.c"
 #endif
+#include "grid.c"                /* the global GRID: its lines on the tape's ticks (seq.c: the tape clock) */
 #include "seq.c"
 #include "audio.c"
 

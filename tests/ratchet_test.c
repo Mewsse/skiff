@@ -228,7 +228,8 @@ static int projects(void)
     step_set_ratchet(&trk[1].step[7], 3);
     trk[1].step[7].time = ST_NOTE; trk[1].step[7].n = 1; trk[1].step[7].note[0] = 50;
     project_save(2);
-    bank_put(1, 1, 0);                               /* (phase 5: T2 onto a copy, B: the edit its) */
+    trk_pid[1] = 0;                                  /* (phase 5: T2 onto a copy: the edit its) */
+    (void)keep_all();
     step_set_ratchet(&trk[1].step[7], 1);
     project_load(2);
     bad += check("  project save and load keep the ratchet", step_ratchet(&trk[1].step[7]) == 3u);

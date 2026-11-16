@@ -190,7 +190,7 @@ static int preferences(void)
     uint8_t a[4] = {0, 3, 0, 0};                          /* (THEME: 3, CRYPT) */
     reset();
     uint32_t n = request(ED_INFO, a, 0);
-    bad += check("INFO (2.0) the song's tag last: 58 01 01 (LIST2, NEW, COPY+, CHAIN, ONCE, EMPTY, CLEAR UNUSED)",
+    bad += check("INFO (2.0) the pool's tag last: 58 01 01 (EMPTY, CLEAR UNUSED)",
         host_wire[n - 4] == 0x58 && host_wire[n - 3] == 1 && host_wire[n - 2] == ED_SONG2);
     n -= 3u;                                              /* (the tags before it, as they were) */
     bad += check("INFO (1.3) wide ids next: 49 01, P_COUNT and P_E0 in two 7-bit bytes each; the plain bytes at most 127",
@@ -216,7 +216,7 @@ static int preferences(void)
         host_wire[n - 9 - 4] == 0 && host_wire[n - 9 - 3] == 6 && host_wire[n - 9 - 2] == 0 &&         /* light: no GRAIN, PHYS */
         host_wire[n - 10] == 0x43 && host_wire[n - 9] == 1 && host_wire[n - 8] == TC_COUNT &&
         host_wire[n - 7] == 0x4B && host_wire[n - 6] == 1 && host_wire[n - 5] == 8 &&    /* (Skiff W3) the kit, */
-        host_wire[n - 4] == 0x57 && host_wire[n - 3] == 1 && host_wire[n - 2] == 127);   /* TRANSPORT .. PERFORM, (#21) SMP_MIX, (2.0) ties */   /* (Skiff W1) the step's FLAM
+        host_wire[n - 4] == 0x57 && host_wire[n - 3] == 1 && host_wire[n - 2] == 103);   /* TRANSPORT PROJ_NAME POOL, (#21) SMP_MIX, (2.0) ties */   /* (Skiff W1) the step's FLAM
                                                                                           * COND NUDGE */
     request(ED_UI_SET, a, 2);
     bad += check("UI_SET updates the actual palette and reports RAM-only saving",
@@ -1294,215 +1294,65 @@ static int transport_names(void)
     return bad;
 }
 
-/* (Skiff W3) POOL, LIST, PERFORM as the device's controls: the pool's LENs and uses, CLEAR (only unused, stopped);
- * the lists (the entry each track is on, its pattern, the entries), SET, REPS, PLAY, COPY, SONG, CLEAR (stopped); the
- * scenes kept, STORE, RECALL, MUTE (at once stopped, staged playing), CANCEL, LAUNCH; bad requests unanswered */
+/* (Skiff W3) POOL as the device's controls: the pool's LENs and uses (a track on it), CLEAR (only unused, stopped),
+ * (2.0) EMPTY (in use too), CLEAR UNUSED; bad requests unanswered; LIST, PERFORM, LIST2 (79, 80, 82) gone */
 static void ed_fresh(uint32_t k, uint8_t note)       /* (ui_test's fresh_pattern) */
 {
     track_defaults_steps(&trk[k]);
     trk_pid[k] = 0;
     trk[k].step[0] = (step_t){{note}, 1, ST_NOTE, 0, 90};
 }
-static int song_cmds(void)
+static uint32_t ed_keep_new(uint32_t k)             /* track k's steps as a new pattern, the track on it */
 {
-    uint8_t a[4];
-    int bad = 0, ok;
-    uint32_t n, p1, p2, p3, p4;
-    reset();
-    memset(bk_ram, 0xFF, sizeof bk_ram);
-    bank_boot();
-    lists_clear();
-    scene_forget();
-    memset(lists.scene, 0, sizeof lists.scene);
-    ed_fresh(0, 50); ok = !bank_put(0, 0, 0);        /* T1: A (01), C (02), the track on C */
-    ed_fresh(0, 60); ok &= !bank_put(0, 2, 0);
-    p1 = ent_pat(0, 0); p2 = ent_pat(0, 2);
-    n = request(ED_POOL, 0, 0);
-    ok &= n == 136u && host_wire[7 + 2 * p1] == trk[0].p[P_SLEN] && host_wire[8 + 2 * p1] == 1 && host_wire[8 + 2 * p2] == 1 &&
-          !host_wire[7 + 2 * 63];
-    n = request(ED_LIST, 0, 0);
-    ok &= n == 219u && !host_wire[7] && host_wire[8] == 2 && host_wire[9] == 127 && host_wire[10] == p2 &&
-          host_wire[11] == p1 + 1u && host_wire[15] == p2 + 1u && !host_wire[13] && host_wire[8 + 35] == 127;
-    bad += check("POOL: each pattern's LEN and uses; LIST: the entry each track is on, its pattern, the entries", ok);
-    a[0] = 1; a[1] = 0; a[2] = 1; a[3] = (uint8_t)(p1 + 1u);
-    ok = request(ED_LIST, a, 4) && !host_wire[6] && host_wire[13] == p1 + 1u;              /* SET B 01 */
-    a[0] = 5; a[3] = 3;
-    ok &= request(ED_LIST, a, 4) && !host_wire[6] && host_wire[14] == 2;                    /* REPS B 3 */
-    a[2] = 3;
-    ok &= request(ED_LIST, a, 4) && !host_wire[6] && lists.ent[0][3][1] == 2;               /* REPS on an empty entry: a rest's
-                                                                                               * (1.2.1, #12) */
-    a[0] = 1; a[3] = 64;
-    ok &= request(ED_LIST, a, 4) && host_wire[6] == 1 && !lists.ent[0][3][0];               /* SET a pattern not kept */
-    a[0] = 3; a[2] = 0;
-    ok &= request(ED_LIST, a, 3) && !host_wire[6] && host_wire[8] == 0 && trk[0].step[0].note[0] == 50;   /* PLAY A */
-    a[0] = 2;
-    ok &= request(ED_LIST, a, 3) && !host_wire[6] && (p3 = host_wire[11] - 1u) != p1 && pool_used(p3);   /* COPY A */
-    a[0] = 6; a[1] = 1;
-    ok &= request(ED_LIST, a, 2) && host_wire[7] == 1 && lists.song;                        /* SONG ON */
-    bad += check("LIST: SET, REPS (an empty entry's too: a rest), PLAY (at once stopped), COPY, SONG", ok);
-    song.playing = 1;
-    a[0] = 4; a[1] = 0; a[2] = 1;
-    ok = request(ED_LIST, a, 3) && host_wire[6] == 3 && lists.ent[0][1][0];                 /* CLEAR B: playing */
-    song.playing = 0;
-    ok &= request(ED_LIST, a, 3) && !host_wire[6] && !host_wire[13];
-    a[0] = 1; a[1] = 6; a[2] = 0; a[3] = 1;
-    ok &= !request(ED_LIST, a, 4);
-    a[1] = 0; a[2] = 16;
-    ok &= !request(ED_LIST, a, 4);
-    a[0] = 5; a[2] = 0; a[3] = 17;
-    ok &= !request(ED_LIST, a, 4);
-    a[0] = 6; a[1] = 3;                                                                      /* ((2.0) 2: ONCE) */
-    ok &= !request(ED_LIST, a, 2);
-    a[0] = 9; a[1] = 0;                                                                      /* ((2.0) 7 NEW, 8 COPY+) */
-    ok &= !request(ED_LIST, a, 3);
-    bad += check("LIST: CLEAR (refused playing, then done); bad track, entry, REPS, SONG, op unanswered", ok);
-    a[0] = 1; a[1] = 0; a[2] = 5; a[3] = PAT_REST;
-    ok = request(ED_LIST, a, 4) && !host_wire[6] && host_wire[21] == PAT_REST && ent_rest(0, 5);   /* SET F REST */
-    song.playing = 1;
-    a[0] = 4;
-    ok &= request(ED_LIST, a, 3) && !host_wire[6] && !host_wire[21] && !lists.ent[0][5][0];        /* CLEAR it, playing */
-    song.playing = 0;
-    a[0] = 1; a[3] = PAT_REST + 1u;
-    ok &= !request(ED_LIST, a, 4);
-    bad += check("(#28) LIST: SET a REST (65), CLEAR it at once (playing too); 66 unanswered", ok);
-    ed_fresh(0, 70); ok = !bank_put(0, 4, 0);        /* E: 04, the track on it; then E names A's: 04 unused */
-    p4 = ent_pat(0, 4);
-    a[0] = 1; a[1] = 0; a[2] = 4; a[3] = (uint8_t)(p3 + 1u);
-    ok &= request(ED_LIST, a, 4) && !host_wire[6] && pool_used(p4) && !pool_refs(p4);
-    a[0] = 1; a[1] = (uint8_t)p3;
-    ok &= request(ED_POOL, a, 2) && host_wire[6] == 2;                                       /* in use */
-    song.playing = 1; a[1] = (uint8_t)p4;
-    ok &= request(ED_POOL, a, 2) && host_wire[6] == 3 && pool_used(p4);                     /* playing */
-    song.playing = 0;
-    ok &= request(ED_POOL, a, 2) && !host_wire[6] && !pool_used(p4) && !host_wire[7 + 2 * p4];
-    ok &= request(ED_POOL, a, 2) && host_wire[6] == 1;                                       /* nothing to clear */
-    a[1] = 64;
-    ok &= !request(ED_POOL, a, 2);
-    a[0] = 4; a[1] = 0;                                                                      /* ((2.0) 2 EMPTY, 3 CLEAR UNUSED) */
-    ok &= !request(ED_POOL, a, 2);
-    bad += check("POOL: CLEAR only an unused pattern, stopped; nothing to clear said; bad ids, ops unanswered", ok);
-    n = request(ED_PERFORM, 0, 0);
-    ok = n == 25u && host_wire[8] == 127 && !host_wire[9] && !host_wire[10] && !host_wire[11];
-    a[0] = 1; a[1] = 2;
-    ok &= request(ED_PERFORM, a, 2) && host_wire[8] == 2 && host_wire[9] == 4 && scene_used(2);   /* STORE 3 */
-    a[0] = 2; a[1] = 4;
-    ok &= request(ED_PERFORM, a, 2) && host_wire[6] == 1;                                    /* RECALL 5: empty */
-    a[1] = 2;
-    ok &= request(ED_PERFORM, a, 2) && !host_wire[6];                                        /* RECALL 3 */
-    a[0] = 3; a[1] = 1;
-    ok &= request(ED_PERFORM, a, 2) && host_wire[14] == 1 && !host_wire[15] && trk[1].p[P_MUTE];   /* MUTE T2: at once */
-    song.playing = 1; a[1] = 2;
-    ok &= request(ED_PERFORM, a, 2) && !host_wire[16] && host_wire[17] == 2;                 /* T3: staged */
-    a[0] = 4;
-    ok &= request(ED_PERFORM, a, 1) && !host_wire[17];                                       /* CANCEL */
-    song.playing = 0;
-    a[0] = 5; a[1] = 1;
-    ok &= request(ED_PERFORM, a, 2) && host_wire[7] == 1 && launch_mode() == 1u;            /* LAUNCH BAR */
-    a[1] = 4;
-    ok &= !request(ED_PERFORM, a, 2);
-    a[0] = 1; a[1] = 16;
-    ok &= !request(ED_PERFORM, a, 2);
-    a[0] = 3; a[1] = 6;
-    ok &= !request(ED_PERFORM, a, 2);
-    a[0] = 4; a[1] = 0;
-    ok &= !request(ED_PERFORM, a, 2);
-    bad += check("PERFORM: scenes kept, STORE, RECALL (empty said), MUTE (at once, staged), CANCEL, LAUNCH; bad unanswered", ok);
-    ui_launch = 0;
-    return bad;
+    trk_pid[k] = 0;
+    (void)keep_all();
+    return trk_pid[k] ? trk_pid[k] - 1u : NPAT;
 }
-
-/* (2.0, INFO 58 01 bit 0) LIST2 (82): SONG 0..2 and each REPS byte as kept (16: CHAIN); LIST's REPS 0 CHAIN (one with
- * an entry after it, else rc 1), SONG 2 ONCE, 7 NEW, 8 COPY+ (a chain: all of it); 79's reply as before (SONG on, a
- * chain's REPS 1x); POOL 2 EMPTY (in use too: it and its entries stay), 3 CLEAR UNUSED; bad requests unanswered */
-static int song2_cmds(void)
+static int pool_cmds(void)
 {
     uint8_t a[4];
     int bad = 0, ok;
-    uint32_t n, p1, p2, c;
+    uint32_t n, p1, p2, p3;
     step_t s;
     reset();
     memset(bk_ram, 0xFF, sizeof bk_ram);
     bank_boot();
-    lists_clear();
-    ed_fresh(0, 50); ok = !bank_put(0, 0, 0);        /* T1: A (50), B (60), the track on B */
-    ed_fresh(0, 60); ok &= !bank_put(0, 1, 0);
-    p1 = ent_pat(0, 0); p2 = ent_pat(0, 1);
-    a[0] = 5; a[1] = 0; a[2] = 0; a[3] = 0;
-    ok &= request(ED_LIST, a, 4) && !host_wire[6] && lists.ent[0][0][1] == REPS_CHAIN && !host_wire[12];   /* A on CHAIN: */
-    n = request(ED_LIST2, 0, 0);                                                                            /* 79 says 1x */
-    ok &= n == 411u && host_wire[12] == REPS_CHAIN && !host_wire[16] && !host_wire[7];   /* ((#30) 4 bytes an entry) */
-    a[2] = 2;
-    ok &= request(ED_LIST, a, 4) && host_wire[6] == 1 && !lists.ent[0][2][1];             /* an empty entry can't chain */
-    lists.ent[0][15][0] = (uint8_t)(p1 + 1u);
-    a[2] = 15;
-    ok &= request(ED_LIST, a, 4) && host_wire[6] == 1 && !lists.ent[0][15][1];            /* nor P: none after it */
-    lists.ent[0][15][0] = 0;
-    a[0] = 6; a[1] = 2;
-    ok &= request(ED_LIST, a, 2) && host_wire[7] == 1 && lists.song == SONG_ONCE &&         /* SONG ONCE: 79 says on, */
-          request(ED_LIST2, 0, 0) && host_wire[7] == SONG_ONCE;                              /* 82 ONCE */
-    bad += check("(2.0) LIST REPS 0 CHAIN (not an empty entry, nor P), SONG 2 ONCE; LIST2 says them as kept, LIST as before",
-                 ok);
-    a[0] = 7; a[1] = 0; a[2] = 2;
-    ok = request(ED_LIST, a, 3) && !host_wire[6] && (c = host_wire[15]) != 0u && pool_used(c - 1u) && c - 1u != p1 &&
-         c - 1u != p2;                                                                       /* NEW in C */
-    a[0] = 8; a[2] = 0;
-    ok &= request(ED_LIST2, a, 3) && !host_wire[6] && host_wire[23] && host_wire[27] && host_wire[24] == REPS_CHAIN &&
-          host_wire[23] - 1u != p1 && host_wire[27] - 1u != p2 && ent_pat(0, 0) == p1;       /* COPY+ on A: A-B to D-E */
-    a[2] = 5;
-    ok &= request(ED_LIST, a, 3) && host_wire[6] == 1;                                       /* COPY+ on an empty entry */
-    bad += check("(2.0) LIST NEW (a new pattern in C); COPY+ on a chain (A-B to D-E, a chain again); on an empty one rc 1",
-                 ok);
-    a[0] = 2; a[1] = (uint8_t)p1;
-    ok = request(ED_POOL, a, 2) && !host_wire[6] && pool_used(p1) && !pat_read(p1, bk_rec) &&
-         step_get9(&s, bk_rec + BK_STEPS) && !s.n && ent_pat(0, 0) == p1;                   /* EMPTY A's 01: in use */
-    lists.ent[0][2][0] = 0;                                                                  /* (C's NEW: unused now) */
+    memset(trk_pid, 0, sizeof trk_pid);
+    ed_fresh(0, 50); p1 = ed_keep_new(0);            /* T1: 01, 02, the track on 02 */
+    ed_fresh(0, 60); p2 = ed_keep_new(0);
+    n = request(ED_POOL, 0, 0);
+    ok = p1 == 0u && p2 == 1u && n == 136u && host_wire[7 + 2 * p1] == trk[0].p[P_SLEN] && !host_wire[8 + 2 * p1] &&
+         host_wire[8 + 2 * p2] == 1 && !host_wire[7 + 2 * 63];
+    bad += check("POOL: each pattern's LEN and uses (the track on 02)", ok);
+    a[0] = 1; a[1] = (uint8_t)p2;
+    ok = request(ED_POOL, a, 2) && host_wire[6] == 2;                                       /* in use */
+    song.playing = 1; a[1] = (uint8_t)p1;
+    ok &= request(ED_POOL, a, 2) && host_wire[6] == 3 && pool_used(p1);                     /* playing */
+    song.playing = 0;
+    ok &= request(ED_POOL, a, 2) && !host_wire[6] && !pool_used(p1) && !host_wire[7 + 2 * p1];
+    ok &= request(ED_POOL, a, 2) && host_wire[6] == 1;                                       /* nothing to clear */
+    a[1] = 64;
+    ok &= !request(ED_POOL, a, 2);
+    a[0] = 4; a[1] = 0;
+    ok &= !request(ED_POOL, a, 2);
+    bad += check("POOL: CLEAR only an unused pattern, stopped; nothing to clear said; bad ids, ops unanswered", ok);
+    ed_fresh(0, 70); p3 = ed_keep_new(0);            /* (02 unused now, 03 the track's) */
+    a[0] = 2; a[1] = (uint8_t)p3;
+    ok = request(ED_POOL, a, 2) && !host_wire[6] && pool_used(p3) && !pat_read(p3, bk_rec) &&
+         step_get9(&s, bk_rec + BK_STEPS) && !s.n && trk_pid[0] == p3 + 1u;                  /* EMPTY 03: in use */
     a[0] = 3;
-    ok &= request(ED_POOL, a, 1) && !host_wire[6] && !pool_used(c - 1u) && request(ED_POOL, a, 1) && host_wire[6] == 1;
+    ok &= request(ED_POOL, a, 1) && !host_wire[6] && !pool_used(p2) && request(ED_POOL, a, 1) && host_wire[6] == 1;
     song.playing = 1;
-    a[0] = 2; a[1] = (uint8_t)p2;
+    a[0] = 2; a[1] = (uint8_t)p3;
     ok &= request(ED_POOL, a, 2) && host_wire[6] == 3;                                       /* playing */
     song.playing = 0;
     a[0] = 3;
     ok &= !request(ED_POOL, a, 2);
     a[0] = 2;
     ok &= !request(ED_POOL, a, 1);
-    a[0] = 8; a[1] = 0; a[2] = 0; a[3] = 1;
-    ok &= !request(ED_LIST, a, 4);
     bad += check("(2.0) POOL EMPTY (in use too), CLEAR UNUSED (then nothing unused), playing refused; bad unanswered", ok);
-    {   /* ((2.0, #30) INFO 58 01 bit 1) LIST2: each entry's sound after its REPS byte; op 9 SOUND puts one on (an engine
-         * + 1 and its preset; 64 + a user slot), 0 0 takes it off; rc 1 for an empty entry or a sound it can't carry */
-        uint8_t b[5] = {9, 0, 0, 1, 2};               /* (T1 A: ANALOG's preset 3) */
-        ok = request(ED_LIST2, b, 5) && !host_wire[6] && lists.snd[0][0][0] == 1u && lists.snd[0][0][1] == 2u &&
-             host_wire[13] == 1u && host_wire[14] == 2u && strstr(ui.msg, "T1 A SOUND SQR BASS");
-        up_store(3, "EDSND");                         /* (a user sound in slot 4) */
-        b[2] = 1; b[3] = 64 + 3; b[4] = 0;
-        ok &= request(ED_LIST2, b, 5) && !host_wire[6] && lists.snd[0][1][0] == (0x80u | 3u) && !lists.snd[0][1][1] &&
-              host_wire[17] == 64u + 3u && !host_wire[18] && strstr(ui.msg, "T1 B SOUND EDSND");
-        bad += check("(2.0, #30) LIST2: an entry's sound after its REPS; op 9 puts a preset (1 2) or a user sound (64 + "
-                     "slot) on, said", ok);
-        b[2] = 5; b[3] = 1; b[4] = 0;                 /* F: empty */
-        ok = request(ED_LIST2, b, 5) && host_wire[6] == 1u && !lists.snd[0][5][0];
-        b[2] = 0;
-        b[3] = 63;                                    /* (no engine 62) */
-        ok &= request(ED_LIST2, b, 5) && host_wire[6] == 1u;
-        b[3] = 2;                                     /* (DIGITAL, retired) */
-        ok &= request(ED_LIST2, b, 5) && host_wire[6] == 1u;
-        b[3] = 1; b[4] = 127;                         /* (no preset 128) */
-        ok &= request(ED_LIST2, b, 5) && host_wire[6] == 1u;
-        b[3] = 64 + 20; b[4] = 0;                     /* (slot 21 empty) */
-        ok &= request(ED_LIST2, b, 5) && host_wire[6] == 1u;
-        lists.ent[4][0][0] = (uint8_t)(p1 + 1u);      /* (T5 A: a light track's entry, PHYS) */
-        b[1] = 4; b[3] = ENGI_PHYS + 1u;
-        ok &= request(ED_LIST2, b, 5) && host_wire[6] == 1u && lists.snd[0][0][0] == 1u && !lists.snd[4][0][0];
-        b[1] = 0; b[3] = 0; b[4] = 0;
-        ok &= request(ED_LIST2, b, 5) && !host_wire[6] && !lists.snd[0][0][0] && !lists.snd[0][0][1] && strstr(ui.msg, "T1 A NO SOUND");
-        ok &= !request(ED_LIST2, b, 4) && !request(ED_LIST, b, 5) && request(ED_LIST, 0, 0) == 219u;
-        bad += check("  refused (rc 1): an empty entry, no such engine, DIGITAL, no such preset or user sound, PHYS on a "
-                     "light track; 0 0 takes it off; LIST has no op 9, its reply as before", ok);
-        lists.ent[4][0][0] = 0;
-        up_put(3, 0);
-    }
-    lists.song = 0;
+    ok = !request(79, 0, 0) && !request(80, 0, 0) && !request(82, 0, 0);
+    bad += check("LIST, PERFORM, LIST2 (79, 80, 82): gone, unanswered", ok);
     return bad;
 }
 
@@ -1655,7 +1505,7 @@ int main(void)
 {
     int bad = preferences() + motion_locks() + wide_ids() + framing() + uart_recovery() + steps() + samples() + smp_mix() + song_protocol() + malformed_saves() +
               fm6_patches() + user_preset_roundtrip() + live_sync() + usb_burst() + menu_protocol() + drum_kit_retired() +
-              light_tracks() + preset_more() + transport_names() + song_cmds() + song2_cmds() + custom_colors();
+              light_tracks() + preset_more() + transport_names() + pool_cmds() + custom_colors();
     printf("%s\n", bad ? "EDITOR TEST FAILED" : "editor test passed");
     return bad != 0;
 }

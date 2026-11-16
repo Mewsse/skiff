@@ -111,7 +111,8 @@ static int compact_project(void)
         t->p[P_FM1_LEVEL] == 80 && !motion_count(t) && step_chance(&t->step[3]) == 100u);
     step_set_chance(&t->step[3], 25); motion_set_event(t, 3, P_REV, 110);
     project_save(1);
-    bank_put(0, 1, 0);                                   /* (T1 onto a copy, B: the edits its) */
+    trk_pid[0] = 0;                                      /* (T1 onto a copy: the edits its) */
+    (void)keep_all();
     motion_clear(t); t->p[P_FM1_LEVEL] = 127; step_set_chance(&t->step[3], 100);
     project_load(1);
     bad += check("actual project save/load restores motion, chance and operator settings (its pattern, as saved)",
@@ -551,7 +552,8 @@ static int lock_project(void)
     bad += check("FUN9 round trip keeps the locks (bit 7 of the id byte), their values and steps", ok &&
         (after.motion.event[1].id == P_REV && after.motion.event[1].lock) && after.motion.event[2].value == 77);
     project_save(2);
-    bank_put((uint32_t)(t - trk), 1, 0);                 /* (phase 5: the track onto a copy, B: the clear its) */
+    trk_pid[t - trk] = 0;                                /* (phase 5: the track onto a copy: the clear its) */
+    (void)keep_all();
     motion_clear(t);
     project_load(2);
     bad += check("  saved and loaded: the locks play again", motion_lock_count(t) == 2u && lock_passes(t,

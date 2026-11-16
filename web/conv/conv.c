@@ -131,7 +131,7 @@ EXPORT void conv_reset(void)
     usb.resets = 0;
     ed_bk_valid = ed_bk_put = 0;
     bank_boot();
-    lists_clear();
+    memset(trk_pid, 0, sizeof trk_pid);
     motion_lost = 0;
     fel_reset();
 }

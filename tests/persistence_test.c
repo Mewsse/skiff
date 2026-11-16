@@ -135,8 +135,8 @@ static void reset(void)
     fail_after = -1;
     up_gen = erases = 0;
     irq_start_race = irq_races = 0;
-    bank_boot();                                  /* (Skiff phase 5: the pattern pool, empty; the lists empty) */
-    lists_clear();
+    bank_boot();                                  /* (Skiff phase 5: the pattern pool, empty; no track on one) */
+    memset(trk_pid, 0, sizeof trk_pid);
     motion_lost = 0;
 }
 
@@ -301,8 +301,8 @@ static void as_power_on(void)                            /* RAM lost: the defaul
     host_tracks_init();
     for (k = 0; k < NTRK; k++)
         trk[k].eng_req = trk[k].engine = (uint8_t)TRK_DEF[k][0];
-    bank_boot();                                         /* (the patterns: flash's; the lists: the restore's) */
-    lists_clear();
+    bank_boot();                                         /* (the patterns: flash's; the tracks: the restore's) */
+    memset(trk_pid, 0, sizeof trk_pid);
     motion_lost = 0;
 }
 static void as_edit(uint32_t i)                          /* a change a project holds: step i's note (always another) */
@@ -333,7 +333,7 @@ static int autosave_test(void)
     as_run(1500u);
     bad += check("autosave: a change: no write within 2 s, one once idle 2 s (one erase)",
                  ok && as.writes == 1u && as_erases == 1u && st_load(OBJ_AUTOSAVE, &raw, sizeof raw) == (int)PROJ_SKF->size &&
-                 pool_erases == 1u && bank_used(0, 0));   /* (phase 5: T1's steps a pattern first, then the project) */
+                 pool_erases == 1u && trk_pid[0] && pool_used(trk_pid[0] - 1u));   /* (phase 5: T1's steps a pattern first, then the project) */
     as_run(600000u);
     bad += check("autosave: 10 min unchanged after it: no more writes", as.writes == 1u && as_erases == 1u);
     song.g[G_SLOT] = 3;                                  /* (the PROJECT page's pick, the selected track: not the music) */
@@ -415,7 +415,8 @@ static int autosave_test(void)
         static motion_store_t ms4;
         int16_t v4[5];
         bad += check("  .. the patterns kept all the same (T4's new steps a pattern, written)", pool_erases == w + 1u &&
-                     bank_used(7u % NTRK, 0) && !pat_decode(&trk[7u % NTRK], ent_pat(7u % NTRK, 0), st4, v4, &ms4) &&
+                     trk_pid[7u % NTRK] && pool_used(trk_pid[7u % NTRK] - 1u) &&
+                     !pat_decode(&trk[7u % NTRK], trk_pid[7u % NTRK] - 1u, st4, v4, &ms4) &&
                      !memcmp(st4, trk[7u % NTRK].step, sizeof st4));
     }
     ui_prefs &= (uint8_t)~PREF_RESTORE_OFF;
@@ -691,18 +692,18 @@ static int other_fw_test(void)
         }
         st_save(OBJ_SETTINGS, &f, i < 3 ? sizeof f.per : sizeof f.sks);
         boot_settings();
-        printf("persist:   %s: CLOCK %d MIDI IN %d TUNE %d, LIST %u HINTS OFF %u LAUNCH %u KEYS %u FEEL %u BPM LOCK %u\n",
+        printf("persist:   %s: CLOCK %d MIDI IN %d TUNE %d, LIST %u HINTS OFF %u FEEL %u BPM LOCK %u\n",
                i == 0 ? "Felucca 1.6" : i == 1 ? "JIANT" : i == 2 ? "Skiff" : "Skiff SKS1", song.g[G_CLOCK],
                song.g[G_ROUTE], song.g[G_TUNE],
-               ui_ptag, ui_hints_off, (unsigned)launch_mode(), (unsigned)perf_scenes(), (ui_rec_prefs & REC_FEEL) != 0u,
+               ui_ptag, ui_hints_off, (ui_rec_prefs & REC_FEEL) != 0u,
                (ui_prefs & PREF_BPM_LOCK) != 0u);
         if (i < 2)
             ok = !song.g[G_CLOCK] && !song.g[G_ROUTE] && !song.g[G_TUNE] && !ui_ptag && !ui_hints_off &&
-                 launch_mode() == LAUNCH_LOOP && !perf_scenes() && !(ui_rec_prefs & REC_FEEL) && (ui_prefs & PREF_BPM_LOCK) &&
+                 !(ui_rec_prefs & REC_FEEL) && (ui_prefs & PREF_BPM_LOCK) &&
                  ui_set_rev == 2u + CPU2_DEFAULT;
         else
             ok = song.g[G_CLOCK] == 1 && song.g[G_ROUTE] == 1 && song.g[G_TUNE] == -4 && ui_ptag == 3u && ui_hints_off &&
-                 launch_mode() == LAUNCH_NOW && perf_scenes() && (ui_rec_prefs & REC_FEEL) && !(ui_prefs & PREF_BPM_LOCK);
+                 (ui_rec_prefs & REC_FEEL) && !(ui_prefs & PREF_BPM_LOCK);
         ok &= CPU2_SET == CPU2_DEFAULT;                  /* ((2.5) every FM-1 on 2 CORES once, whatever it ran before) */
         bad += check(i == 0 ? "Felucca 1.4+ settings: its FX keys etc. are not Skiff's CLOCK MIDI IN TUNE ..: the defaults"
                      : i == 1 ? "JIANT settings: its SKIN, USB, LOAD .. are not Skiff's: the defaults"
@@ -894,8 +895,8 @@ int main(void)
         int16_t v0[5];
         bad += check("successful project save publishes new RAM (the tracks' patterns kept first)", !strcmp(ui.msg, "SAVED") &&
                       proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) && proj_scratch.g[G_BPM] == 140 &&
-                      proj_ok(&proj_scratch) && proj_scratch.ent[0][0][0] == ent_pat(0, 0) + 1u &&
-                      !pat_decode(&trk[0], ent_pat(0, 0), st0, v0, &ms0) && st0[0].note[0] == 72u);
+                      proj_ok(&proj_scratch) && trk_pid[0] && proj_scratch.ent[0][0][0] == trk_pid[0] &&
+                      !pat_decode(&trk[0], trk_pid[0] - 1u, st0, v0, &ms0) && st0[0].note[0] == 72u);
     }
     before = erases;
     transport_req = 1;
@@ -939,11 +940,11 @@ int main(void)
         bad += check("pending PLAY: no rename, no erase", project_rename(0, "DUB") == 1 && erases == before &&
                       !strcmp(ui.msg, "STOP TO SAVE"));
         transport_req = 0;
-        bad += check("project rename: flash has the new name, the music as it was (SKF2 still: its lists)",
+        bad += check("project rename: flash has the new name, the music as it was (SKF2 still: its patterns)",
                       project_rename(0, "DUB") == 0 &&
                       !strcmp(ui.msg, "RENAMED") && (memset(proj_slot[0].raw, 0, 8), proj_fetch(0), project_name(0, n)) &&
                       !strcmp(n, "DUB") && *(uint32_t *)proj_slot[0].raw == PROJ_SKF->magic &&
-                      !memcmp(proj_scratch.ent, lists.ent, sizeof lists.ent) && proj_scratch.ent[0][lists.cur[0]][0] &&
+                      trk_pid[0] && proj_scratch.ent[0][proj_scratch.cur[0] % NENT][0] == trk_pid[0] &&
                       st0.note[0] == trk[0].step[0].note[0]);
     }
     {   /* FUN7 itself refuses a step outside its fields: a damaged slot is empty, the tracks stay ((2.0) SKF4 a REPS) */

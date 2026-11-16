@@ -21,7 +21,7 @@ static volatile uint16_t take_pass[NTRK];             /* each track's pass since
                                                        * PLAY parks it on its last step, so the first block counts 1) */
 static volatile uint16_t take_lost[NTRK];             /* 1 + the latest pass of a track's entry overwritten (0: none) */
 static uint16_t take_p0[NTRK] __attribute__((section(".pool")));   /* (Skiff phase 5) the pass each track's pattern came
-                                                       * in after (launch.c launch_step: a song's repeats count from it) */
+                                                       * in after (none switches in live now: 0) */
 
 /* (2.5) FREE TAKES: what is played on a track while the transport is stopped (take_note's callers: the keys and their
  * chords, MIDI, the arp), each note's on and off with its time (fm1_ms / 2): SHIFT + SAVE stopped (ui_take.c

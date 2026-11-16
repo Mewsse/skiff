@@ -10,7 +10,7 @@
  *            taking over once it reaches the value;
  *   wheels A, the pedal: as MIDI in on the selected track's channel (bend, CC1: the MOD matrix's MODW; CC64 sustain);
  *            the pedal holds the track's keys too (seq.c);
- *   < >      the selected track's entry before and after (as PERFORM's keys: at once stopped, at LAUNCH playing);
+ *   < >      nothing for now (the tape's locate, later);
  *   MASTER   K1, kept with the settings; KEY VELOCITY (MENU > CONTROL).
  * KNOB BANK is SHIFT (ui_input.c); the button LEDs on or off (ui_input.c smk_leds_out). Main loop only. */
 
@@ -285,14 +285,6 @@ static void smk_buttons(void)
     if ((pr >> SMK_BTN_FADER_BANK) & 1u) {
         smk_fbank = (uint8_t)((smk_fbank + 1u) % 4u);
         ui_say("FADERS ", SMK_FB_N[smk_fbank]);
-    }
-    if (pr & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {   /* the selected track's entry before / after */
-        uint32_t k = song.sel % NTRK, base = launch_q[k].armed && !launch_q[k].adv ? launch_q[k].slot : lists.cur[k];
-        int32_t e = (int32_t)base % (int32_t)NENT + ((pr >> SMK_BTN_RIGHT) & 1u ? 1 : -1);
-        if (e < 0 || e >= (int32_t)NENT)
-            ui_message(e < 0 ? "FIRST ENTRY" : "LAST ENTRY");
-        else
-            (void)entry_go(k, (uint32_t)e);
     }
 }
 

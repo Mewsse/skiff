@@ -120,7 +120,7 @@ static void felucca_init(void)
         t->engine = t->eng_req;
         track_defaults_steps(t);              /* (a sound load never touches them) */
     }
-    lists_clear();                            /* (Skiff phase 5) no lists, no patterns on the tracks */
+    memset(trk_pid, 0, sizeof trk_pid);       /* (Skiff phase 5) no patterns on the tracks */
     undo_depth--;
     sel_set(0);
     song.master_q12 = 2048;                   /* (the pot's level replaces it before the audio starts: master_boot) */

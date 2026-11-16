@@ -7,8 +7,7 @@
  * zoom: no longer used (the large readout); kept as it was saved, unless it holds the LEDS setting (panel.c).
  * favorites.factory[15][28..31]: CLICK / CLICK LEVEL / COUNT-IN (1.1), STYLE (retired, Skiff U2: left as saved), MENU's flags, the layers seen (bytes no
  * engine uses; 0 in older settings = every one's default); [15][27]: SCREEN OFF (1.1.5; 0 = 30 MIN, the default);
- * [15][26]: Skiff's LAUNCH (ui.c ui_launch; 0 = LOOP, an unknown value read as LOOP); [15][25]: Skiff's PERFORM KEYS
- * (ui.c ui_perf_keys: 0 TRACK, 1 SCENE); [15][24]: Skiff's mark, 0xA5 (before 2.0 bank.c's, set once it had freed its
+ * [15][26], [15][25]: Skiff's LAUNCH and PERFORM KEYS before the song layer went, read by nothing; [15][24]: Skiff's mark, 0xA5 (before 2.0 bank.c's, set once it had freed its
  * old scenes); [15][23]: (Skiff U1) ui.c ui_set_rev, the one-time changes done; [15][21]: (Skiff phase 9) PRESETS' LIST type (ui.c ui_ptag; 0 = none, an unknown value
  * read as none). ([14][0] .. [15][17] held Skiff's scenes before phase 5; row 14 is DRUM-X's since.)
  * MENU's flags (ui.c PREF_*) are append-only bits whose 0 is the default: BPM LOCK (16) is clear in every older setting

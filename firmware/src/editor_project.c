@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* (Skiff W3) the editor's transport and the projects' names (EDITOR_PROTOCOL.md "Transport, project names"); INFO
- * 57 01 caps (bit 0 TRANSPORT, bit 1 PROJ_NAME; bits 2..4 editor_song.c's). Included by editor.c.
+ * 57 01 caps (bit 0 TRANSPORT, bit 1 PROJ_NAME; bit 2 editor_song.c.s). Included by editor.c.
  *   TRANSPORT: [op] 1 PLAY (playing: nothing), 2 STOP, 3 RESTART (from the top), 4 REC (the selected track armed or not,
  *     as its button: ui_input.c rec_tap) -> rc, playing, counting in, the request the audio has yet to take (seq.c
  *     transport_req: 1 start, 2 stop, 3 restart), the armed tracks, the selected track. No op: the state.
@@ -8,8 +8,8 @@
  *     1 refused: playing, patterns full, an empty slot; 2 failed), the music's slot (127 none), changed since, its
  *     name, then each slot: used, its name. A save or a rename stops the transport first (ed_flash_stop) */
 enum { ED_TRANSPORT = 76, ED_PROJ_NAME };
-#define ED_SKIFF_CAPS 127u                      /* TRANSPORT, PROJ_NAME, POOL, LIST, PERFORM, (#21) SMP_MIX (editor.c),
-                                                 * (2.0, #25) a step's ties (editor.c ed_step_put) */
+#define ED_SKIFF_CAPS 103u                      /* TRANSPORT, PROJ_NAME, POOL, (#21) SMP_MIX (editor.c), (2.0, #25) a
+                                                 * step's ties (editor.c ed_step_put); bits 3, 4 (LIST, PERFORM) gone */
 
 /* a name from the editor -> b (PROJ_NAME_LEN + 1), upper case; 0: refused (too long, a byte outside 32..126) */
 static int ed_proj_name_in(const uint8_t *a, uint32_t n, char *b)
@@ -42,12 +42,8 @@ static int ed_project_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
     if (cmd == ED_TRANSPORT) {
         if (n && a[0] == 4u)
             rec_tap();
-        else if (n && a[0] == 1u && !song.playing && !seq_counting() && lists.song == SONG_ONCE)
-            song_top();                                /* ((2.0) as the panel's PLAY: SONG ONCE from the top, */
-        else if (n && a[0] == 1u && !song.playing && !seq_counting()) {
-            chain_top();                               /* a chain from its first part) */
-            transport_req = 1;
-        }
+        else if (n && a[0] == 1u && !song.playing && !seq_counting())
+            transport_req = 1;                         /* (as the panel's PLAY) */
         else if (n && a[0] >= 2u && a[0] <= 3u)
             transport_req = (uint8_t)a[0];
         ed_b(0);

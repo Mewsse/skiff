@@ -34,7 +34,7 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "perf_gate", "perf_dub",                         # (Skiff phase 9) its GATE, DUB (FLANGE / VINYL: perf_mdl, a
                                                           # sample a call, no loop: as perf_harm, not here)
          "duck_block", "duck_apply",                       # (Skiff) ducking (duck.c): each block; a ducked track
-         "launch_step", "launch_swap",                     # (Skiff) live switching (launch.c): a staged pattern
+         "arm_apply",                                      # (Skiff) the arm table (launch.c): an armed RUN or MUTE
          "throw_on", "throw_off",                         # (Skiff) throws (throw.c): while one is out
          "rev_room", "rev_spring",                # the reverb bus (fx.c): REVERB TYPE ROOM / SPRING
          "dist_hard", "dist_fold", "dist_crush",  # (Skiff phase 9) FX > DRIVE's TYPEs (fx.c), on a track that uses one
@@ -44,6 +44,7 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "mix_part", "mix_split",                 # (Skiff 1.3) a track's block (fx.c), on either core; the split
          "track_insert", "ins_drive", "ins_swept",   # (Skiff 1.3) FX > INSERT (fx.c), on a track that uses one
          "ins_filter",                               # ((2.5) its FILTR)
+         "tape_clock",                                # the tape's head (seq.c), once a block while playing
          "strum_tick", "strum_flush",                # ((2.5) SCL > CHORD's STRUM, voice.c: each block's start and end)
          "mix_spread", "esync_coef", "mod_depth",   # (Skiff 1.3) SPREAD (fx.c), ENV SYNC (voice.c), MOD DEPTH (mod.c)
          "smx_render",                           # (Skiff, #21) a user sample's sound with its own sends (fx.c)

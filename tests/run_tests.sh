@@ -88,8 +88,6 @@
 # Browser emulator (web/emu, when emcc is there): the firmware in WebAssembly (build/emu) boots, plays keys and MIDI,
 #                   draws, lights its LEDs, keeps a save across instances, plays a song bit for bit as the same file
 #                   built with cc (web/emu/native_check.c); the cost of 1 s of a heavy song against real time.
-#                   Always, built with cc (web/emu/song_check.c, Skiff phase 5): every track's list played with SONG on
-#                   through the device's own loop, an edit while playing, the autosave; a fresh device on that flash.
 # PHYS (tests/phys_test.c): stability over the whole parameter and pitch range, the worst-case cost against
 #                   the heaviest factory preset, demos in build/phys_demo/; tests/phys_ref.cpp compares the
 #                   fixed-point models with DaisySP's float originals when DaisySP is there (DAISYSP=path).
@@ -316,7 +314,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O1 -w $LEGACY -Ibuild/gen -o "$OUT/settings_test_legacy" tests/settings_test.c
     run "settings, the converter's build (FELUCCA_LEGACY): PER1..PER3 migration" "$OUT/settings_test_legacy"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test" tests/ui_test.c -lm
-    run "UI: sounds keep steps, undo, recording, MIDI overflow, pending saves, panel recovery, drum grid, song chain, GREY gray, MONO neutral" "$OUT/ui_test"
+    run "UI: sounds keep steps, undo, recording, MIDI overflow, pending saves, panel recovery, drum grid, PERFORM RUN and MUTE, GREY gray, MONO neutral" "$OUT/ui_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_legacy" tests/ui_test.c -lm
     run "UI, the converter's build (FELUCCA_LEGACY): DIGITAL sounds, SAMPLE PERC and old GM projects converted as 1.x did" "$OUT/ui_test_legacy"
     $CC -w -DFELUCCA_CDC=0 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_rel" tests/ui_test.c -lm
@@ -354,7 +352,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_smk"         tests/persistence_test.c -lm
     run "persistence on the SMK-37 Pro layout (the store from 0x9D000, its owner tag at boot)" "$OUT/persistence_test_smk"
     $CC -O1 -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/smk_ui_test" tests/smk_ui_test.c -lm
-    run "SMK-37 Pro controls (SMK37_UX.md): pads, colours, faders, entries, outer keys, KEY VELOCITY, wheels, the pedal holding the keys, SHIFT, MASTER, TRS clock" "$OUT/smk_ui_test"
+    run "SMK-37 Pro controls (SMK37_UX.md): pads, colours, faders, outer keys, KEY VELOCITY, wheels, the pedal holding the keys, SHIFT, MASTER, TRS clock" "$OUT/smk_ui_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/backup_test" tests/backup_test.c -lm
     run "full backup: CRC before writes, stale runtime, USB reset / timeout, malformed objects; (2.0) OLD FORMAT slots backed up" "$OUT/backup_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/backup_test_legacy" tests/backup_test.c -lm
@@ -383,7 +381,9 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/swing_test" tests/swing_test.c -lm
     run "SWING: track + global at most 100, sequencer and SLICER step lengths, the SWG display" "$OUT/swing_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/drift_test" tests/drift_test.c -lm
-    run "(2.5, #107) DRIFT: the quarter x24, every DIV a share; 5 DIVs, the click, the launch points together for 30 min" "$OUT/drift_test"
+    run "(2.5, #107) DRIFT: the quarter x24, every DIV a share; 5 DIVs and the click together for 30 min" "$OUT/drift_test"
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/grid_test" tests/grid_test.c -lm
+    run "GRID and the tape's clock: every grid's floor / next / window with SWING, 1,000 bars exact, tempo changes, external pulses, SPP, PLAY / STOP, SEQ RUN and MUTE armed" "$OUT/grid_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/perform_test" tests/perform_test.c -lm
     mkdir -p build/perform_demo build/fx_demo
     run "FX layer effects: on the 1/16, stereo, too-long REPEAT, SLICER, silent keys, idle bit-identical, clicks, OCT UP / DN, cost, demos" "$OUT/perform_test" build/perform_demo build/fx_demo
@@ -516,12 +516,6 @@ if command -v node >/dev/null 2>&1; then
 else
     echo "== skip web tests (no node)"
 fi
-
-cc -O2 -ffp-contract=off -w -Ibuild/gen -Ifirmware/src -o "$OUT/song_check" web/emu/song_check.c -lm
-run "browser emulator, native: a song through the device's loop (lists, REPS, an edit while playing, the autosave)" \
-    "$OUT/song_check" a "$OUT/song.nor"
-run "browser emulator, native: a fresh device on that flash (the lists, each track's steps, the edit)" \
-    "$OUT/song_check" b "$OUT/song.nor"
 
 if ! command -v emcc >/dev/null 2>&1; then
     echo "== skip the browser emulator (no emcc: Emscripten builds web/emu)"

@@ -35,7 +35,7 @@ const FW_ROOT = process.env.FELUCCA_ROOT || join(HERE, "..");
 const html = readFileSync(join(HERE, "editor.html"), "utf8");
 const proto = html.slice(html.indexOf("/*PROTO-BEGIN*/"), html.indexOf("/*PROTO-END*/"));
 const E = vm.runInNewContext(proto + `
-;({ frame, unframe, parse, songReply, req, Link, parseWav, resample, normalize, takeSample, kitZones, LANES, portPairs, apcPorts, apcAction, apcLeds, apcNear, APC, autoTrim, zoomView, rootFromName, buildSlot, makeMockDevice, CMD, SMP,
+;({ frame, unframe, parse, req, Link, parseWav, resample, normalize, takeSample, kitZones, LANES, portPairs, autoTrim, zoomView, rootFromName, buildSlot, makeMockDevice, CMD, SMP,
    UP, bank, capturePatch, auditionPatch, lightRefuses, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, parseNotes, parseHits, hitsText, gridFromSteps, LANE_NOTE, LANE_OF, readDevicePreferences, devicePresetRows, TC_NAMES, engineOrder, ENGINE_ORDER, aliasOf, fmtValue, FM6, enumShown, F,
    FM4, fromDigital, fromPerc, DRUM_KIT_E, DX_KIT_DEF, DX_KITS, DRUMX_PKIT,
@@ -970,7 +970,7 @@ async function editorStepExtras() {
 async function editorStepTies() {
   const C = E.CMD, x = { time: 0, flags: 0, vel: 100, chance: 100, ratchet: 1, flam: 0, cond: 0, nudge: 0 };
   const { rq, done } = attachMock({});
-  ok(E.parse[C.INFO](await rq(E.req.info())).skiff === 127, "ties: INFO 57 01 127 (bit 6)");
+  ok(E.parse[C.INFO](await rq(E.req.info())).skiff === 103, "ties: INFO 57 01 103 (bit 6)");
   let s = E.parse[C.STEP_SET](await rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0], ties: 15 })));
   ok(s.ties === 3 && E.parse[C.STEP_GET](await rq(E.req.stepGet(6))).ties === 3, "ties: STEP_SET writes them, to the step's 2 notes");
   s = E.parse[C.STEP_SET](await rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0] })));
@@ -993,7 +993,7 @@ async function editorStepTies() {
   const o = attachMock({ noTies: true });
   const oi = E.parse[C.INFO](await o.rq(E.req.info()));
   s = E.parse[C.STEP_SET](await o.rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0], ties: 1 })));
-  ok(oi.skiff === 63 && s.ties === 0, "ties: firmware without them (57 01 63): none");
+  ok(oi.skiff === 39 && s.ties === 0, "ties: firmware without them (57 01 39): none");
   o.done();
 }
 
@@ -1051,184 +1051,43 @@ async function editorTransportNames() {
   o.done();
 }
 
-/* (Skiff W3) POOL, LIST, PERFORM (INFO 57 01 31): the pool, the lists, the scenes and staged mutes, as the device's
-   controls: SET, REPS, PLAY (at once stopped, staged playing), CLEAR (refused playing), MUTE staged, CANCEL, COPY, the
-   pool's CLEAR (only unused), STORE, RECALL, LAUNCH, SONG */
-async function editorLists() {
+/* (Skiff W3) POOL (INFO 57 01 bit 2): each pattern's LEN and uses, CLEAR (only unused), ((2.0, INFO 58 01 01) EMPTY,
+   CLEAR UNUSED); LIST (79), PERFORM (80), LIST2 (82) are gone with the song layer */
+async function editorPool() {
   const C = E.CMD;
   const { rq, done } = attachMock({});
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(info.skiff === 127, "song: INFO 57 01 127 (POOL, LIST, PERFORM, (#21) SMP_MIX, (2.0) ties too)");
+  ok(info.skiff === 103 && info.song2 === 1, "pool: INFO 57 01 103 (POOL, (#21) SMP_MIX, (2.0) ties; no LIST, PERFORM), 58 01 01");
+  ok(C.LIST === undefined && C.PERFORM === undefined && C.LIST2 === undefined && !E.req.list && !E.req.perform, "pool: no LIST, PERFORM, LIST2");
+  const err = await rq([79, []], { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
+  ok(/^timeout/.test(err || ""), "pool: LIST (79) unanswered");
   let q = E.parse[C.POOL](await rq(E.req.pool()));
   ok(q.pats.length === 64 && q.pats[0].len === 16 && q.pats[0].refs === 1 && q.pats[3].len === 8 && !q.pats[3].refs && !q.pats[63].len,
-     "song: POOL: each pattern's LEN and uses");
-  let l = E.parse[C.LIST](await rq(E.req.list()));
-  ok(l.tracks.length === 6 && l.tracks[0].cur === 0 && l.tracks[0].pat === 0 && l.tracks[0].ent[0].pat === 1 && l.tracks[0].ent[1].pat === 2 &&
-     l.tracks[1].cur === -1 && l.tracks[1].pat === -1 && l.tracks[0].next === -1 && !l.song, "song: LIST: the entry each track is on, its pattern, the entries");
-  l = E.parse[C.LIST](await rq(E.req.list(1, 1, 0, 2)));
-  ok(!l.rc && l.tracks[1].ent[0].pat === 2, "song: SET T2 A 02");
-  ok(E.parse[C.LIST](await rq(E.req.list(1, 1, 1, 9))).rc === 1, "song: SET a pattern not kept refused");
-  l = E.parse[C.LIST](await rq(E.req.list(1, 1, 9, 65)));
-  ok(!l.rc && l.tracks[1].ent[9].pat === 65 && E.parse[C.LIST](await rq(E.req.list(2, 1, 9))).rc === 1 &&
-     !E.parse[C.LIST](await rq(E.req.list(3, 1, 9))).rc, "song: (#28) SET T2 J REST (65), PLAY it; COPY of a REST refused");
-  l = E.parse[C.LIST](await rq(E.req.list(5, 1, 0, 4)));
-  ok(l.tracks[1].ent[0].reps === 4 && E.parse[C.LIST](await rq(E.req.list(5, 1, 5, 2))).rc === 1, "song: REPS (an empty entry refused)");
-  l = E.parse[C.LIST](await rq(E.req.list(3, 1, 0)));
-  ok(l.tracks[1].cur === 0 && l.tracks[1].pat === 1, "song: PLAY stopped: at once");
-  await rq(E.req.transport(1));
-  l = E.parse[C.LIST](await rq(E.req.list(3, 0, 1)));
-  ok(l.tracks[0].next === 1 && l.tracks[0].cur === 0, "song: PLAY playing: staged");
-  ok(E.parse[C.LIST](await rq(E.req.list(4, 0, 1))).rc === 3, "song: CLEAR refused while playing");
-  l = E.parse[C.LIST](await rq(E.req.list(4, 1, 9)));
-  ok(!l.rc && !l.tracks[1].ent[9].pat, "song: (#28) CLEAR a REST: at once, playing too");
-  let p = E.parse[C.PERFORM](await rq(E.req.perform(3, 2)));
-  ok(p.tracks[2].staged === 2 && !p.tracks[2].muted, "song: MUTE playing: staged");
-  p = E.parse[C.PERFORM](await rq(E.req.perform(4)));
-  ok(!p.tracks[2].staged && E.parse[C.LIST](await rq(E.req.list())).tracks[0].next === -1, "song: CANCEL: nothing staged");
-  await rq(E.req.transport(2));
-  l = E.parse[C.LIST](await rq(E.req.list(2, 0, 0)));
-  ok(!l.rc && l.tracks[0].ent[0].pat === 5 && l.tracks[0].pat === 4, "song: COPY: a new pattern (05), the track on it");
+     "pool: each pattern's LEN and uses (a track on it)");
   q = E.parse[C.POOL](await rq(E.req.pool(3)));
-  ok(!q.rc && !q.pats[3].len && E.parse[C.POOL](await rq(E.req.pool(1))).rc === 2, "song: POOL CLEAR an unused one; one in use refused");
-  p = E.parse[C.PERFORM](await rq(E.req.perform(1, 4)));
-  ok(p.scenes === 16 && p.last === 4 && E.parse[C.PERFORM](await rq(E.req.perform(2, 5))).rc === 1, "song: STORE a scene; RECALL an empty one said");
-  p = E.parse[C.PERFORM](await rq(E.req.perform(3, 0)));
-  ok(p.tracks[0].muted && !p.tracks[0].staged, "song: MUTE stopped: at once");
-  p = E.parse[C.PERFORM](await rq(E.req.perform(2, 4)));
-  ok(!p.rc && !p.tracks[0].muted, "song: RECALL the scene (its mutes)");
-  ok(E.parse[C.PERFORM](await rq(E.req.perform(5, 2))).launch === 2 && E.parse[C.LIST](await rq(E.req.list(6, 1))).song,
-     "song: LAUNCH BEAT, SONG on");
-  ok(E.req.list(6, 0)[1].join() === "6,0" && E.req.list(1, 2, 3, 9)[1].join() === "1,2,3,9" && E.req.list(3, 2, 3)[1].join() === "3,2,3" &&
-     E.req.perform(4)[1].join() === "4" && E.req.pool()[1].length === 0 && E.req.pool(7)[1].join() === "1,7", "song: the requests' bytes");
-  done();
-  const o = attachMock({ noSong: true });
-  ok(E.parse[C.INFO](await o.rq(E.req.info())).skiff === 3, "song: firmware without them (57 01 03): no Song tab");
-  o.done();
-}
-
-/* The APC mini mk2 on the Song tab: its ports, what its controls ask for, its LEDs from the song's replies */
-{
-  const port = (name, state = "connected") => ({ name, state, id: name });
-  const access = (names) => ({ inputs: new Map(names.map((n) => [n, port(n)])), outputs: new Map(names.map((n) => [n, port(n)])) });
-  const mk2 = access(["APC mini mk2 Notes", "APC mini mk2 Control", "X0X FM-1"]);
-  ok(E.apcPorts(mk2)[0].name === "APC mini mk2 Control" && E.apcPorts(mk2)[1].name === "APC mini mk2 Control", "apc: its Control port, not Notes");
-  ok(!E.apcPorts(access(["X0X FM-1"])) && E.portPairs(mk2).length === 1 && E.portPairs(mk2)[0][0].name === "X0X FM-1",
-     "apc: none without it; never taken for the unit");
-  const win = { inputs: new Map([["i2", port("MIDIIN2 (APC mini mk2)")], ["i1", port("APC mini mk2")]]),
-                outputs: new Map([["o2", port("MIDIOUT2 (APC mini mk2)")], ["o1", port("APC mini mk2")]]) };
-  ok(E.apcPorts(win) && E.apcPorts(win)[0].name === "APC mini mk2" && E.apcPorts(win)[1].name === "APC mini mk2",
-     "apc: Windows' names, its second port (MIDIIN2) listed first: the first port, paired by its name");
-  const act = (st, n, v, page = 0) => JSON.stringify(E.apcAction([st, n, v], page));
-  ok(act(0x90, 56, 127) === '{"do":"entry","k":0,"e":0}' && act(0x90, 5, 127) === '{"do":"entry","k":5,"e":7}', "apc: top left T1 A; bottom of column 6 T6 H");
-  ok(act(0x90, 49, 127, 1) === '{"do":"entry","k":1,"e":9}', "apc: page I..P: T2's second row is J");
-  ok(act(0x90, 62, 127) === '{"do":"scene","s":0}' && act(0x90, 7, 127) === '{"do":"scene","s":15}', "apc: columns 7, 8: scenes 1 and 16");
-  ok(act(0x90, 105, 127) === '{"do":"mute","k":5}' && act(0x90, 106, 127) === "null", "apc: bottom button 6 T6's MUTE; the seventh nothing");
-  ok(act(0x90, 113, 127) === '{"do":"page","page":1}' && act(0x90, 119, 127) === '{"do":"play"}' && act(0x90, 118, 127) === "null", "apc: the side buttons: page, PLAY");
-  ok(act(0xB0, 50, 99) === '{"do":"level","k":2,"v":99}' && act(0xB0, 54, 99) === "null", "apc: fader 3 T3's LEVEL; fader 7 nothing");
-  ok(act(0x80, 56, 0) === "null" && act(0x90, 56, 0) === "null", "apc: let go: nothing");
-  const A = E.APC, none = { pat: 0 }, ent = (m) => Array.from({ length: 16 }, (_, e) => m[e] || none);
-  const list = { tracks: [{ cur: 0, next: 2, ent: ent({ 0: { pat: 1 }, 1: { pat: 2 }, 2: { pat: 3 }, 3: { pat: 65 }, 8: { pat: 4 } }) }] };
-  const perf = { last: 1, scenes: 3, tracks: [{ muted: true, staged: 0 }, { muted: false, staged: 2 }, { muted: false, staged: 0 }] };
-  const t1 = E.apcNear("#ff5a36");
-  ok(t1 === 4 && E.apcNear(" #22C3B4 ") === 90 && E.apcNear("#00ff00") === 21 && E.apcNear("#000000") === 0 && E.apcNear("oops") === A.WHITE,
-     "apc: an editor colour as the palette's nearest (Akai's table: 4 #FF4C4C, 21 #00FF00)");
-  let m = E.apcLeds(list, perf, 0, true, [t1]);
-  const led = (n) => m.get(n).join();
-  ok(led(56) === `${A.FULL},${A.GREEN}` && led(48) === `${A.KEPT},4` && led(40) === `${A.BLINK},${A.GREEN}` && led(32) === `${A.REST},4` && led(24) === `${A.FULL},0`,
-     "apc: on green, kept 50 % of its track's colour, next blinking, a REST 25 %, empty dark");
-  ok(led(57) === `${A.FULL},0`, "apc: a track the reply hasn't: dark");
-  ok(led(62) === `${A.KEPT},${A.WHITE}` && led(54) === `${A.FULL},${A.GREEN}` && led(46) === `${A.FULL},0`, "apc: a scene kept white at 50 %, the last green, none dark");
-  ok(m.get(A.MUTE)[1] === 1 && m.get(A.MUTE + 1)[1] === 2 && m.get(A.MUTE + 2)[1] === 0 && m.get(A.MUTE + 5)[1] === 0, "apc: muted lit, staged flashing");
-  ok(m.get(A.PAGE)[1] === 1 && !m.get(A.PAGE + 1)[1] && m.get(A.PLAY)[1] === 1, "apc: the page and PLAY lit");
-  m = E.apcLeds(list, perf, 1, false);
-  ok(led(56) === `${A.KEPT},${A.WHITE}` && m.get(A.PAGE + 1)[1] === 1 && !m.get(A.PLAY)[1], "apc: page I..P shows I..P");
-  m = E.apcLeds(null, null, 0, false);
-  ok(m.size === 64 + 6 + 2 + 1 && [...m.values()].every((x) => x[1] === 0), "apc: no device: every LED dark");
-}
-
-/* (2.0, INFO 58 01 01) LIST2 (SONG ONCE, the chains as kept), LIST's 5 0 CHAIN, 6 2 ONCE, 7 NEW, 8 COPY+ (a chain: all
-   of it), POOL's 2 EMPTY and 3 CLEAR UNUSED; LIST's own reply as before (ONCE: on, a CHAIN: 1x) */
-async function editorSong2() {
-  const C = E.CMD, L2 = (op, k, e, v) => E.req.list(op, k, e, v, true), P2 = (x) => E.parse[C.LIST2](x, true);
-  const { rq, done } = attachMock({});
-  ok(E.parse[C.INFO](await rq(E.req.info())).song2 === 3, "song2: INFO 58 01 03 after the wide ids ((#30) bit 1 the entries' sounds)");
-  let l = P2(await rq(L2(5, 0, 0, 0)));
-  ok(!l.rc && l.tracks[0].ent[0].chain && l.tracks[0].ent[0].reps === 1 && !l.tracks[0].ent[1].chain, "song2: REPS 0: T1 A on CHAIN");
-  l = E.parse[C.LIST](await rq(E.req.list()));
-  ok(!l.tracks[0].ent[0].chain && l.tracks[0].ent[0].reps === 1, "song2: LIST's reply (an editor before): the CHAIN as 1x");
-  ok(P2(await rq(L2(5, 0, 4, 0))).rc === 1 && P2(await rq(L2(1, 0, 15, 3))).tracks[0].ent[15].pat === 3 &&
-     P2(await rq(L2(5, 0, 15, 0))).rc === 1, "song2: CHAIN refused on an empty entry and on P (none after it)");
-  await rq(L2(4, 0, 15));
-  l = P2(await rq(L2(6, 2)));
-  ok(l.song === 2 && E.parse[C.LIST](await rq(E.req.list())).song === 1, "song2: SONG 2 ONCE (LIST's reply: on)");
-  l = P2(await rq(L2(7, 0, 2)));
-  let q = E.parse[C.POOL](await rq(E.req.pool()));
-  ok(!l.rc && l.tracks[0].ent[2].pat === 5 && q.pats[4].len === 16 && q.pats[4].refs === 1, "song2: NEW into T1 C: 05, the first free");
-  l = P2(await rq(L2(8, 0, 1)));
-  const t = l.tracks[0].ent;
-  ok(!l.rc && t[3].pat === 6 && t[3].chain && t[4].pat === 7 && !t[4].chain && t[0].pat === 1 && t[1].pat === 2,
-     "song2: COPY+ of the chain A-B (from B): D-E, 06 07 (the first free after each), a chain again");
-  ok(P2(await rq(L2(8, 0, 5))).rc === 1 && P2(await rq(L2(1, 0, 5, 65))).tracks[0].ent[5].pat === 65 &&
-     P2(await rq(L2(8, 0, 5))).rc === 1, "song2: COPY+ of an empty entry and of a REST refused");
+  ok(!q.rc && !q.pats[3].len && E.parse[C.POOL](await rq(E.req.pool(0))).rc === 2, "pool: CLEAR an unused one; one in use refused");
   q = E.parse[C.POOL](await rq(E.req.pool(0, 2)));
   ok(!q.rc && q.op === 2 && q.pats[0].len === 16 && q.pats[0].refs === 1 && E.parse[C.POOL](await rq(E.req.pool(63, 2))).rc === 1,
-     "song2: POOL EMPTY of a used one (it and its entries stay); an empty one refused");
-  q = E.parse[C.POOL](await rq(E.req.pool(null, 3)));
-  ok(!q.rc && q.op === 3 && !q.pats[3].len && q.pats[0].len && E.parse[C.POOL](await rq(E.req.pool(null, 3))).rc === 1,
-     "song2: CLEAR UNUSED (04 goes, the used ones stay); then nothing to clear");
-  await rq(L2(7, 0, 2));                          /* (05 unused then) */
+     "pool: EMPTY of a used one (it stays); an empty one refused");
   await rq(E.req.transport(1));
   ok(E.parse[C.POOL](await rq(E.req.pool(null, 3))).rc === 3 && E.parse[C.POOL](await rq(E.req.pool(0, 2))).rc === 3,
-     "song2: CLEAR UNUSED, EMPTY refused while playing");
+     "pool: CLEAR UNUSED, EMPTY refused while playing");
   await rq(E.req.transport(2));
-  ok(js(L2(5, 1, 2, 0)) === js([82, [5, 1, 2, 0]]) && js(L2(6, 2)) === js([82, [6, 2]]) && js(L2(8, 0, 4)) === js([82, [8, 0, 4]]) &&
-     js(E.req.list(7, 0, 4)) === js([79, [7, 0, 4]]) && js(E.req.pool(9, 2)) === js([78, [2, 9]]) && js(E.req.pool(null, 3)) === js([78, [3]]),
-     "song2: the requests' bytes");
-  {   /* ((2.0, #30, INFO 58 01 bit 1) LIST2: each entry's sound after its REPS; op 9 puts one on (an engine + 1 and its
-         preset; 64 + a user slot), 0 0 takes it off; rc 1 for an empty entry or a sound the track can't carry; CLEAR takes
-         it, COPY+ copies it */
-    const snd = (k, e) => js(l.tracks[k].ent[e].snd);
-    await rq(E.req.upStore(3, "MOCK SND"));                               /* (U04: the track's sound) */
-    l = P2(await rq(L2(9, 0, 0, [1, 2])));
-    ok(!l.rc && snd(0, 0) === "[1,2]" && snd(0, 1) === "[0,0]", "song2 (#30): op 9 puts ANALOG's preset 3 on T1 A");
-    l = P2(await rq(L2(9, 0, 1, [64 + 3, 0])));
-    const user = !l.rc && snd(0, 1) === "[67,0]";
-    l = P2(await rq(L2(9, 0, 6, [1, 0])));
-    let refused = l.rc === 1 && snd(0, 6) === "[0,0]";                   /* (G: empty) */
-    for (const s of [[63, 0], [2, 0], [1, 127], [64 + 20, 0]]) refused &&= P2(await rq(L2(9, 0, 0, s))).rc === 1;
-    await rq(L2(1, 4, 0, 65));                                             /* (T5 A: a REST, a light track) */
-    l = P2(await rq(L2(9, 4, 0, [10, 0])));                                /* (PHYS) */
-    refused &&= l.rc === 1 && snd(4, 0) === "[0,0]" && snd(0, 0) === "[1,2]";
-    ok(refused, "song2 (#30): refused: an empty entry, no such engine, DIGITAL's, no such preset or user sound, PHYS on T5");
-    l = P2(await rq(L2(8, 0, 0)));                                         /* (COPY+ of A (01): into the first empty after) */
-    const f = l.tracks[0].ent.findIndex((en, j) => j > 0 && js(en.snd) === "[1,2]");
-    l = P2(await rq(L2(4, 0, f)));
-    ok(!l.rc && f > 0 && snd(0, f) === "[0,0]", "song2 (#30): COPY+ copies an entry's sound, CLEAR takes it");
-    l = P2(await rq(L2(9, 0, 0, [0, 0])));
-    ok(!l.rc && snd(0, 0) === "[0,0]" && js(L2(9, 0, 1, [67, 0])) === js([82, [9, 0, 1, 67, 0]]),
-       "song2 (#30): 0 0 takes it off; the request's bytes");
-    ok(user, "song2 (#30): a user sound (U04) as 64 + its slot");
-    const r = L2(1, 0, 2, 3), a = await rq(r), dv = { info: { song2: 3 } };
-    ok(js(E.songReply(dv, r, a)) === js(P2(a)) && E.songReply(dv, r, a).tracks.length === 6 &&
-       js(E.songReply(dv, E.req.list(), await rq(E.req.list()))) === js(E.parse[C.LIST](await rq(E.req.list()))),
-       "song2 (#30): a Song tab change's reply read with the entries' sounds (songReply), LIST's without");
-  }
+  q = E.parse[C.POOL](await rq(E.req.pool(null, 3)));
+  ok(!q.rc && q.op === 3 && !q.pats[1].len && q.pats[0].len && q.pats[2].len && E.parse[C.POOL](await rq(E.req.pool(null, 3))).rc === 1,
+     "pool: CLEAR UNUSED (02 goes, the used ones stay); then nothing to clear");
+  ok(E.req.pool()[1].length === 0 && E.req.pool(7)[1].join() === "1,7" && js(E.req.pool(9, 2)) === js([78, [2, 9]]) &&
+     js(E.req.pool(null, 3)) === js([78, [3]]), "pool: the requests' bytes");
   done();
   {
-    const o = attachMock({ noSnd: true });
-    const info = E.parse[C.INFO](await o.rq(E.req.info()));
-    const l1 = E.parse[C.LIST2](await o.rq(L2(0, 0, 0)));
-    const err = await o.rq(L2(9, 0, 0, [1, 2]), { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
-    const r = L2(1, 0, 2, 3), l3 = E.songReply({ info }, r, await o.rq(r));
-    ok(info.song2 === 1 && l1.tracks.length === 6 && l1.tracks[0].ent[0].pat === 1 && /^timeout/.test(err || "") &&
-       l3.tracks.length === 6 && l3.tracks[0].ent[2].pat === 3,
-       "song2 (#30): firmware before the entry sounds (58 01 01): LIST2's entries two bytes, op 9 unanswered");
+    const o = attachMock({ noSong: true });
+    ok(E.parse[C.INFO](await o.rq(E.req.info())).skiff === 3, "pool: firmware without it (57 01 03): no Song tab");
     o.done();
   }
   const o = attachMock({ noSong2: true });
-  const info = E.parse[C.INFO](await o.rq(E.req.info()));
-  const err = await o.rq(L2(0, 0, 0), { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
-  ok(info.skiff === 127 && !info.song2 && /^timeout/.test(err || ""), "song2: firmware before (no 58 01): song2 0, LIST2 unanswered");
+  const i2 = E.parse[C.INFO](await o.rq(E.req.info()));
+  const e2 = await o.rq(E.req.pool(null, 3), { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
+  ok(i2.skiff === 103 && !i2.song2 && /^timeout/.test(e2 || ""), "pool: firmware before (no 58 01): song2 0, CLEAR UNUSED unanswered");
   o.done();
 }
 
@@ -2209,8 +2068,7 @@ await editorStepExtras();
 await editorStepTies();
 await editorKit();
 await editorTransportNames();
-await editorLists();
-await editorSong2();
+await editorPool();
 await editorLocks();
 await editorLight();
 await editorLive();

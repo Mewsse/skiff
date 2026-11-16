@@ -13,52 +13,16 @@
 #define HB_POS_X 22                                   /* bar.beat's pen */
 #define HB_BPM_X 52                                   /* the BPM's pen */
 #define HB_MSG_X 106                                  /* a message from here: 130 px to the edge */
-/* (Skiff phase 5) before the title, in the selected track's colour: on SONG, playing with SONG on, "SONG ON"; on a SEQ
- * page that edits the pattern, which one: the entry the track is on, the pattern's number, how many entries name it
- * when more than one ("C \xB7 06 \xB7 2x", the mockup's; b: 16 bytes); ((2.0, #44) on a chain: its entries, the
- * part's number: "A-B \xB7 02", the join sheet's). 0: nothing to say */
+/* (Skiff phase 5) before the title, in the selected track's colour: on a SEQ page that edits the pattern, its number
+ * ("06"; b: 16 bytes). 0: nothing to say */
 static int head_mark(char *b)
 {
     const page_t *pg = cur_page();
-    uint32_t k = song.sel % NTRK, id = trk_pat(k), e = bank_cur(k), n = 0, t, j, b0, b1;
+    uint32_t id = trk_pat(song.sel % NTRK);
     b[0] = 0;
-    if (ui.home || pg->fam != FAM_SEQ)
+    if (ui.home || pg->fam != FAM_SEQ || id == PAT_NONE)
         return 0;
-    if (pg->graph == GR_SONG) {
-        if (song.playing && lists.song) {          /* ((2.5, the user's 2B) BAR n OF N: where the song is) */
-            uint32_t at, n = song_at(&t, &at);
-            if (n) {
-                str_cpy(b, "BAR ", 16);
-                fmt_int(b + 4, (int32_t)(at / 192u) + 1);
-                str_cpy(b + str_len(b), " OF ", 16u - str_len(b));
-                fmt_int(b + str_len(b), (int32_t)((n + 191u) / 192u));
-            } else
-                str_cpy(b, lists.song == SONG_ONCE ? "SONG ONCE" : "SONG ON", 16);
-        }
-        return b[0] != 0;
-    }
-    if (id == PAT_NONE)
-        return 0;
-    if (e < NENT && ent_block(k, e, &b0, &b1)) {
-        str_cpy(b, "A-B \xB7 ", 16);
-        b[0] = (char)('A' + b0);
-        b[2] = (char)('A' + b1);
-        pat_num(b + str_len(b), id);
-        return 1;
-    }
-    if (e < NENT) {
-        b[0] = (char)('A' + e);
-        str_cpy(b + 1, " \xB7 ", 15);
-    }
-    pat_num(b + str_len(b), id);
-    for (t = 0; t < NTRK; t++)
-        for (j = 0; j < NENT; j++)
-            n += lists.ent[t][j][0] == id + 1u;
-    if (n > 1u) {
-        str_cpy(b + str_len(b), " \xB7 ", 16 - str_len(b));
-        fmt_int(b + str_len(b), (int32_t)n);
-        str_cpy(b + str_len(b), "x", 16 - str_len(b));
-    }
+    pat_num(b, id);
     return 1;
 }
 /* (2.2, YouTube) a mark that does not fit, shorter: its count goes ("B \xB7 02 \xB7 2x" -> "B \xB7 02"), then its
@@ -92,10 +56,9 @@ static void draw_head_blocks(void)
     uint32_t rec = (song.rec >> song.sel) & 1u ? 2u : song.rec != 0u, id, sig;
     int msg = ui.msg_t || ui.layer;
     char pos[12] = "1.1", b[8], pn[16], mk[16];      /* (stopped: PLAY starts from the top) */
-    uint32_t s_k, s_at, s_n = lists.song && song.playing ? song_at(&s_k, &s_at) : 0u;   /* ((2.5, 2B) the song strip) */
     int32_t x, lx;
     uint16_t ic;
-    int mark = head_mark(mk);                        /* ((Skiff phase 5) SONG ON, the pattern edited) */
+    int mark = head_mark(mk);                        /* ((Skiff phase 5) the pattern edited) */
     project_cur_name(pn);                            /* (HOME's title) */
     if (song.playing) {                              /* (in time: REV, PING, RAND count up too) */
         fmt_int(pos, (int32_t)(seq_at(t) / 16u) + 1);
@@ -110,12 +73,11 @@ static void draw_head_blocks(void)
     else
         id = song.playing ? ICON_X_PLAY : ICON_X_STOP, ic = song.playing ? T_THEME : T_MID;
     sig = str_hash(str_hash(id * 31u + ic, pos), b) + (ui.msg_t ? str_hash(7u, ui.msg) : ui.layer * 7919u +
-          (uint32_t)layer_locked() * 3u + (ui.layer == LAYER_PERF ? launch_mode() * 131u : 0u)) + (ui.bpm_t != 0) * 31u +
+          (uint32_t)layer_locked() * 3u) + (ui.bpm_t != 0) * 31u +
           (uint32_t)(song.octave + 8) * 11u +
           (uint32_t)batt_shown() * 7777u + 0xB10C5u +
           str_hash(9u + (uint32_t)ui.home, head_title(pn)) +   /* (the title) */
-          (mark ? str_hash(3u + song.sel, mk) : 0u) + project_mark() * 104729u +
-          (s_n ? s_n * 31u + 240u * s_at / s_n * 7919u + s_k : 0u);
+          (mark ? str_hash(3u + song.sel, mk) : 0u) + project_mark() * 104729u;
     ui.roll_bpm = song.g[G_BPM];                      /* (no rolling digits: none left to finish in another style) */
     ui.roll[ROLL_BPM].from[0] = 0;
     if (!ui.force && sig == ui.head_sig)
@@ -149,9 +111,8 @@ static void draw_head_blocks(void)
     lx = x;                                            /* (where the transport's half ends) */
     if (msg && !ui.msg_t) {                           /* a layer: its title at the right, as the mockup's PERFORM BAR, */
         char h[24];                                    /* in words ([GLO] SET: GLO SET); PERFORM: when a switch comes */
-        if (ui.layer == LAYER_PERF) {                  /* in (LAUNCH); locked: the lock before it */
-            str_cpy(h, "PERFORM ", sizeof h);
-            str_cpy(h + 8, LAUNCH_NAME[launch_mode()], sizeof h - 8u);
+        if (ui.layer == LAYER_PERF) {                  /* locked: the lock before it */
+            str_cpy(h, "PERFORM", sizeof h);
         } else {
             kc_words(h, sizeof h, layer_head(), 0);
             if (layer_locked() && ui.layer != LAYER_FX) {   /* ((Skiff U2) locked: says so, as FX LATCH does; its
@@ -200,14 +161,6 @@ static void draw_head_blocks(void)
         }
         if (song.octave)
             head_group(x, lx + 8);                     /* (#70) stay clear of the BPM */
-    }
-    if (s_n) {                                        /* ((2.5, the user's 2B) a song playing: the strip, where it is; */
-        uint32_t e, x;                                /* a notch at each of its track's entries' ends */
-        cv_rect(0, H_HEAD - 3, 240, 3, T_LINE);
-        cv_rect(0, H_HEAD - 3, (int32_t)(240u * s_at / s_n), 3, T_THEME);
-        for (e = 0; e + 1u < NENT; e++)
-            if (ent_len48(s_k, e) && (x = 240u * ent_at48(s_k, e + 1u) / s_n) > 0u && x < 240u)
-                cv_rect((int32_t)x - 1, H_HEAD - 3, 2, 3, T_BG);
     }
     cv_blit(0, Y_HEAD);
 }
@@ -375,16 +328,14 @@ static void draw_confirm_blocks(void)
         [CF_CLEAR_SEQ] = "CLEAR", [CF_OVR_PROJ] = "OVERWRITE", [CF_OVR_USER] = "OVERWRITE",
         [CF_INIT_SOUND] = "INITIALIZE",
         [CF_CLEAR_MOTION] = "CLEAR", [CF_ERASE_USER] = "ERASE",
-        [CF_ERASE_BANK] = "CLEAR", [CF_CLEAR_ENTRY] = "CLEAR", [CF_LOAD_PROJ] = "LOAD",
-        [CF_STORE_SCENE] = "OVERWRITE", [CF_RESET_SET] = "RESET",
+        [CF_ERASE_BANK] = "CLEAR", [CF_LOAD_PROJ] = "LOAD", [CF_RESET_SET] = "RESET",
         [CF_ERASE_PROJ] = "DELETE", [CF_NEW_PROJ] = "NEW", [CF_EMPTY_BANK] = "EMPTY", [CF_CLEAR_UNUSED] = "CLEAR",
-        [CF_CLEAR_SONG] = "CLEAR", [CF_CLEAR_TRKS] = "CLEAR"};   /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
+        [CF_CLEAR_TRKS] = "CLEAR"};                   /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
     static const uint8_t KEY[2] = {KC_OCTDN, KC_OCTUP};
     char a[24], b[40];
     const aafont_t *tf = &AF_M;
     uint32_t k = ui.confirm, i;
-    int undoable = k == CF_CLEAR_SEQ || k == CF_INIT_SOUND || k == CF_CLEAR_MOTION || k == CF_CLEAR_SONG ||
-                   k == CF_CLEAR_TRKS;              /* ((2.5) CLEAR TRACKS: not undone, its patterns kept: MID too) */
+    int undoable = k == CF_CLEAR_SEQ || k == CF_INIT_SOUND || k == CF_CLEAR_MOTION || k == CF_CLEAR_TRKS;              /* ((2.5) CLEAR TRACKS: not undone, its patterns kept: MID too) */
     const char *hint = k == CF_CLEAR_TRKS ? "the sounds stay" : undoable ? "hold SAVE: undo" : "can't be undone";   /* ((Skiff
                                                        * U4) the undo hint's words, in
                                                        * the explanations' sentence case) */
@@ -420,30 +371,15 @@ static void draw_confirm_blocks(void)
         tf = &AF_S;
     GFX_HOOK_ALIGN(0, 0, BD_W, 0, AL_H, "dialog question centred");
     cv_text_in(0, 30 - tf->asc, BD_W, tf, a, T_TEXT, T_SURF);
-    if (k == CF_CLEAR_ENTRY) {                        /* (Skiff phase 5) SONG: the pattern's fate, who uses it, the
-                                                       * track that goes empty (MID), then "can't be undone" when the
-                                                       * pattern goes: 1 .. 3 rows, as the mockup's */
-        static const uint8_t ROW_Y[3][3] = {{57, 0, 0}, {50, 64, 0}, {44, 58, 72}};   /* (baselines, 14 apart: the
-                                                                                          * descenders clear) */
-        char l[3][32];
-        int gone;
-        uint32_t n = song_clear_text(ui.confirm_trk, l, &gone), rows = n + (uint32_t)gone;
-        for (i = 0; i < rows && i < 3u; i++) {
-            const char *s = i < n ? l[i] : hint;
-            GFX_HOOK_ALIGN(0, 0, BD_W, 0, AL_H, "dialog detail centred");
-            cv_text_in(0, ROW_Y[rows - 1u][i] - AF_S.asc, BD_W, &AF_S, s, i < n ? T_MID : T_REC, T_SURF);
-        }
-    } else {
-        if (b[0]) {
-            char f[40];
-            text_fit(f, sizeof f, b, &AF_S, BD_W - 16);   /* a name: free text */
-            GFX_HOOK_ALIGN(0, 0, BD_W, 0, AL_H, "dialog detail centred");
-            cv_text_flags(ink_in(&AF_S, f, BD_W), 50 - AF_S.asc, &AF_S, f, T_MID, T_SURF, 8u | (f[str_len(f) - 1u] == ELLIPSIS));
-        }
-        /* (centred as the header centres a message: head_hint_w) */
-        cv_free_hint(HALF_UP(BD_W - head_hint_w(hint, BD_W)), (b[0] ? 64 : 57) - AF_S.asc, hint, undoable ? T_MID : T_REC,
-                     T_SURF, BD_W);                   /* (alone: where the two lines' middle is) */
+    if (b[0]) {
+        char f[40];
+        text_fit(f, sizeof f, b, &AF_S, BD_W - 16);   /* a name: free text */
+        GFX_HOOK_ALIGN(0, 0, BD_W, 0, AL_H, "dialog detail centred");
+        cv_text_flags(ink_in(&AF_S, f, BD_W), 50 - AF_S.asc, &AF_S, f, T_MID, T_SURF, 8u | (f[str_len(f) - 1u] == ELLIPSIS));
     }
+    /* (centred as the header centres a message: head_hint_w) */
+    cv_free_hint(HALF_UP(BD_W - head_hint_w(hint, BD_W)), (b[0] ? 64 : 57) - AF_S.asc, hint, undoable ? T_MID : T_REC,
+                 T_SURF, BD_W);                   /* (alone: where the two lines' middle is) */
     for (i = 0; i < 2u; i++) {                        /* CANCEL (OCT-), the action (OCT+) */
         int32_t x = i ? BD_W - 12 - BD_BW : 12;
         const char *w = i ? VERB[k < CF_COUNT && VERB[k] ? k : CF_CLEAR_SEQ] : "CANCEL";
