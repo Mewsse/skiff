@@ -321,11 +321,11 @@ static int rec_stop(void)
     run_to(IN(1) + L / 4u);
     key_up(K(60));
     song.rec = 0;
-    for (s = 0; s < 4u; s++) {
-        got |= F->step[s].n && F->step[s].note[0] == 60;
-        moved |= F->step[s].n && F->step[s].note[0] == 65;
-    }
-    bad += check("REC: C4 pressed on the armed follower sounds F4, its step keeps C4", ok && got && !moved);
+    for (s = 0; s < 4u; s++)
+        moved |= F->step[s].n != 0u;
+    got = on_tape(F - trk, 60);
+    bad += check("REC: C4 pressed on the armed follower sounds F4, the tape keeps C4 (playback follows again)",
+                 ok && got == 1u && !on_tape(F - trk, 65) && !moved);
     seq_stop();
     events_block(CTL);
     key_down(K(60));

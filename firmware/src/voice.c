@@ -538,6 +538,7 @@ static void strum_drop(const track_t *t, uint32_t note)   /* let go before its t
 
 static uint8_t tape_playing;                       /* 1 while the tape sounds a note: the record hooks skip it (tape.c) */
 #define TAPE_HAVE_PLAYING
+static void tape_rec(const track_t *t, uint32_t note, uint32_t vel);   /* (seq.c: REC onto the tape; vel 0 an end) */
 
 /* a note starts on track t: (2.5) a strum's kept for its time, else trk_note_go now */
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
@@ -549,10 +550,12 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
  * what MIDI IN plays then is never sent back later), then its voice */
 static void trk_note_go(track_t *t, uint32_t note, uint32_t vel)
 {
-    uint32_t i;
+    uint32_t i, played = note;
     if (t->p[P_MUTE])
         return;
     note = fol_on(t, note);                             /* ((2.1) a follower's: into the chord it follows) */
+    tape_rec(t, played, vel);                           /* (REC: the note as played, after fol_on's own end of it;
+                                                         * the tape's playback follows again) */
     if (mo_note(t, note, vel, 0))
         return;                                         /* ((2.2) EXT: MIDI only) */
     if (t->xf_on || t->eng_req != t->engine) {          /* engine switch under way: after the fade (the note moved) */
@@ -606,6 +609,7 @@ static void trk_sound_on(track_t *t, uint32_t note, uint32_t vel)
 static void trk_note_off(track_t *t, uint32_t note)
 {
     uint32_t i, k = 0, mode = trk_vmode(t);
+    tape_rec(t, note, 0);
     if (sq[(uint32_t)(t - trk) % NTRK].n)
         strum_drop(t, note);                           /* ((2.5) a strum's not started yet: never) */
     note = fol_off(t, note);                           /* ((2.1) the note it sounded; 255: another still sounds it) */

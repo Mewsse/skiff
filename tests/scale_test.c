@@ -97,7 +97,7 @@ static void key_events_test(void)
     song.playing = song.rec = 1;
     fm1_in.notes = 1u << 8;                /* C# is silent */
     keyboard_block();
-    assert(t->arp_phys == 0 && t->nheld == 0 && t->step[0].n == 0 && mo_w == 0);
+    assert(t->arp_phys == 0 && t->nheld == 0 && t->step[0].n == 0 && mo_w == 0 && tp_rq_w == tp_rq_r);
     t->p[P_QUANT] = 0;                    /* releasing a muted key stays silent */
     fm1_in.notes = 0;
     keyboard_block();
@@ -106,9 +106,9 @@ static void key_events_test(void)
     fm1_in.notes = (1u << 11) | (1u << 10); /* E and D#: only Eb sounds/records */
     keyboard_block();
     assert(t->arp_phys == 1 && t->nheld == 1 && t->held[0] == 63);
-    assert(t->step[0].n == 0);             /* ARP on: the arp's notes are recorded, not the keys */
+    assert(tp_rq_w == tp_rq_r);            /* ARP on: the arp's notes are recorded, not the keys */
     arp_tick(t, 1);
-    assert(t->step[0].n == 1 && t->step[0].note[0] == 63);
+    assert(t->step[0].n == 0 && (uint16_t)(tp_rq_w - tp_rq_r) == 1u && TP_NOTE(tp_rq[tp_rq_r % TAPE_RQ].w0) == 63u);
     assert(mo_w == 1 && ((midi_out_q[0] >> 16) & 127u) == 63);
     t->p[P_SCALE] = 9;
     t->p[P_ROOT] = 6;

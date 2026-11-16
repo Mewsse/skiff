@@ -379,6 +379,10 @@ static void fm1_main(void)
 #endif
         settings_poll();                              /* queued settings save: only while stopped */
         tape_poll();                                  /* the notes the ISR recorded, into the tape */
+        if (tp_full) {
+            tp_full = 0;
+            ui_message("TAPE FULL");                  /* (a recorded note found no free node) */
+        }
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
         felucca_dbg.stage = 2;
         ui_leds();

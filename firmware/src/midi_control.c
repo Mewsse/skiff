@@ -185,7 +185,7 @@ static void midi_silence_track(uint32_t track)
     track_t *t = &trk[track];
     uint32_t i;
     trk_all_off(t);
-    t->nheld = t->arp_phys = t->rh_n = 0;
+    t->nheld = t->arp_phys = 0;
     arp_forget(t);
     t->seq_n = t->seq_hold = t->slide_glide = 0;
     for (i = 0; i < NVOICE; i++)
@@ -348,7 +348,7 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
         for (i = 0; i < NTRK; i++)
             if ((mask & (1u << i)) && !midi_track_held(i)) {
                 trk_all_off(&trk[i]);
-                trk[i].nheld = trk[i].arp_phys = trk[i].rh_n = 0;
+                trk[i].nheld = trk[i].arp_phys = 0;
                 arp_forget(&trk[i]);
             }
         break;

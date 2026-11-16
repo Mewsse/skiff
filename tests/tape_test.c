@@ -442,6 +442,32 @@ static void test_cursor(void)
               fires[0][74] == 1 && fires[0][72] == 2 && fires[0][73] == 1 && !consistent(0));
 }
 
+/* ISR lag: 24 nodes due in one block on one track: TAPE_BURST of them sound, cur passes them all, so a recorded
+ * insert this pass (it stops before cur) stays sorted; the next pass the same, the insert once */
+static void test_lag(void)
+{
+    uint32_t k, sounded = 0, again = 0;
+    reset();
+    yield_on = 0;
+    for (k = 0; k < 24u; k++)
+        put(0, 100, 40u + k, 0, 50);
+    put(0, 1000, 90, 0, 50);
+    start();
+    play_to(90, 10);
+    host_block(110);
+    for (k = 0; k < 24u; k++)
+        sounded += fires[0][40u + k];
+    tape_insert(0, 150 | 80u << 20, 50 | 100u << 20, tape_pass);
+    check("ISR lag: 24 due in one block: 16 sound, cur past them all, a same-pass insert behind it sorted",
+          sounded == TAPE_BURST && TP_AT(tp_w0[tp_trk[0].cur]) == 1000u && !consistent(0) && !fires[0][80]);
+    play_to(0, 10);
+    play_to(500, 10);
+    for (k = 0; k < 24u; k++)
+        again += fires[0][40u + k];
+    check("ISR lag: the next pass: the insert once, still sorted, the pass played in order", fires[0][80] == 1 &&
+          fires[0][90] == 1 && again >= sounded + TAPE_BURST && !consistent(0));
+}
+
 static void test_record_pass(void)
 {
     uint32_t len;
@@ -762,6 +788,7 @@ int main(int argc, char **argv)
     uint32_t seed = argc > 2 ? (uint32_t)strtoul(argv[2], 0, 10) : 1u;
     char what[96];
     test_cursor();
+    test_lag();
     test_record_pass();
     test_held_wrap();
     test_replace();

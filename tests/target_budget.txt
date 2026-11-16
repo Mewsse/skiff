@@ -75,9 +75,10 @@ track_insert 3
 ins_drive 280
 ins_swept 228
 ins_filter 74
-tape_block 5101
+tape_block 2355
 tape_seek 31
-tape_voices_end 9
+tape_voices_end 11
+tp_fire 15
 tape_clock 0
 arp_wait 155
 live_hold 0

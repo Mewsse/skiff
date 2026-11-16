@@ -23,7 +23,7 @@
  *              SHIFT + REC only) the white keys from F3: CLEAR (held for the hold time: the selected track's steps and
  *              automation, no dialog: one undo, SAVE held), CLICK (OFF REC ON), COUNT-IN (OFF 1 BAR
  *              2 BARS), GRID (the global one, OFF .. 1/16T: MENU > TIMING), each press the next value; KNOB 1..3 the same three, (Skiff) KNOB 4
- *              FEEL (OFF ON: REC and TAKES keep a note's time as its step's NUDGE, seq.c feel_of). The settings
+ *              FEEL (OFF ON: TAKES keep a note's time as its step's NUDGE, seq.c feel_of). The settings
  *              are MENU > AUDIO's (ui.c rp_get / rp_put: one store), saved when the layer closes; OCT- puts back the
  *              settings and the track as the layer opened (tl_put_back). Replaces the old REC held on SEQ (Discussion #91:
  *              the CLEAR Tn SEQUENCE? dialog and its "HOLD: CLEAR" hint)

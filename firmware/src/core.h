@@ -522,14 +522,6 @@ typedef struct track {
     uint32_t rat_pos;            /* (Skiff) samples since the step played last started, its nudge in: RATCH, FLAM */
     uint32_t seq_off;
     uint8_t seq_active;          /* any step programmed */
-    uint8_t rskip_idx;           /* live recording put notes into the step about to play: */
-    uint8_t rskip_n, rskip[NLANE];   /* do not trigger them again there (they sound already) */
-    /* live recording of held notes (seq.c rec_hold): the steps they are held into become TIEs */
-    uint8_t rh_n, rh_note[4];    /* recorded notes still held, 0 = none */
-    uint8_t rh_start;            /* the step they were recorded into */
-    uint8_t rh_ties;             /* TIE steps written after it */
-    uint8_t rh_last;             /* the last of them; rh_bak: what it held (an early release puts it back) */
-    step_t rh_bak;
     /* mono */
     uint8_t mono_stack[8];
     uint8_t nmono;

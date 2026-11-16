@@ -176,6 +176,7 @@ static void ui_power_on(void)
 #endif
     undo_clear();
     memset(trk_pid, 0, sizeof trk_pid);           /* (Skiff phase 5: no patterns on the tracks) */
+    tape_init();                                  /* (main.c: the note tape's lists, before the audio runs) */
     motion_lost = 0;
     memset(proj_slot, 0, sizeof proj_slot);
     memset(up_bank, 0, sizeof up_bank);
@@ -425,6 +426,18 @@ static int test_faders(void)
     press_id(SMK_BTN_FADER_BANK);
     press_id(SMK_BTN_FADER_BANK);
     bad += check("SMK FADER BANK: round to LEVEL, its LED off", smk_fbank == 0u && !host_led[SMK_BTN_FADER_BANK]);
+    tape_head = 0;
+    press_id(SMK_BTN_RIGHT);
+    bad += check("SMK >: stopped, the tape's head a bar on", tape_head == TAPE_BAR);
+    press_id(SMK_BTN_LEFT);
+    press_id(SMK_BTN_LEFT);
+    bad += check("SMK <: a bar back, from the first bar round to the last (4 bars)", tape_head == 3u * TAPE_BAR);
+    song.playing = 1;
+    ui.msg_t = 0;
+    press_id(SMK_BTN_RIGHT);
+    song.playing = 0;
+    bad += check("SMK >: playing, the head stays, STOP FIRST said", tape_head == 3u * TAPE_BAR && msg_is("STOP FIRST"));
+    tape_head = 0;
     sel_set(5);                                 /* T6: the window T3..T6 */
     fm1_in.fader[0] = 0;
     frame();

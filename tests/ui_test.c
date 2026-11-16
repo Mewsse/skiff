@@ -133,6 +133,17 @@ static int check(const char *what, int ok)
     return ok ? 0 : 1;
 }
 
+/* REC goes onto the tape: the record queue drained, the nodes of (inst, note) on its track 1 (note 128: any) */
+static uint32_t on_tape(uint32_t part, uint32_t note)
+{
+    uint32_t n = 0;
+    uint16_t node;
+    tape_poll();
+    for (node = tp_trk[0].first; node != TAPE_END; node = tp_nx[node])
+        n += TP_INST(tp_w0[node]) == part && (note > 127u || TP_NOTE(tp_w0[node]) == note);
+    return n;
+}
+
 /* main.c felucca_init */
 static void ui_power_on(void)
 {
@@ -679,14 +690,12 @@ static int test_rec(void)
         song.rec = 1;
         song.playing = 1;
         input_on(t, 60, 100);
-        for (i = 0; i < NSTEP; i++)
-            n += t->step[i].n;
-        bad += check("ARP on: the key held is not recorded", n == 0);
+        bad += check("ARP on: the key held is not recorded", !on_tape(0, 128));
         arp_tick(t, 1);
         for (i = 0; i < NSTEP; i++)
-            if (t->step[i].n)
-                notes = t->step[i].note[0];
-        bad += check("ARP on: the note the arp plays is recorded", notes == 60u);
+            n += t->step[i].n;
+        notes = on_tape(0, 60);
+        bad += check("ARP on: the note the arp plays is recorded onto the tape (not the pattern)", notes == 1u && !n);
         t->p[P_AMODE] = 0;
         input_off(t, 60);
     }
@@ -1279,16 +1288,13 @@ static int test_grid(void)
     keyboard_block();
     fm1_in.notes = 0;
     keyboard_block();
-    ok = t->step[5].hit == 1u << DV_HATO && !t->step[5].n && t->rskip_n == 0u;
-    t->seq_pos = step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), 5) - 10u;   /* late in step 6: into step 7 */
+    ok = on_tape(t - trk, DRUM_LANE_NOTE[DV_HATO]) == 1u && !t->step[5].hit && !t->step[5].n;
     fm1_in.notes = 1u << key_at(1, 0);
     keyboard_block();
-    ok &= t->step[6].hit == 1u << DV_KICK && t->rskip_n == 1u && t->rskip[0] == 36u;
-    rec_hold(t, 7, 16);
     fm1_in.notes = 0;
     keyboard_block();
-    ok &= t->step[7].time == ST_REST && !t->rh_n;
-    bad += check("REC on the grid: lane keys record hits, quantised (the next step late), no TIE holds", ok);
+    ok &= on_tape(t - trk, 36) == 1u && !t->step[6].hit && t->step[7].time == ST_REST;
+    bad += check("REC on the grid: lane keys record their hits onto the tape, the grid untouched", ok);
     /* live recording elsewhere (HOME): the GM keys; a lane's note a hit, another GM drum a note */
     go_home();
     frame();
@@ -1298,11 +1304,11 @@ static int test_grid(void)
     keyboard_block();
     fm1_in.notes = 0;
     keyboard_block();
-    ok = !song.grid && t->step[9].hit == ((1u << DV_KICK) | (1u << DV_HATC)) && t->step[9].n == 1 && t->step[9].note[0] == 35 &&
-         step_lanes(&t->step[9]) == ((1u << DV_KICK) | (1u << DV_HATC));
+    ok = !song.grid && !t->step[9].hit && !t->step[9].n && on_tape(t - trk, 35) == 1u && on_tape(t - trk, 36) >= 1u &&
+         on_tape(t - trk, 42) == 1u;
     song.rec = 0;
     song.playing = 0;
-    bad += check("REC on HOME: GM keys quantised into the grid (35 a note on the KICK lane)", ok);
+    bad += check("REC on HOME: the GM keys onto the tape (35, 36, 42), the grid untouched", ok);
     /* the BEAT phrase (tests/phrases.h) into the DRUM track fills the grid */
     track_defaults_steps(t);
     load_pat16(t, PATTERNS[11].note, PATTERNS[11].flags);
@@ -4101,8 +4107,8 @@ static int test_step_rec(void)
     events_block(CTL);
     ok = song.playing && live_rec_sel() && t->seq_idx < 2u;
     key_down(7); frame(); key_up(7); frame();
-    ok &= ui.cursor == 4u && !t->step[4].n && !t->step[4].hit && (t->step[0].n || t->step[1].n);
-    bad += check("#133 PLAY with the track armed: live recording at the play head (the cursor and its step stay)", ok);
+    ok &= ui.cursor == 4u && !t->step[4].n && !t->step[4].hit && on_tape(t - trk, kb_map(t, 7)) == 1u;
+    bad += check("#133 PLAY with the track armed: live recording onto the tape (the cursor and its step stay)", ok);
     stop_transport();
     press(B_REC);                                                     /* disarm: the keys only play again */
     memcpy(before, t->step, sizeof before);
@@ -4235,12 +4241,13 @@ static int test_bughunt_ui2(void)
                 track_defaults_steps(t); go_home(); frame();
                 song.rec = 1; song.playing = 1; t->seq_idx = 3; t->seq_pos = 0;
                 fm1_in.notes = 1u << KEY[j]; keyboard_block();
-                r = t->step[3];
                 fm1_in.notes = 0; keyboard_block();
                 song.rec = 0; song.playing = 0;
-                ok &= r.n == e.n && !memcmp(r.note, e.note, e.n);
+                ok &= on_tape(t - trk, 128) == e.n;
+                for (r.n = 0; r.n < e.n; r.n++)
+                    ok &= on_tape(t - trk, e.note[r.n]) == 1u;
             }
-        bad += check("STEP entry with CHRD: POLY the chord, MONO its root, as live recording writes", ok);
+        bad += check("STEP entry with CHRD: POLY the chord, MONO its root, as live recording records", ok);
     }
     {   /* 3. MIXER ((Skiff U3, N1) six strips): the selected track's strip a band of its colour, all on it INK; the knob
          * just turned lights its card */
@@ -6818,8 +6825,8 @@ static int test_solo(void)
     song.rec = 0;
     t->p[P_AMODE] = 0;
     events_block(CTL);
-    bad += check("  recording with the ARP on: a black key's note goes into the step as played",
-                 t->step[0].n == 1u && t->step[0].note[0] == D);
+    bad += check("  recording with the ARP on: a black key's note goes onto the tape as played",
+                 on_tape(t - trk, D) == 1u && !t->step[0].n);
 
     menu_put(MI_SCLLED, 1);
     sc = scale_leds(&root);
@@ -8096,55 +8103,6 @@ static int test_lock_src_seq(void)
     ok &= ui.plk_src == ui.page + 1u;
     return check("#56 SEQ > PATTERN, then NOTES: a DRUM step held locks HOME's four, not PATTERN's GATE; EDIT 1 still a "
                  "lock source", ok);
-}
-
-/* (2.0, #25) REC, playing: on a POLY track a key held while another starts goes on as its own pitch (C4 held from step
- * 1, E4 on 3: C4 1-4, E4 3-6, each let go early in the step after); MONO as before 2.0 (E4 ends C4) */
-static void rec_steps(track_t *t, uint32_t a, uint32_t b)   /* the sequencer entering steps a .. b (rec_hold) */
-{
-    for (; a <= b; a++) {
-        t->seq_idx = (uint16_t)a;
-        t->seq_pos = 0;
-        rec_hold(t, a, (uint32_t)t->p[P_SLEN]);
-    }
-}
-static void rec_keys(uint32_t notes) { fm1_in.notes = notes; keyboard_block(); }
-static int test_rec_overlap(void)
-{
-    track_t *t;
-    int bad = 0, ok, m;
-    int32_t x;
-    uint32_t c4 = 1u << key_of(60), e4 = 1u << key_of(64);
-    for (m = 0; m < 2; m++) {
-        ui_power_on();
-        t = TSEL;
-        track_defaults_steps(t);
-        t->p[P_VOICE] = m ? V_MONO : V_POLY;
-        t->p[P_SLEN] = 16;
-        song.rec = (uint8_t)(1u << song.sel);
-        song.playing = 1;
-        t->seq_idx = 0;
-        t->seq_pos = 0;
-        rec_keys(c4);                                  /* C4 down on step 1 */
-        rec_steps(t, 1, 2);
-        rec_keys(c4 | e4);                             /* E4 down on step 3, C4 held */
-        rec_steps(t, 3, 4);
-        rec_keys(e4);                                  /* C4 up early in step 5 */
-        rec_steps(t, 5, 6);
-        rec_keys(0);                                   /* E4 up early in step 7 */
-        song.playing = 0;
-        song.rec = 0;
-        x = note_at(&t->step[2], 64);
-        if (!m)
-            bad += check("  REC, POLY: E4 played while C4 is held goes in beside it; each goes on as its own (C4 1-4, E4 3-6)",
-                         note_span(t, 0, 0) == 4u && x >= 0 && !step_tied(&t->step[2], (uint32_t)x) &&
-                         note_span(t, 2, (uint32_t)x) == 4u && step_empty(&t->step[6]) && !t->rh_n);
-        else
-            bad += check("  REC, MONO: as before 2.0, E4 ends C4 (C4 1-2, E4 3-6)",
-                         note_span(t, 0, 0) == 2u && t->step[2].n == 1u && x == 0 && note_span(t, 2, 0) == 4u &&
-                         !step_ties(&t->step[2]) && !t->rh_n);
-    }
-    return bad;
 }
 
 /* (Skiff phase 8, DESIGN.md rule 3) SELECT turns a family's pages either way, as its button steps them, the ends where
@@ -9663,7 +9621,6 @@ int main(void)
     bad += test_notes_overlap();
     bad += test_drum_lane_copy();
     bad += test_tools_overlap();
-    bad += test_rec_overlap();
     bad += test_mod_routes();
     bad += test_lock_src_seq();
     bad += test_mutes_1a();

@@ -9,7 +9,7 @@
  * DIST=d, LEVEL=l, SENDS=c,d,r, SWEEP=1, NOTE=k, OCT=o, PSET=id:v,..., VSWEEP=1, PSWEEP=id:a:b,
  * PRESET=1 (the whole preset: sends, voice mode), STEPS=n,n,... (a pattern, 0 = rest; see below).
  * TRACKS=DIR: the 4-track test (tracks_demo below): a bass / pad / lead / drums (DRUM) pattern
- * with live recording into DIR (mix + solos), checks, and the cost against one track. */
+ * with live recording onto the tape, into DIR (mix + solos), checks, and the cost against one track. */
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -217,8 +217,8 @@ static uint32_t started_since(const track_t *t, uint32_t a0)
 /* the demo song: T1 ANALOG ACID (16 steps), T2 the power-on pad (TRK_DEF: FM6 PAD; DIGITAL PAD until it was
  * retired) (32 steps, tied chords), T3 LOFI PULSE LD
  * (12 steps: 3 against 4), T4 DRUM drums (16 steps, up to 3 notes a step); 120 BPM, 8 bars. Bars 5..6:
- * live recording: a clap into the drums just before step 4 (quantised onto it, not triggered twice),
- * MIDI ch 3 into the lead, a two-key chord on the keys into an empty pad step. solo: 0 = the mix,
+ * recording onto the tape (GRID OFF): a clap into the drums just before step 4 (where it was played, the pattern
+ * untouched), MIDI ch 3 into the lead, a two-key chord on the keys, and what the armed sequencers play. solo: 0 = the mix,
  * 1..4 = that track only. Writes DIR/NAME; returns the number of failed checks. */
 static int tracks_demo(const char *dir, const char *name, uint32_t solo)
 {
@@ -230,7 +230,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
     char path[512];
     FILE *w;
     uint32_t f, i, bmax = 0, clips = 0, fail = 0, clap_done = 0, lead_done = 0, keys_t = 0, keys_on = 0;
-    uint32_t clap_age = 0, clap_hits = 0xFFFFu, clap_pass = 0, kills0;
+    uint32_t clap_age = 0, clap_hits = 0xFFFFu, clap_pass = 0, kills0, clap_at = 0, lead_at = 0, keys_at = 0;
     track_t *t1 = &trk[0], *t2 = &trk[1], *t3 = &trk[2], *td = &trk[3];
     snprintf(path, sizeof path, "%s/%s", dir, name);
     if (!(w = fopen(path, "wb"))) {
@@ -285,6 +285,8 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         /* (a) a clap into the drums, late in step 3: lands on step 4, sounds now, step 4 does not repeat it */
         if (song.rec && !clap_done && td->seq_idx == 3u && td->seq_pos > period * 3u / 4u) {
             input_on(td, 39, 110);
+            input_off(td, 39);                     /* (a hit: let go at once, the one-shot plays on) */
+            clap_at = tape_head;
             clap_done = 1;
             clap_age = vage;
             clap_pass = 1;
@@ -295,6 +297,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         /* (b) MIDI ch 3 into the lead, early in its step 1 */
         if (song.rec && !lead_done && t3->seq_idx == 1u && t3->seq_pos < period / 4u) {
             midi_in_q[mi_w++ % MQ] = 0x09u | 0x92u << 8 | 84u << 16 | 100u << 24;
+            lead_at = tape_head;
             lead_done = 1;
         } else if (lead_done == 1u && t3->seq_idx == 2u) {
             midi_in_q[mi_w++ % MQ] = 0x08u | 0x82u << 8 | 84u << 16;
@@ -304,6 +307,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         if (song.rec && !keys_on && !keys_t && t2->seq_idx == 14u && t2->seq_pos < period / 4u) {
             sel_set(1);
             fm1_in.notes = (1u << 7) | (1u << 11);
+            keys_at = tape_head;
             keys_on = 1;
             keys_t = f;
         } else if (keys_on && f - keys_t > period / 2u) {
@@ -311,6 +315,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
             keys_on = 0;
         }
         mix_block(o, CTL);
+        tape_poll();                               /* (the main loop's: the notes recorded, onto the tape) */
         if (busy_now() > bmax)
             bmax = busy_now();
         for (i = 0; i < CTL; i++) {
@@ -325,19 +330,31 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
         return bmax > NVOICE;
     {
         const step_t *s4 = &td->step[4], *l1 = &t3->step[1], *p14 = &t2->step[14];
-        /* (DRUM: the clap goes into the grid, its lane's hit, seq.c; a sampled kit took it as a 4th note) */
-        int clap = drum_track(td) ? s4->n == 3u && ((s4->hit >> DV_CLAP) & 1u) : s4->n == 4u && s4->note[3] == 39u;
-        int ok_clap = clap && clap_hits == 3u;
-        int ok_lead = l1->n == 1u && l1->note[0] == 84u && l1->time == ST_NOTE;
-        int ok_keys = p14->n == 2u && p14->time == ST_NOTE && p14->note[0] == 60u && p14->note[1] == 64u;
-        printf("tracks: recording: drums step 4 = %u notes (kick snare hat) + clap 39: %s, hits when step 4 played right "
-               "after: %u (want 3: the clap is not triggered twice) %s\n", s4->n, clap ? "yes" : "no", clap_hits,
-               ok_clap ? "ok" : "FAIL");
-        printf("tracks: recording: MIDI ch 3 -> lead step 1 = %u (want 84) %s; keys -> pad step 14 = %u notes %u %u %s\n",
-               l1->note[0], ok_lead ? "ok" : "FAIL", p14->n, p14->note[0], p14->note[1], ok_keys ? "ok" : "FAIL");
+        uint32_t found = 0, nodes = 0, unsorted = 0, last = 0, dk;
+        uint16_t node;
+        for (node = tp_trk[0].first; node != TAPE_END; node = tp_nx[node], nodes++) {
+            uint32_t w0 = tp_w0[node], at = TP_AT(w0), dt = at > lead_at ? at - lead_at : lead_at - at;
+            unsorted += at < last;
+            last = at;
+            found |= (TP_INST(w0) == 3u && TP_NOTE(w0) == 39u && at == clap_at) << 0;
+            found |= (TP_INST(w0) == 2u && TP_NOTE(w0) == 84u && dt <= 2u) << 1;
+            dk = at > keys_at ? at - keys_at : keys_at - at;
+            found |= (TP_INST(w0) == 1u && TP_NOTE(w0) == 60u && dk <= 2u) << 2;
+            found |= (TP_INST(w0) == 1u && TP_NOTE(w0) == 64u && dk <= 2u) << 3;
+            found |= (TP_INST(w0) == 0u) << 4;
+        }
+        int ok_clap = (found & 1u) && clap_hits == 3u && s4->n == 3u && !((s4->hit >> DV_CLAP) & 1u);
+        int ok_lead = (found & 2u) && l1->n == 0u;
+        int ok_keys = (found & 12u) == 12u && p14->n == 0u;
+        int ok_tape = !unsorted && !(found & 16u) && nodes > 20u && !tp_open_n;
+        printf("tracks: recording onto the tape: the clap 39 at the tick played %s, drums step 4 untouched, %u hits "
+               "when it played right after (want 3) %s\n", found & 1u ? "yes" : "no", clap_hits, ok_clap ? "ok" : "FAIL");
+        printf("tracks: recording onto the tape: MIDI ch 3 -> the lead's 84 %s; the keys' chord 60 64 %s; the patterns "
+               "untouched; %u nodes, sorted, none of the track not armed %s\n", ok_lead ? "ok" : "FAIL",
+               ok_keys ? "ok" : "FAIL", nodes, ok_tape ? "ok" : "FAIL");
         printf("tracks: voices sounding at most %u (budget %u) %s; given up to another part %u; %u samples near full "
                "scale\n", bmax, NVOICE, bmax <= NVOICE ? "ok" : "FAIL", voice_kills - kills0, clips);
-        fail = !ok_clap + !ok_lead + !ok_keys + (bmax > NVOICE) + (clips > 0);
+        fail = !ok_clap + !ok_lead + !ok_keys + !ok_tape + (bmax > NVOICE) + (clips > 0);
     }
     return (int)fail;
 }
@@ -686,114 +703,6 @@ static int engmem_test(void)
     return !ok;
 }
 
-/* live recording: held lengths (TIE steps) and swing-aware quantising. Blocks are rendered until track t
- * is at fraction q (1/100) into step idx (its swung length); the keys go in between, as events_block
- * takes them. */
-static void rec_run_to(track_t *t, uint32_t idx, uint32_t q)
-{
-    int32_t o[2 * CTL];
-    uint32_t guard = 0;
-    do {
-        mix_block(o, CTL);
-    } while (++guard < 100000u && !(t->seq_idx == idx &&
-             t->seq_pos >= step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), idx) * q / 100u));
-}
-static int rec_step_is(const track_t *t, uint32_t i, uint32_t time, uint32_t n, uint32_t note)
-{
-    const step_t *s = &t->step[i];
-    return s->time == time && s->n == n && (!n || s->note[0] == note);
-}
-static int rec_test(void)
-{
-    track_t *t1 = &trk[0], *t2 = &trk[1], *t3 = &trk[2];
-    uint32_t i;
-    int ok_len, ok_short, ok_half, ok_cap, ok_swing, ok_mono, ok_chord, fail;
-    host_tracks_init();
-    song.g[G_BPM] = 120;
-    host_preset(t1, 0, 1);                          /* POLY pad */
-    host_preset(t2, 0, 1);
-    host_preset(t3, 0, 0);                          /* SAW LEAD */
-    t1->p[P_VOICE] = t2->p[P_VOICE] = V_POLY;
-    t3->p[P_VOICE] = V_MONO;
-    t2->p[P_SLEN] = 4;
-    t3->p[P_SSWING] = 50;                           /* odd steps start 0.2 step late */
-    put_step(t1, 5, 1, (const uint8_t[]){48}, ST_NOTE, 0);   /* an older take: put back by an early release */
-    song.rec = 0x07u;
-    transport_req = 1;
-    /* (a) held 3.3 steps from step 2: 2 NOTE, 3 4 TIE, 5 (released early in it) as before */
-    rec_run_to(t1, 2, 10);
-    input_on(t1, 60, 100);
-    rec_run_to(t1, 5, 30);
-    input_off(t1, 60);
-    ok_len = rec_step_is(t1, 2, ST_NOTE, 1, 60) && rec_step_is(t1, 3, ST_TIE, 0, 0) && rec_step_is(t1, 4, ST_TIE, 0, 0) &&
-             rec_step_is(t1, 5, ST_NOTE, 1, 48);
-    /* (b) released after 0.3 step: one step */
-    rec_run_to(t1, 8, 5);
-    input_on(t1, 62, 100);
-    rec_run_to(t1, 8, 35);
-    input_off(t1, 62);
-    rec_run_to(t1, 9, 50);
-    ok_short = rec_step_is(t1, 8, ST_NOTE, 1, 62) && rec_step_is(t1, 9, ST_REST, 0, 0);
-    /* (c) released past the middle of the next step: tied into it */
-    rec_run_to(t1, 10, 10);
-    input_on(t1, 64, 100);
-    rec_run_to(t1, 11, 60);
-    input_off(t1, 64);
-    rec_run_to(t1, 12, 50);
-    ok_half = rec_step_is(t1, 10, ST_NOTE, 1, 64) && rec_step_is(t1, 11, ST_TIE, 0, 0) && rec_step_is(t1, 12, ST_REST, 0, 0);
-    /* (d) a two-key chord held 2.6 steps: ties until the last key is up */
-    rec_run_to(t1, 13, 5);
-    input_on(t1, 67, 100);
-    input_on(t1, 71, 100);
-    rec_run_to(t1, 14, 20);
-    input_off(t1, 67);
-    rec_run_to(t1, 15, 60);
-    input_off(t1, 71);
-    rec_run_to(t1, 0, 10);
-    ok_chord = t1->step[13].n == 2u && rec_step_is(t1, 14, ST_TIE, 0, 0) && rec_step_is(t1, 15, ST_TIE, 0, 0) &&
-               t1->step[0].time != ST_TIE;
-    /* (e) LEN 4, held for 10 steps: the note fills the pattern (3 TIEs), not more */
-    rec_run_to(t2, 1, 10);
-    input_on(t2, 55, 100);
-    for (i = 0; i < 10u; i++)
-        rec_run_to(t2, (2u + i) % 4u, 50);
-    input_off(t2, 55);
-    ok_cap = rec_step_is(t2, 1, ST_NOTE, 1, 55) && rec_step_is(t2, 2, ST_TIE, 0, 0) && rec_step_is(t2, 3, ST_TIE, 0, 0) &&
-             rec_step_is(t2, 0, ST_TIE, 0, 0);
-    /* (f) SWING 50 %: 0.55 into an even (long) step is before its middle (stays); 0.42 period into an odd
-     * (short, 0.8) step is past its middle (the next one) */
-    rec_run_to(t3, 4, 46);                         /* 0.46 x 1.2 = 0.55 period */
-    input_on(t3, 72, 100);
-    input_off(t3, 72);
-    rec_run_to(t3, 7, 53);                         /* 0.53 x 0.8 = 0.42 period */
-    input_on(t3, 74, 100);
-    input_off(t3, 74);
-    ok_swing = rec_step_is(t3, 4, ST_NOTE, 1, 72) && t3->step[5].n == 0u && rec_step_is(t3, 8, ST_NOTE, 1, 74) &&
-               t3->step[7].n == 0u;
-    /* (g) MONO, legato: A held from step 10, B pressed in step 12 while A is still down, A up, B up late in
-     * 13: 10 A, 11 TIE, 12 B (one note), 13 TIE */
-    rec_run_to(t3, 10, 10);
-    input_on(t3, 60, 100);
-    rec_run_to(t3, 12, 10);
-    input_on(t3, 62, 100);
-    rec_run_to(t3, 12, 40);
-    input_off(t3, 60);
-    rec_run_to(t3, 13, 70);
-    input_off(t3, 62);
-    rec_run_to(t3, 14, 50);
-    ok_mono = rec_step_is(t3, 10, ST_NOTE, 1, 60) && rec_step_is(t3, 11, ST_TIE, 0, 0) && rec_step_is(t3, 12, ST_NOTE, 1, 62) &&
-              rec_step_is(t3, 13, ST_TIE, 0, 0) && t3->step[14].time != ST_TIE;
-    printf("tracks: recording lengths: held 3.3 steps -> NOTE TIE TIE (the 4th step put back) %s; 0.3 step -> one "
-           "step %s; past the middle of the next -> NOTE TIE %s\n", ok_len ? "ok" : "FAIL", ok_short ? "ok" : "FAIL",
-           ok_half ? "ok" : "FAIL");
-    printf("tracks: recording lengths: a chord ties until its last key %s; capped at LEN 4 %s; MONO legato A..B -> "
-           "A TIE B TIE %s\n", ok_chord ? "ok" : "FAIL", ok_cap ? "ok" : "FAIL", ok_mono ? "ok" : "FAIL");
-    printf("tracks: recording with SWING 50 %%: nearest swung step (0.55 into a long step stays, 0.42 into a short "
-           "one moves on) %s\n", ok_swing ? "ok" : "FAIL");
-    fail = !ok_len + !ok_short + !ok_half + !ok_chord + !ok_cap + !ok_mono + !ok_swing;
-    return fail;
-}
-
 /* TRS MIDI IN (midi_uart.c, untested on hardware): bytes through its parser into the same queue as
  * USB, routed by channel: ROUT CH1-4 1..4 -> parts 1..4, others (10 too) ignored; ROUT SEL all -> the
  * selected track; running
@@ -847,12 +756,14 @@ static int trs_test(void)
     trs_bytes((const uint8_t[]){0xF8}, 1);
     trs_bytes((const uint8_t[]){0x92, 72, 100}, 3);
     trs_bytes((const uint8_t[]){0x92, 72, 0}, 3);
-    ok_rec = trk[2].step[0].n == 1u && trk[2].step[0].note[0] == 72u && trk[2].step[0].time == ST_NOTE && trk[1].step[0].n == 0u;
+    tape_poll();
+    ok_rec = tp_trk[0].first != TAPE_END && TP_INST(tp_w0[tp_trk[0].first]) == 2u && TP_NOTE(tp_w0[tp_trk[0].first]) == 72u &&
+             tp_nx[tp_trk[0].first] == TAPE_END && !trk[2].step[0].n && !trk[1].step[0].n;
     printf("tracks: TRS MIDI IN: ch 1..4 -> parts %s, ch 10 and ch 5 ignored on CH1-4, the selected track on SEL %s %s; note-offs "
            "(running status, vel 0) %s\n", ok_parts ? "ok" : "FAIL", ok_ch10 ? "ok" : "FAIL", ok_sel ? "ok" : "FAIL",
            ok_off ? "ok" : "FAIL");
     printf("tracks: TRS MIDI IN: note-off after another track was selected reaches the note's track %s; ch 3 records "
-           "into armed track 3 %s\n", ok_hang ? "ok" : "FAIL", ok_rec ? "ok" : "FAIL");
+           "armed track 3 onto the tape %s\n", ok_hang ? "ok" : "FAIL", ok_rec ? "ok" : "FAIL");
     return !ok_parts + !ok_ch10 + !ok_sel + !ok_off + !ok_hang + !ok_rec;
 }
 
@@ -890,16 +801,6 @@ static int tracks_test(const char *dir)
         pid = fork();
         if (!pid) {
             int rc = trs_test();
-            fflush(stdout);
-            _exit(rc);
-        }
-        waitpid(pid, &st, 0);
-        if (!WIFEXITED(st) || WEXITSTATUS(st))
-            fail++;
-        fflush(stdout);
-        pid = fork();
-        if (!pid) {
-            int rc = rec_test();
             fflush(stdout);
             _exit(rc);
         }

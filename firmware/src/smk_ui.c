@@ -10,7 +10,7 @@
  *            taking over once it reaches the value;
  *   wheels A, the pedal: as MIDI in on the selected track's channel (bend, CC1: the MOD matrix's MODW; CC64 sustain);
  *            the pedal holds the track's keys too (seq.c);
- *   < >      nothing for now (the tape's locate, later);
+ *   < >      the tape's head a bar back / on, stopped (playing: STOP FIRST);
  *   MASTER   K1, kept with the settings; KEY VELOCITY (MENU > CONTROL).
  * KNOB BANK is SHIFT (ui_input.c); the button LEDs on or off (ui_input.c smk_leds_out). Main loop only. */
 
@@ -282,6 +282,10 @@ static void smk_buttons(void)
     prev = now;
     if (ui.menu || ui.confirm || name_on() || ui.layer)
         return;
+    if (pr & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {
+        if (!tape_bar_step((pr >> SMK_BTN_RIGHT) & 1u ? 1 : -1))
+            ui_message("STOP FIRST");
+    }
     if ((pr >> SMK_BTN_FADER_BANK) & 1u) {
         smk_fbank = (uint8_t)((smk_fbank + 1u) % 4u);
         ui_say("FADERS ", SMK_FB_N[smk_fbank]);

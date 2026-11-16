@@ -8,10 +8,9 @@
  * CH1-6 (0) channels 1..6 play parts 1..6, channels 7..16 are ignored (midi_control.c midi_event); SEL (1)
  * every channel the selected track. Their CC1 (mod wheel), CC11 (expression) and channel aftertouch go to
  * the same track's modulation matrix (mod.c; the selected track: the one selected then).
- * A note into an armed track (song.rec) while
- * the transport runs is recorded into its pattern, quantised to its (swung) steps, with its
- * held length as TIE steps (rec_note, rec_hold, rec_release). With the ARP on, the notes the arp
- * plays are recorded, not the keys held (what plays back is what was heard). A key or MIDI note plays a
+ * What an armed track (song.rec) sounds while
+ * the transport runs is recorded onto the note tape (voice.c's hooks, tape_rec below): the keys, MIDI IN, the
+ * sequencer and the ARP (what plays back is what was heard). A key or MIDI note plays a
  * chord when the track's CHRD is on (chord.c): its notes go through the same input as so many keys. */
 static const uint16_t SCALE_MASK[] = {
     0xFFF,                                   /* CHR */
@@ -309,8 +308,6 @@ static void arp_remove(track_t *t, uint32_t note)
     t->nheld = (uint8_t)k;
 }
 
-static void rec_note(track_t *t, uint32_t note, uint32_t vel);
-static void rec_release(track_t *t, uint32_t note);
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx);
 static int rec_on(const track_t *t) { return ((song.rec >> trk_index(t)) & 1u) && song.playing; }
 
@@ -337,7 +334,7 @@ static uint32_t seq_after(uint32_t d, uint32_t i, uint32_t down, uint32_t len)
         return (i + 1u) % len;
     }
 }
-/* the step after the playing one, nothing changed (REC and TAKES round a late note onto it; RAND: the playing one) */
+/* the step after the playing one, nothing changed (TAKES round a late note onto it; RAND: the playing one) */
 static uint32_t seq_peek(const track_t *t, uint32_t len)
 {
     if (t->p[P_DIR] == DIR_FWD)
@@ -354,7 +351,7 @@ static uint32_t seq_at(const track_t *t)
 {
     return t->p[P_DIR] == DIR_FWD || !t->seq_cnt ? t->seq_idx : t->seq_cnt - 1u;
 }
-/* (Skiff) FEEL (the REC layer's KNOB 4, ui.c REC_FEEL): REC and TAKES keep where a note was played, pos samples into
+/* (Skiff) FEEL (the REC layer's KNOB 4, ui.c REC_FEEL): TAKES keep where a note was played, pos samples into
  * the playing step, as the NUDGE of the step it goes in (that one, or next: the next one, the note early for it) */
 static uint8_t rec_feel;
 static int32_t feel_of(const track_t *t, uint32_t pos, uint32_t next)
@@ -455,10 +452,8 @@ static __attribute__((noinline)) void arp_chord_off(track_t *t, int rec)   /* th
     uint32_t i;
     for (i = 0; i < 3u; i++)
         if (t->arp_ch[i]) {
-            if (rec)
-                rec_release(t, t->arp_ch[i]);
-            else
-                take_note(t, t->arp_ch[i], 0);       /* (Skiff: TAKES) */
+            if (!rec)
+                take_note(t, t->arp_ch[i], 0);       /* (Skiff: TAKES; recording: the tape's) */
             arp_note_off(t, t->arp_ch[i]);
             t->arp_ch[i] = 0;
         }
@@ -477,9 +472,7 @@ static __attribute__((noinline)) void arp_chord(track_t *t, const uint32_t *list
             t->arp_note = (uint8_t)nt;
         else
             t->arp_ch[i - 1u] = (uint8_t)nt;
-        if (rec_on(t))
-            rec_note(t, nt, 100);
-        else
+        if (!rec_on(t))
             take_note(t, nt, 100);                  /* (Skiff: TAKES) */
         seq_out(t, nt, 100);
     }
@@ -498,9 +491,7 @@ static void arp_off(track_t *t)                  /* the sounding arp note(s) end
     if (t->arp_ch[0] | t->arp_ch[1] | t->arp_ch[2])
         arp_chord_off(t, rec_on(t));
     arp_note_off(t, t->arp_note);
-    if (rec_on(t))
-        rec_release(t, t->arp_note);
-    else
+    if (!rec_on(t))
         take_note(t, t->arp_note, 0);               /* (Skiff: TAKES) */
     t->arp_note = 0;
 }
@@ -636,9 +627,7 @@ static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
             return;
         }
         t->arp_note = (uint8_t)list[j];
-        if (rec_on(t))
-            rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
-        else
+        if (!rec_on(t))
             take_note(t, t->arp_note, 100);         /* (Skiff: TAKES, the same) */
         seq_out(t, t->arp_note, 100);
     }
@@ -740,44 +729,10 @@ static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
     return swing_step_len(t, period, idx);   /* core.h: own + global, at most 100 */
 }
 
-/* live recording: the note goes into the nearest step, as swung (the one playing, or
- * the next one when it is past the middle of the playing one). Overdub: a step that
- * holds notes gets this one added (a chord of up to 4; when full, the last note is
- * replaced); MONO / LEGATO / UNISON parts keep one note per step, as step entry does.
- * Held on (synth parts): each further step the sequencer enters while the note is
- * held becomes a TIE (rec_hold), up to the pattern length; a release before the middle
- * of the last one puts that step back (rec_release), so a short note stays one step.
- * A note recorded into another step ends the hold before (the step model ties the
- * notes of one step only); (2.0, #25) on a POLY track playing forward it goes on beside it (below). */
-/* (2.0, #25) Recording notes that overlap (a POLY track playing forward): a key held while another starts on a later
- * step goes on as its own pitch, a per-note tie a step (rec_hold_mix), beside what each step holds; recorded into a
- * TIE, the notes it holds go on beside the new one (rec_untie). rec_mix: holds started on different steps (0: the one
- * group of before 2.0, TIEs); rec_n: the steps each held note (rh_note's order) has gone on; rec_tm: those tied into
- * the step entered last (a release before its middle takes it out again) */
-static uint8_t rec_mix[NTRK] __attribute__((section(".pool")));
-static uint8_t rec_n[NTRK][4] __attribute__((section(".pool")));
-static uint8_t rec_tm[NTRK] __attribute__((section(".pool")));
+/* (2.0, #25) notes that overlap on a POLY track playing forward: TAKES (ui_take.c) ties each held note on its own */
 static int rec_poly(const track_t *t) { return trk_vmode(t) == V_POLY && t->p[P_DIR] == DIR_FWD && !drum_track(t); }
-/* TIE step s (step i) as the notes it holds, tied: the notes of the step before them that can tie */
-static __attribute__((noinline)) void rec_untie(const track_t *t, step_t *s, uint32_t i)
-{
-    const step_t *b = 0;
-    uint32_t k, m;
-    while (i && (b = &t->step[--i])->time == ST_TIE)
-        b = 0;
-    s->time = ST_NOTE;
-    s->n = s->hit = s->acc = s->flags = 0;
-    if (!b)
-        return;
-    m = b->time == ST_NOTE && step_ratchet(b) == 1u && !(b->flags & SF_FLAM) ? (1u << b->n) - 1u : step_ties(b);
-    for (k = 0; k < b->n; k++)
-        if ((m >> k) & 1u) {
-            s->note[s->n] = b->note[k];
-            s->acc |= (uint8_t)(1u << s->n++);
-        }
-}
 
-/* a recorded note into step s: REC (rec_note) and Skiff's TAKES (ui_take.c) merge alike */
+/* a note into step s: Skiff's TAKES (ui_take.c) and the SMK's step entry (smk_ui.c) merge alike */
 static void rec_put(track_t *t, step_t *s, uint32_t note, uint32_t vel)
 {
     uint32_t k;
@@ -825,158 +780,6 @@ static void rec_put(track_t *t, step_t *s, uint32_t note, uint32_t vel)
         s->vel = (uint8_t)vel;
 }
 
-static void rec_note(track_t *t, uint32_t note, uint32_t vel)
-{
-    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, idx = t->seq_idx % len, k, ti = trk_index(t);
-    uint32_t period = div_samples((uint32_t)t->p[P_SDIV]);
-    /* past its middle: the next step, (Skiff) the next in its direction (RAND: unknown, so the playing one) */
-    uint32_t next = t->seq_pos > step_samples(t, period, t->seq_idx) / 2u && t->p[P_DIR] != DIR_RAND;
-    step_t *s;
-    if (next)
-        idx = seq_peek(t, len);
-    s = &t->step[idx];
-    if (s->time == ST_TIE && rec_poly(t))           /* ((2.0) what it holds goes on beside it) */
-        rec_untie(t, s, idx);
-    if (rec_feel && !(((1u << s->n) - 1u) & ~step_ties(s)) && !s->hit)   /* (Skiff) FEEL: a note into a step with none */
-        s->nudge = (int8_t)feel_of(t, t->seq_pos, next);                 /* starting there keeps its time */
-    rec_put(t, s, note, vel);
-    t->seq_active = 1;
-    if (next && !((t->nud & NUD_DONE) && t->early_idx == idx)) {   /* it sounds now: the step must not trigger it
-                                                                       * again ((Skiff) unless it has, early: NUDGE) */
-        if (t->rskip_idx != idx)
-            t->rskip_n = 0;
-        t->rskip_idx = (uint8_t)idx;
-        if (t->rskip_n < (drum_track(t) ? NLANE : 4u))
-            t->rskip[t->rskip_n++] = (uint8_t)note;
-    }
-    if (drum_track(t))                              /* DRUM: no holds (hits) */
-        return;
-    if (t->rh_n && t->rh_start != idx && rec_poly(t)) {   /* ((2.0) one in another step goes on: each its own */
-        if (!rec_mix[ti])
-            for (rec_mix[ti] = 1, k = 0; k < t->rh_n; k++)
-                rec_n[ti][k] = t->rh_ties;
-        t->rh_start = (uint8_t)idx;
-    } else if (!t->rh_n || t->rh_start != idx) {    /* a new hold (one in another step ends) */
-        t->rh_n = rec_mix[ti] = rec_tm[ti] = 0;
-        t->rh_start = (uint8_t)idx;
-        t->rh_ties = 0;
-    }
-    for (k = 0; k < t->rh_n && t->rh_note[k] != note; k++)
-        ;
-    if (k == t->rh_n && t->rh_n < 4u) {
-        rec_n[ti][k] = 0;
-        t->rh_note[t->rh_n++] = (uint8_t)note;      /* a chord: held until its last key is up */
-    }
-}
-
-/* (2.0, #25) the sequencer enters step idx with held notes started on different steps: each goes on into it as its own
- * tie, beside what it holds (a TIE holds them already; its pitch a start there: its own, recorded ahead, or one of
- * before it takes on); no room there (4 notes, lane hits) or the whole pattern long: that one's hold ends */
-static __attribute__((noinline)) void rec_hold_mix(track_t *t, uint32_t idx, uint32_t len)   /* (out of the ISR's loop) */
-{
-    step_t *s = &t->step[idx];
-    uint32_t ti = trk_index(t), i, k = 0, x, tm = 0;
-    t->rh_last = (uint8_t)idx;
-    for (i = 0; i < t->rh_n; i++) {
-        uint32_t p = t->rh_note[i], keep = rec_n[ti][i] + 1u < len, add = 0;
-        if (keep && s->time != ST_TIE) {
-            for (x = 0; x < s->n && s->note[x] != p; x++)
-                ;
-            if (x < s->n) {
-                if (idx != t->rh_start && !s->hit)
-                    s->acc |= (uint8_t)(1u << x);
-            } else if (s->hit || s->n >= 4u) {
-                keep = 0;
-            } else {
-                if (!s->n)
-                    s->time = ST_NOTE;
-                s->note[s->n] = (uint8_t)p;
-                s->acc |= (uint8_t)(1u << s->n++);
-                add = 1;
-            }
-        }
-        if (keep) {
-            t->rh_note[k] = (uint8_t)p;
-            rec_n[ti][k] = (uint8_t)(rec_n[ti][i] + 1u);
-            tm |= add << k;
-            k++;
-        }
-    }
-    t->rh_n = (uint8_t)k;
-    rec_tm[ti] = (uint8_t)tm;
-}
-
-/* the sequencer enters step idx (before playing it): a recorded note still held ties into it. (2.0) Out of the ISR's
- * track loop (target_budget.py): a step a call */
-static __attribute__((noinline)) void rec_hold(track_t *t, uint32_t idx, uint32_t len)
-{
-    step_t *s;
-    uint32_t k;
-    if (!t->rh_n)
-        return;
-    if (!((song.rec >> trk_index(t)) & 1u) || (!rec_mix[trk_index(t)] && t->rh_ties + 1u >= len)) {
-        t->rh_n = 0;                                /* disarmed, or the whole pattern is this note */
-        return;
-    }
-    if (rec_mix[trk_index(t)]) {
-        rec_hold_mix(t, idx, len);                  /* ((2.0) held notes started on different steps) */
-        return;
-    }
-    if (idx == t->rh_start)
-        return;                                     /* (recorded ahead into the step now starting) */
-    s = &t->step[idx];
-    t->rh_bak = *s;
-    t->rh_last = (uint8_t)idx;
-    t->rh_ties++;
-    for (k = 0; k < 4u; k++)
-        s->note[k] = 0;
-    s->n = 0;
-    s->time = ST_TIE;
-    s->flags = 0;
-    s->vel = 0;
-    s->hit = s->acc = 0;
-}
-
-/* a key of a recorded note is up: the hold ends with the last one. (2.0, #25) Held notes started on different steps: each
- * ends with its own key; tied into the step playing, a release before its middle takes it out of it */
-static void rec_release(track_t *t, uint32_t note)
-{
-    uint32_t i, k = 0, ti = trk_index(t), tm = 0, out = 0, x, lo;
-    int early = t->seq_idx == t->rh_last &&
-                t->seq_pos < step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), t->seq_idx) / 2u;
-    for (i = 0; i < t->rh_n; i++)
-        if (t->rh_note[i] != note) {
-            rec_n[ti][k] = rec_n[ti][i];
-            tm |= ((rec_tm[ti] >> i) & 1u) << k;
-            t->rh_note[k++] = t->rh_note[i];
-        } else {
-            out = (rec_tm[ti] >> i) & 1u;
-        }
-    if (k == t->rh_n)
-        return;                                     /* not one of them */
-    rec_tm[ti] = (uint8_t)tm;
-    if (rec_mix[ti]) {
-        step_t *s = &t->step[t->rh_last];
-        t->rh_n = (uint8_t)k;
-        for (x = 0; out && early && x < s->n && s->note[x] != note; x++)
-            ;
-        if (out && early && x < s->n) {             /* (its tie out of the step again, the ones above down a place) */
-            lo = (1u << x) - 1u;
-            for (; x + 1u < s->n; x++)
-                s->note[x] = s->note[x + 1u];
-            s->note[--s->n] = 0;
-            s->acc = (uint8_t)((s->acc & lo) | ((s->acc >> 1) & ~lo));
-            if (!s->n && !s->hit)
-                s->time = ST_REST;
-        }
-        return;
-    }
-    if ((t->rh_n = (uint8_t)k))
-        return;                                     /* others still held */
-    if (t->rh_ties && early)
-        t->step[t->rh_last] = t->rh_bak;            /* released early in it: not held into this step */
-}
-
 /* a note into armed track t in the count-in's last eighth: kept for step 1 (cin_flush); once each, 4 per track */
 static __attribute__((noinline)) void cin_keep(track_t *t, uint32_t note, uint32_t vel)
 {
@@ -995,6 +798,7 @@ static __attribute__((noinline)) void cin_keep(track_t *t, uint32_t note, uint32
     cin_up[i] &= (uint8_t)~(1u << k);
 }
 
+static uint8_t tape_live;                        /* the note going into trk_note_on now is played live (input_now) */
 static uint8_t in_from_key;                      /* the notes going into input_on now are a key's (key_on): their MIDI OUT is KEYS's */
 /* a played note (a key's, MIDI IN's) sounds: input_on's decision, or live_tick's, made */
 static void input_now(track_t *t, uint32_t note, uint32_t vel, uint32_t keys)
@@ -1006,14 +810,15 @@ static void input_now(track_t *t, uint32_t note, uint32_t vel, uint32_t keys)
     last_hits++;
     if (cin_left)
         cin_keep(t, note, vel);
-    if (rec_on(t) && !arp)                          /* (ARP on: arp_tick records its notes) */
-        rec_note(t, note, vel);
-    else if (!arp)
+    if (!rec_on(t) && !arp)
         take_note(t, note, vel);                    /* (Skiff) not recorded: TAKES' log (take.c) */
     if (arp)
         arp_add(t, note);
-    else
+    else {
+        tape_live = 1;                              /* (recorded on the GRID's line: tape_rec) */
         trk_note_on(t, note, vel);
+        tape_live = 0;
+    }
     if (keys)
         (void)mo_note(t, note, vel, 1);
 }
@@ -1032,7 +837,6 @@ static void input_off_now(track_t *t, uint32_t note)
             if (cin_note[i][k] == note)
                 cin_up[i] |= (uint8_t)(1u << k);
     }
-    rec_release(t, note);
     if (!t->p[P_AMODE] || in_solo)
         take_note(t, note, 0);                      /* (Skiff: its end, for TAKES' holds) */
     if (!in_solo)                                   /* ((2.1, #74) a SOLO black key's never was the ARP's) */
@@ -1432,6 +1236,33 @@ static void mo_rt(uint32_t b, uint32_t due) { (void)mo_put(0x0Fu | b << 8, due);
 
 static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; }
 #include "tape.c"                                  /* the note tape: its lists, and what the ISR plays of them */
+/* REC (voice.c's hooks: a note an armed instrument sounds while playing, not the tape's own): onto the record queue
+ * (vel 0: its end; after REC is let go too, while that instrument has notes open). A live note (input_now) with the
+ * GRID on is on its line: it sounded in the line's window or waited for the line (live_tick), so the line is the one
+ * at or before the head. The rest at the head */
+static void tape_rec(const track_t *t, uint32_t note, uint32_t vel)
+{
+    uint32_t inst = trk_index(t), at = tape_head, idx;
+    if (tape_playing || !song.playing || inst >= NTRK)
+        return;
+    if (!((song.rec >> inst) & 1u) && (vel || !((tp_rec_mask >> inst) & 1u)))
+        return;
+    if (vel) {
+        tp_rec_mask |= (uint8_t)(1u << inst);
+        if (tape_live && (idx = grid_idx()) != 0u)
+            at = grid_floor(idx, song.g[G_SWING] < 0 ? 0u : (uint32_t)song.g[G_SWING], tape_head);
+    }
+    tape_rq_push(vel ? TR_ON : TR_OFF, at, note, inst, vel);
+}
+/* (SMK-37 < >) the head a bar back or on, stopped only (PLAY snaps to the bar it is in): 1, or 0 when playing */
+static int tape_bar_step(int dir)
+{
+    uint32_t bars = tape_length() / TAPE_BAR, bar = tape_head / TAPE_BAR;
+    if (song.playing || cin_left)
+        return 0;
+    tape_head = (bar + (dir < 0 ? bars - 1u : 1u)) % bars * TAPE_BAR;
+    return 1;
+}
 static __attribute__((noinline)) uint32_t tape_beat_frac(void)
 {
     uint32_t quarter = beat_samples(), frac = (beat_pos * TAPE_TPQ + quarter / 2u) / quarter;   /* (rounded: a pulse is 20) */
@@ -1486,8 +1317,6 @@ static void seq_start(void)
         t->seq_pos = 0x7FFFFFFF;                   /* step 0 fires on the first block */
         t->seq_cnt = 0;                            /* (Skiff) a run starts: its direction's first step */
         t->nud = 0;                                /* (Skiff) no NUDGE pending */
-        t->rskip_n = 0;
-        t->rh_n = 0;
         t->rat_left = 0;
         sq[i].alt = 0;                             /* ((2.5) STRUM ALT: DOWN first, every time from PLAY) */
         if (t->p[P_LSYNC] && (t->p[P_LTRIG] || ENGINES[t->engine]->oneshot))   /* (#16) LFO 2 FREE + SYNC: in time */
@@ -1589,7 +1418,6 @@ static void seq_stop(void)
                 arp_off(&trk[i]);
     for (i = 0; i < NTRK; i++) {
         seq_release(&trk[i]);
-        trk[i].rh_n = 0;                           /* a recorded note held over the stop: as far as it got */
         trk[i].rat_left = 0;
         trk[i].nud = 0;                            /* (Skiff) no NUDGE pending */
     }
@@ -1879,7 +1707,7 @@ static void mo_motion(track_t *t, uint32_t idx, uint32_t play);   /* ((2.2) moti
 static __attribute__((noinline)) void seq_fire(track_t *t, uint32_t idx, uint32_t period, uint32_t ahead)
 {
     const step_t *s = &t->step[idx];
-    uint32_t skip = SEQ_ROLLED, i, k;
+    uint32_t skip = SEQ_ROLLED;
     t->fire_idx = (uint8_t)idx;
     /* the chance first (the one roll, as seq_step made it): a step that does not play applies no lock; the
      * automation and the locks before the notes, so a note-on reads them (eng_drum's KIT, ..) */
@@ -1888,17 +1716,6 @@ static __attribute__((noinline)) void seq_fire(track_t *t, uint32_t idx, uint32_
     else if (step_chance(s) < 100u && rng() % 100u >= step_chance(s))
         skip = SEQ_MISS;
     mo_motion(t, idx, skip == SEQ_ROLLED);
-    if (t->rskip_n && t->rskip_idx == idx) {
-        for (k = 0; k < t->rskip_n; k++) {
-            for (i = 0; i < s->n; i++)
-                if (s->note[i] == t->rskip[k])
-                    skip |= 1u << i;
-            for (i = 0; i < NLANE; i++)
-                if (((s->hit >> i) & 1u) && DRUM_LANE_NOTE[i] == t->rskip[k])
-                    skip |= 1u << (8u + i);
-        }
-        t->rskip_n = 0;
-    }
     seq_step(t, s, period, skip);
 }
 
@@ -1996,7 +1813,6 @@ static void seq_tick(track_t *t, uint32_t n)
             take_pass[trk_index(t)]++;              /* a new pass of its loop: TAKES (take.c), the conditions */
         }
         t->seq_cnt++;
-        rec_hold(t, t->seq_idx, ln);
         if (seq_running(trk_index(t)))
             seq_enter(t, period, ln);               /* (Skiff) it plays: now, later or already (NUDGE) */
     }
@@ -2170,18 +1986,20 @@ static __attribute__((noinline)) void cin_block(uint32_t n)
     seq_go();                                      /* ((2.5) SONG's entry too: counted in, then from there) */
     cin_flush = 1;
 }
-/* the count-in's kept notes onto step 1, which has just started (events_block, after seq_tick): as if played now */
+/* the count-in's kept notes onto the tape at the start, which has just come (events_block, after seq_tick): held on,
+ * open until let go; let go already, a sixteenth long */
 static __attribute__((noinline)) void cin_record(void)
 {
-    uint32_t i, k;
+    uint32_t i, k, start = tape_head - tape_head % TAPE_BAR;
     cin_flush = 0;
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         for (k = 0; k < cin_n[i]; k++)
-            if (rec_on(t)) {
-                rec_note(t, cin_note[i][k], cin_vel[i][k]);
+            if (rec_on(t) && !t->p[P_MUTE]) {
+                tp_rec_mask |= (uint8_t)(1u << i);
+                tape_rq_push(TR_ON, start, cin_note[i][k], i, cin_vel[i][k]);
                 if ((cin_up[i] >> k) & 1u)
-                    rec_release(t, cin_note[i][k]);
+                    tape_rq_push(TR_OFF, start + TAPE_TPQ / 4u, cin_note[i][k], i, 0);
             }
         cin_n[i] = 0;
     }
@@ -2291,7 +2109,6 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         memset(mchord, 0, sizeof mchord);
         midi_hint = 0;
         for (i = 0; i < NTRK; i++) {
-            trk[i].rh_n = trk[i].rskip_n = 0;
             trk[i].seq_n = trk[i].seq_hold = trk[i].slide_glide = trk[i].rat_left = 0;
         }
         pr |= (1u << NTRK) - 1u;

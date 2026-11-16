@@ -45,6 +45,7 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "track_insert", "ins_drive", "ins_swept",   # (Skiff 1.3) FX > INSERT (fx.c), on a track that uses one
          "ins_filter",                               # ((2.5) its FILTR)
          "tape_block", "tape_seek", "tape_voices_end",  # the tape's ISR side (tape.c): a block's due notes, a locate, a stop
+         "tp_fire",                                   # a tape note sounding (tape.c): its voice slot, out of tape_block
          "tape_clock",                                # the tape's head (seq.c), once a block while playing
          "arp_wait",                                  # an ARP start held for a GRID line (seq.c), until the line
          "live_hold", "live_release", "live_tick", "live_drop",   # the live-play delay (seq.c): a note waiting for its line
