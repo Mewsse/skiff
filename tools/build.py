@@ -266,6 +266,7 @@ def build_app():
                                ("common/bin/objdump", "-d", elf),
                                ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
     (OUT / "felucca.dis").write_text(dis)
+    (OUT / f"felucca-{BOARD}.dis").write_text(dis)     # one per board: tests/run_tests.sh checks the cost of both
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)

@@ -500,6 +500,8 @@ else
     done
     $SCC -o "$A/tape_test" tests/tape_test.c
     run "ASan/UBSan: tape_test" "$A/tape_test" 20000 3
+    $SCC -o "$A/taperec_test" tests/taperec_test.c -lm
+    run "ASan/UBSan: taperec_test" "$A/taperec_test"
     $SCC -o "$A/fuzz_ed" tests/fuzz_ed.c -lm
     run "ASan/UBSan fuzz: editor SysEx and raw USB-MIDI packets (20000, seed 7)" "$A/fuzz_ed" 20000 7
     $SCC -o "$A/fuzz_proj" tests/fuzz_proj.c -lm
