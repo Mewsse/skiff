@@ -4,6 +4,13 @@ Tier B of the 2.0 plan changes what Skiff stores. Each piece says what it change
 older firmware sees it, and how it is checked. Piece 1 is per-note ties (#25); SKF4, the settings record and flat
 parameter ids come later.
 
+**Since the note tape (P10, P11):** the pattern pool, the lists, the scenes, SONG and LAUNCH are gone, so what this
+file says of them is the record of 2.0 and is marked where it is. A track has one step sequencer; its steps (the
+9-byte step below, its tie bit and NUDGE) are chunk 3 of the project's set in the tape store (`tape_store.c`), the
+tape the other three; there is no pattern record, no pool and no pattern ids. The unit reads SKF5 (section 5's end)
+only: SKF2 to SKF4 show OLD FORMAT. Pieces 1 (ties), 4 to 7 (parameter ids, the settings record, user presets) and
+#36 stand.
+
 ## 1. Per-note ties (#25): notes that overlap
 
 Today a step holds the notes that start on it, and a TIE step holds every note of the step before. So a note can't
@@ -45,7 +52,7 @@ end of the note before (STEP n TAKEN).
   - Byte 7 of the 9-byte step (`acc & hit`, always 0 without hits today) carries the ties the same way.
   - `step_get9` accepts them: the ties of the notes in use, only when the step has no hits.
 - **Pattern record:**
-  - It stays 888 bytes.
+  - It stays 888 bytes. (Since the tape there is no pattern record: a track's steps are chunk 3 of the tape store.)
   - A record holding any per-note tie is written as version 3 (`BK_VER3`), which also covers `BK_VER2`'s motion ids.
     One without stays version 1 or 2. 2.0 reads 1–3.
 - **Older firmware (1.4, and the 2.0-dev builds before this):**
@@ -133,7 +140,7 @@ The ops:
 - **EUCLID:** a hit on a step where notes only go on plays them as a new note, as on a TIE now.
 - **SHIFT, DOUBLE, HALF:** as now (a note stays beside its ties).
 
-### Recording
+### Recording (since the tape: the keys' step recording below is gone, REC writes the tape; TAKES and step entry keep it)
 - Step entry: a note entered on a long note's step goes in beside it on POLY (step 3).
 - **REC while playing** (POLY, forward; `seq.c`):
   - A key held while another starts on a later step goes on as its own pitch (`rec_hold_mix`): a per-note tie each
@@ -239,9 +246,10 @@ What follows is the spec for that, for the user's approval before any code. Piec
 
 ### What 2.0 still reads
 - Projects: SKF3 (written by Skiff 1.0 to 1.4 and 2.0's builds so far), and SKF4 (below, written from now on).
+  (Since the tape: neither; SKF5 only.)
 - User presets: versions 4 and 5 (Skiff's: the NUDGE in the record), and 6 (below).
 - Settings: PER4 as Skiff writes it (its mark: `favorites.factory[15][24]` = 0xA5), and SKS1 (below).
-- Patterns: the pool's records, versions 1–3, as now.
+- Patterns: the pool's records, versions 1–3, as now. (Since the tape: none; a restore drops them.)
 
 ### What leaves the firmware (about 8–9 KB of flash, measured on e33)
 - The project readers of FUN1–FUN9, SKF1 and SKF2, and the SKF1 writer (`proj_import`'s branches for them,
@@ -257,7 +265,7 @@ What follows is the spec for that, for the user's approval before any code. Piec
 ### The converter (web/conv/)
 - The code above, as a host-only C file (firmware/src/legacy.c, never in a firmware build) with project.c, upreset.c
   and settings_persist.c's import, built for the browser with Emscripten as web/emu is.
-- In: a complete backup archive (web/fm1backup.js: objects 0–9, the pattern bank 16–31, the samples 32–34). Out: the
+- In: a complete backup archive (web/fm1backup.js: objects 0–9, the pattern bank 16–31, the samples 32–34; since the tape the tape store's 40–59, the pattern bank's accepted and dropped). Out: the
   same archive with every object 2.0 can't read rewritten in 2.0's formats, and a report (what each object was,
   what it became, what was dropped).
 - Also reads what no Skiff reads today: Felucca 1.4+'s projects (FUNA), and maps Felucca's user presets by
@@ -327,6 +335,12 @@ references there); the counted parts follow, then zeros up to the name.
   leave, they decode steps into `project_t` (`proj_migrate` makes patterns of them), and `proj_slot` holds the older
   records they read.
 - 2.0 reads SKF3 (by count and its PX block, as now) and SKF4, writes SKF4. 1.4 sees an SKF4 slot as EMPTY.
+- **SKF5 (the note tape, P10):** 2,560 bytes still, "SKF5", SKF4 without the song layer: the lists, the entries'
+  sounds, the entry each track is on, the scenes, sel and SONG are gone, and it holds what the patterns held beside
+  the steps, the automation and locks (the motion store: its count, its on mask, then 4 bytes a record), and each
+  track's SEQ RUN (a bit a track). 446 bytes free. No steps and no tape: the slot's set in the tape store holds them,
+  written before the record. The parameters by stored id, the DRUM-X kit, the FM6 patches, the globals and the name
+  are as in SKF4. The unit reads no other format; the converter makes SKF5 and a set of FUN1..FUN9 and SKF1.
 - Built (step 2): `proj_pack4` / `proj_unpack4` in project.c, reached through `proj_pack2` / `proj_unpack2` and
   `proj_fmt_of`. So every save writes SKF4 (SAVE, the autosave, `proj_migrate`, the editor's backup of the music),
   and a rename or a restore keeps a record's own format. The CHORUS reset of older formats passes over SKF4. Measured:
@@ -637,7 +651,7 @@ references there); the counted parts follow, then zeros up to the name.
   Recommended: 1A (one page, the same for both engines, nothing moves; a kit is mixed level beside pan).
 - About 1.2 KB.
 
-### #30: a sound change on a song entry
+### #30: a sound change on a song entry (removed with the song layer, P2)
 - **What it is:** an entry may carry a sound (a factory preset of any engine, or a user preset), as a MIDI program
   change: when the track comes onto that entry, it loads that sound, all but its own values (LEVEL PAN MUTE, ARP,
   SCL, LEN DIV SWING GATE, the SLICER, DIR, the ducking, as PRESETS loads keep them). An entry without one leaves the

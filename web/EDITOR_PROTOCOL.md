@@ -198,7 +198,7 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
-| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4; Skiff phase 6: 6), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, Skiff U2: 16, (P3) 20) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) and (Skiff phase 6) `54 01 tracks e0 e1 e2` (light tracks) (below) and (Skiff W1) `43 01 count` (a step's FLAM, COND, NUDGE; count: the trig conditions) and (Skiff W3) `4B 01 8` (the DRUM-X kit, below) and (Skiff W3) `57 01 caps` (bit 0 TRANSPORT, bit 1 PROJ_NAME, bit 2 POOL, (#21) bit 5 SMP_MIX, (2.0) bit 6 a step's ties, below; bits 3 LIST and 4 PERFORM: gone) and (Skiff 1.3) `49 01 c0 c1 e0 e1` (wide ids: P_COUNT and P_E0, above) and (2.0) `58 01 caps` (bit 0: the pool's EMPTY and CLEAR UNUSED; "Pool" below) ; older firmware ends earlier |
+| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4; Skiff phase 6: 6), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, Skiff U2: 16, (P3) 20) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) and (Skiff phase 6) `54 01 tracks e0 e1 e2` (light tracks) (below) and (Skiff W1) `43 01 count` (a step's FLAM, COND, NUDGE; count: the trig conditions) and (Skiff W3) `4B 01 8` (the DRUM-X kit, below) and (Skiff W3) `57 01 caps` (bit 0 TRANSPORT, bit 1 PROJ_NAME, (#21) bit 5 SMP_MIX, (2.0) bit 6 a step's ties, below; bits 2 POOL, 3 LIST and 4 PERFORM: gone) and (Skiff 1.3) `49 01 c0 c1 e0 e1` (wide ids: P_COUNT and P_E0, above) and (Skiff Studio) `59 01 caps` (the cast, below; casting builds) and (Skiff P11) `5A 01 caps` (the note tape: TAPE, TAPE_GET; "Tape" below), the last; older firmware ends earlier. (2.0's `58 01`, the pool's EMPTY and CLEAR UNUSED, is gone with the pool) |
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine: its defaults, then its first preset (as on the device) |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
@@ -447,10 +447,10 @@ grid lives in the steps themselves, so every engine has it:
 - Projects (`PROJECT`) save and load every track, the selection, the song chain and the motion (FUN7;
   FUN5 added the drum grid, FUN6 the chain). Formats 6..1 are converted; a format 1 project loads into track 1. A project saved before
   1.0 loads its drum track as track 4 with DRUM's kit (SAMPLE PERC until 1.0.2), its steps kept.
-- **Skiff (phase 5):** a track's steps and motion are the pattern it is on (SKF2 below). The editor's writes to them
-  are kept as any edit on the device: written at its next quiet stop, or by a `PROJECT` save or load, which write
-  the tracks' patterns first (the pool full: the device says PATTERNS FULL and saves nothing, a failed save as
-  below). A `PROJECT` load stops the transport.
+- **Skiff (phase 5; P10):** the steps of a track are its sequencer's, saved in the slot's set in the tape store with the
+  tape (SKF5 and "Tape" below): the editor's writes to them are kept as any edit on the device: by a `PROJECT` save
+  or by the autosave at its next quiet stop (the pattern pool of phase 5 to 2.6 is gone). A `PROJECT` load stops the
+  transport.
 - Older firmware (no NTRK in `INFO`): one instrument; skip the track UI.
 
 ## v4: any track's parameters
@@ -539,8 +539,8 @@ stay where they were. No trailing byte means no SONG command: hide its controls.
 | --- | --- | --- |
 | 33 SONG | op 0 query; op 1 set, count 0..16, count × (slot 0..3, repeat 1..16); op 2 start; op 3 stop | op, rc, count, running 0/1, row 0..15, remaining repeats, count × (slot, repeat) |
 
-**Skiff (phase 5):** there is no project-slot song any more (a song is each track's list of patterns).
-INFO still appends 16 here, because an editor reads the tagged capabilities after this byte only when it is 16.
+**Skiff (phase 5; P2):** there is no project-slot song any more, and no list of patterns either (the song layer is gone:
+a track has one step sequencer and the tape records the rest, see "Tape"). INFO still appends 16 here, because an editor reads the tagged capabilities after this byte only when it is 16.
 Command 33 always reports an empty chain (count 0, not running); a set and a start answer rc 1, a stop
 stops the transport. The rest of this section describes Felucca's SONG.
 
@@ -663,6 +663,15 @@ when the track's engine is not the saved one).
   one's missing ones load at their defaults. Zeros up to the name at 2544..2555, the hash last. A save (and the
   autosave) writes SKF4; an SKF3 or SKF2 loads as before and keeps its format where it is stored (a rename, a backup
   restore). Skiff before 2.0 shows an SKF4 slot as empty.
+- **Projects (Skiff P10: SKF5).** `53 4B 46 35` ("SKF5"), size 2560: SKF4 without the song layer (the lists, the
+  entries' sounds, the entry each track is on, the scenes, SONG) and with what the patterns held beside the steps. Byte
+  8 the layout (1), byte 9 flags (0; read past), 10 the selected track, 11 SEQ RUN (a bit a track), then from 12 the
+  DRUM-X kit (as SKF4's), the FM6 patches, the motion (a count, the on mask, 2 reserved bytes, then 4 bytes a record: the
+  place's low 8 bits, bit 8 | the lock << 1, the parameter's SID, the value), the globals and each track by SID as SKF4's,
+  zeros up to the name at 2544..2555, the hash last; 446 bytes free. It holds no steps and no tape: the slot's set in
+  the tape store (backup ids 40..59) does, written before the record. A save (and the autosave) writes SKF5, which is
+  the only project format this firmware reads: SKF2 to SKF4 and the formats of before show OLD FORMAT and keep their
+  bytes. Skiff before P10 shows an SKF5 slot as empty.
 - **The DRUM-X kit (Skiff phase 7).** One kit per project, for every DRUM-X track (engine 14): 8 lanes (KICK SNARE
   CLAP HAT CL HAT OP TOM RIM BELL), 11 bytes each: a mode byte (bits 0..1 the wave SIN FM MTL BEL, 2..3 the noise
   filter LP BP HP, 4 SNAP, 5..6 the pitch modulation DECAY LONG NOISE SINE, 7 DRIVE), then patch A and patch B, five
@@ -715,8 +724,9 @@ goes on, and the notes of a chord can end on different steps (DESIGN.md "SEQ ›
 - `STEP_SET` / `TRACK_STEP` of the old lengths (an editor of before) leave a step without hits no ties: that editor
   sees and writes whole steps. Firmware without the bit sends 16 step bytes (read: no ties) and refuses the longer
   writes (no reply).
-- Saved in the pattern record (byte 7 of a step without hits): a pattern holding a tie is record version 3, which
-  Skiff 1.4 and older read as empty. Backups move the records as bytes.
+- Saved in the step (byte 7 of a step without hits): in the pattern pool's records of 2.0 to 2.6 (record version 3,
+  which Skiff 1.4 and older read as empty) and now in chunk 3 of the project's set in the tape store. Backups move the
+  records as bytes.
 - The web editor writes a note going on in brackets in the step table, `(C4) E4`; its patch files keep the ties, and
   a library pattern (one note a step) takes a step whose notes all go on as a TIE.
 
@@ -762,11 +772,12 @@ this firmware sends 3. Requests name objects, never flash addresses.
 | 6, 7 | user preset banks (slots 1..16, 17..32) | the bank's size, or 0 if empty |
 | 8 | the FM6 patch bank of 1.0..1.0.2 (B1..B27). Since 1.0.3 always listed empty (see below); (2.0) `PUT` takes it only empty | 3472, or 0 if empty |
 | 9 | the user presets' FM6 patches (1.0.3; `up_fm6.c`: per slot a tag and the packed patch) | 3728, or 0 if none |
-| 16..31 | Skiff: the pattern bank (`bank.c`), chunk `id - 16`: a track's 4 patterns (track `(id - 16) / 4`, slots A..D, E..H, I..L, M..P), each 888 bytes. Phase 5: the pool, patterns `4 × (id - 16) + 1` to `+ 4` (01..64) | 3552, or 0 if all 4 are empty |
+| 16..31 | the pattern pool of phase 5 to 2.6 (chunks of 4 patterns): gone, not listed; a `PUT` of one (an archive of before) is taken (3552 or 0) and dropped | – |
+| 40..59 | Skiff (P10): the tape store (`tape_store.c`): slot `(id - 40) / 4` (0..3 the project slots, 4 the music now), chunk `(id - 40) % 4`: 0..2 the tape's records (3840 bytes; chunk 0 is followed by the tape's 16-byte meta: 3856), 3 the six sequencers (3840) | 3840 (chunk 0: 3856), or 0 if the slot has no set |
 | 32..34 | user sample slots 1..3: header (512 bytes) then ADPCM data | 512 + data length, or 0 if empty |
 
 Reading: `BACKUP_LIST` (no arguments) stops the transport, then takes a snapshot of the runtime object and
-answers `1, rc, count` (Skiff 29, Felucca 13 since 1.0.3, 12 with FM6 up to 1.0.2, 11 before) and, per object in the order above, `id, size u32, crc u32` (CRC-32, zlib). The other objects are read as
+answers `1, rc, count` (Skiff 33 (ids 0..9, 40..59, 32..34; 29 with the pattern bank, 16..31), Felucca 13 since 1.0.3, 12 with FM6 up to 1.0.2, 11 before) and, per object in the order above, `id, size u32, crc u32` (CRC-32, zlib). The other objects are read as
 they are in RAM or flash. Then `BACKUP_GET` reads an object in pieces: `id, offset u32, count lo, count hi`
 (count 1..256, LSB first 7 bit pair) answers `id, rc, offset u32, count lo, count hi` and the data as pack7. Check each object's CRC
 against the list; if it differs the device changed, so start again.
@@ -778,12 +789,12 @@ the settings record's size for id 1 ((Skiff 2.0) 656, an SKS1, or 572, a PER4 of
 version and slot count checked; 0 clears the patches). FUN8, FUN7 and FUN6 become FUN9.
 An archive without id 8 (written before FM6) still restores; the web editor reads all four kinds (11, 12, 13, 29
 objects). Skiff phase 5: ids 0 and 2..5 also take 1280 (SKF2) and 3840 (SKF1); an SKF2 is stored as it is, any
-older format as SKF1. Phase 6: 2048 (SKF3) too, stored as it is. 2.0: 2560 (SKF4) too, stored as it is. `LIST` writes the tracks' patterns first, so the chunks hold what plays. When id 0 commits,
-the device converts the slots of older formats as at its first boot (patterns from their steps), so an archive
-from before phase 5 restores to SKF2 projects. A chunk restored drops what waited in RAM for its patterns, and a
-track on one of them keeps its steps as a new pattern when next kept. Skiff: ids 16..31 take 3552 or 0 (0 empties the chunk's 4 patterns); each pattern is checked (its version,
-every step as a project's, at most 64 motion records) and the chunk is written as a bank save writes it (a spare sector,
-its commit record last). Firmware without the bank answers rc 1 at their begin and writes nothing: the web editor
+older format as SKF1. Phase 6: 2048 (SKF3) too, stored as it is. 2.0: 2560 (SKF4) too, stored as it is. (P10) 2560 is SKF5 now, the only project format the device reads; an SKF2 to SKF4
+or an older one is stored as it is and shows OLD FORMAT. `LIST` writes the music's set in the tape store first
+(its tape and steps), as the record of id 0 names none. When id 0 commits the device converts nothing. Ids 40..59:
+begin takes 3840 (3856 for a slot's chunk 0) or 0 (the chunk has no set); each chunk's records are checked, then it is
+written into that slot's set coming in, which is the slot's once its four chunks are in. Ids 16..31 take 3552 or 0 and
+are dropped. Firmware without the tape store answers rc 1 at the begin of 40..59 and writes nothing: the web editor
 skips them there, as it skips id 9 on firmware before 1.0.3.
 Since 1.0.3 an id 8 with data (an archive of 1.0..1.0.2) is not stored: like the first boot after the update, every FM6
 user preset whose stored SLOT is a B slot (8..34) and has no patch yet gets that bank slot's patch, and id 9 is written.
@@ -949,7 +960,7 @@ tag answers neither command. A request of the wrong length, an op it doesn't kno
 | cmd | Request args | Reply args |
 | --- | --- | --- |
 | 76 TRANSPORT | none (the state), or op: 1 PLAY (nothing while playing), 2 STOP, 3 RESTART (from the top; the device's clock only), 4 REC (the selected track armed or not, as the REC button: arming while stopped starts, with the count-in if set) | rc (0), playing 0/1, counting in 0/1, the request the audio has yet to take (0 none, 1 start, 2 stop, 3 restart), the armed tracks (bit per track), the selected track |
-| 77 PROJ_NAME | none (the names), or op (1 SAVE AS, 2 RENAME), slot 0..3, name (0..12 bytes 32..126, its 0 optional; stored upper case) | op, rc (0 done, 1 refused: the transport won't stop, the patterns are full, RENAME of an empty slot; 2 failed), the music's slot (0..3, 127 none: not loaded or saved since power on), changed since then 0/1, its name, then for each slot: used 0/1, its name |
+| 77 PROJ_NAME | none (the names), or op (1 SAVE AS, 2 RENAME), slot 0..3, name (0..12 bytes 32..126, its 0 optional; stored upper case) | op, rc (0 done, 1 refused: the transport won't stop, RENAME of an empty slot; 2 failed), the music's slot (0..3, 127 none: not loaded or saved since power on), changed since then 0/1, its name, then for each slot: used 0/1, its name |
 
 TRANSPORT's reply is sent at once, before the audio takes the request: read `playing` with the pending request (a
 PLAY shows 1 there until the next block). The device pushes nothing when its transport changes; the editor asks for
@@ -957,23 +968,13 @@ the state as its keep-alive (instead of PING). SAVE AS and RENAME write flash: a
 the transport first (the device's own SAVE refuses while playing). SAVE AS is the device's SAVE with a name (the
 music's name after it); RENAME changes a stored project's name only (the music's too, when it is that slot's).
 
-## Pool (78; Skiff W3)
+## Pool, lists, PERFORM (78 to 82; gone)
 
-The pattern pool (SAVE › PATTERNS) as the device has it. INFO's `57 01 caps` bit 2; (2.0) `58 01` bit 0: POOL's ops 2
-and 3. A change acts as the device's own control does, through the same code, and the device says so on its screen. A
-request of the wrong length, an op it doesn't know or a value out of range gets no reply. Patterns are 0..63. Don't
-resend a change that timed out: read again.
-
-| cmd | Request args | Reply args |
-| --- | --- | --- |
-| 78 POOL | none (the pool), or 1, pattern 0..63: CLEAR it (only one nothing uses, only stopped; it can't be undone); (2.0, `58 01` bit 0) 2, pattern: EMPTY it (its steps, NUDGEs and automation; the pattern stays; only stopped); 3: CLEAR UNUSED (every pattern nothing uses; only stopped) | op, rc (0 done, 1 nothing to clear / to empty / unused, 2 in use, 3 playing, 4 failed), then for each of the 64 patterns: its LEN (0: empty), how many use it (the saved projects naming it, a track on it; at most 127) |
-
-Nothing is pushed: the editor reads POOL again while it shows it (with TRANSPORT about once a second; POOL every fourth
-time) and after each change. The CLEARs ask on the device's screen there; the editor asks before it sends them.
-
-79 LIST, 80 PERFORM and (2.0) 82 LIST2 (the tracks' lists, SEQ › SONG, PERFORM's scenes, staged mutes and LAUNCH) went
-with the song layer: firmware since answers none of them and clears `57 01` bits 3 and 4 and `58 01` bit 1. The `58
-01` tag stays (bit 0) and is the last of INFO's, after `49 01`: an editor before reads up to `49 01` and stops.
+78 POOL (the pattern pool, SAVE › PATTERNS), 79 LIST, 80 PERFORM and 82 LIST2 (the tracks' lists, SEQ › SONG, PERFORM's
+scenes, staged mutes and LAUNCH) went with the pattern pool and the song layer (Skiff P2, P10): firmware since answers
+none of them. INFO's `57 01` has bits 2, 3 and 4 clear (99 with the others: TRANSPORT, PROJ_NAME, SMP_MIX, the ties) and
+the `58 01` tag, last after `49 01` in 2.0 to 2.6, is not sent. An editor that finds `5A 01` after `49 01` (and `59 01`)
+has the tape instead ("Tape" below). 81 SMP_MIX and 83 CAST are unchanged.
 
 ## Tape (84, 85; Skiff P11)
 
@@ -1001,7 +1002,7 @@ so a page from `first` is stable while nothing is recorded. The reply holds at m
 
 TAPE's reply to an edit is the state after it. The device saves the tape with the project (its four slots and the music
 now), only while stopped; nothing here saves. The pattern pool's POOL (78), the lists' and PERFORM's commands (79, 80,
-82) are gone, see "Pool" below.
+82) are gone, see "Pool, lists, PERFORM" below.
 
 ## THEME CUSTOM (39; Skiff #27)
 

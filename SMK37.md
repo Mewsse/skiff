@@ -96,9 +96,9 @@ sh tests/run_tests.sh
 Everything SMK sits behind `BOARD_SMK37` (default 0). The FM-1 app, package and loader stay byte-identical. Release
 builds take `--release X.Y` as on the FM-1: identity `SMK-37 Pro_7XY`, `skiff-smk37-X.Y.fwsc`.
 
-Sizes (Pro, 2.0 dev with the controls, the pedal hold and the app's own copy of the loader): app 571,388 B of the SMK's
-619,520 B slot (about 47 KB to spare); RAM .data+.bss 83,668 of 98,304 B; pool 347,088 of 356,352 B; the update
-loader 7,859 B (the limit: 7,936 B, below).
+Sizes (Pro, with the note tape and the editor's Tape tab; `./build.sh --board smk37`): app 581,428 B of the SMK's
+620,544 B slot (about 39 KB to spare); RAM .data+.bss 87,372 of 94,208 B; pool 349,564 of 360,448 B; RAM code + .ramx
+30,664 of 32,512 B; the update loader 7,859 B (the limit: 7,936 B, below).
 
 ## What the build has
 
@@ -116,8 +116,8 @@ loader 7,859 B (the limit: 7,936 B, below).
   the settings keep it once it rests 1.5 s, so it comes back at power-on.
 - **The extra buttons:** KNOB BANK is SHIFT, as HOME held but on a button of its own: the map, + BT for TAKE, and
   + a layer's button to lock that layer. Let go, it does nothing (HOME still taps home, and held opens MENU).
-  FADER BANK steps the faders' bank. < and > go to the selected track's entry before and after, at once when stopped
-  and at the LAUNCH point when playing.
+  FADER BANK steps the faders' bank. < and > move the note tape's head a bar back and on, stopped only (playing, the
+  header says STOP FIRST).
 - **Pads:** always a grid. Where the FM-1's keys show a map of their own (a layer, the DRUM grid, NAME, SLICES, or a
   layer's button held), the pads are its 16 white keys, lit as the FM-1's key LEDs would be, in the track's colour.
   Elsewhere they are the selected track's 16 steps of the page shown. A tap sets an empty step to the last note
@@ -199,8 +199,8 @@ loader 7,859 B (the limit: 7,936 B, below).
   (inputs, the store's owner state, the calibration marker), `padtest`,
   `leds`, `flr 0xC1224 8` (should read `trimdat`).
 - **2.5 on the SMK:** the same firmware, with the SMK's names where 2.5 shows a control: the PRESETS card says K4
-  (DELAY's MODE, PATTERN's DIR, INSERT's MIX), the stopped capture's hint says SHIFT + BT: FREE TAKE, SONG's SHIFT map
-  + PLAY FROM HERE and + PARA CLEAR (KNOB BANK as SHIFT). MENU > CONTROL > KEEP SENDS sits before KEY VELOCITY. The
+  (DELAY's MODE, PATTERN's DIR, INSERT's MIX), the stopped capture's hint says SHIFT + BT: FREE TAKE (KNOB BANK as
+  SHIFT). MENU > CONTROL > KEEP SENDS sits before KEY VELOCITY. The
   SMK keeps its CPU setting: 2.5 moves only FM-1s to 2 CORES; on 1 CORE 8 voices sound at once, on 2 CORES 16.
 
 ## The flash layout (the storage remap)
@@ -212,7 +212,7 @@ The SMK lets Skiff write only:
 
 It must never write 0x0..0x3FFF, 0xC0000..0xC1FFF (pairing and the factory calibration), 0xF4000..0xFDFFF or
 0xFF000 and up. Skiff on the FM-1 keeps about 152 KiB besides its samples: nine A/B pairs (72 KiB) plus the 20-sector
-pattern pool (80 KiB). That is more than the store window holds.
+tape store (80 KiB; the pattern pool's sectors until the tape). That is more than the store window holds.
 
 | What | FM-1 | SMK-37 (built) |
 | --- | --- | --- |
@@ -225,12 +225,13 @@ pattern pool (80 KiB). That is more than the store window holds.
 | spare | | 0xB0000..0xBAFFF (11 sectors) |
 | update staging + record | 0xE0000..0xE4FFF | 0xBB000..0xBFFFF |
 | user sample slots | USR1..3, 0xA0000..0xDBFFF | **USR1 only**, 0xC2000..0xD5FFF |
-| pattern pool (64 patterns, 20 sectors) | 0xE7000..0xE8FFF + 0xEA000..0xFBFFF | 0xD6000..0xE9FFF |
+| tape store (5 sets of 4 chunks, 20 sectors; was the pattern pool) | 0xE7000..0xE8FFF + 0xEA000..0xFBFFF | 0xD6000..0xE9FFF |
 
 **Picked (2026-10-19): A**, the layout built.
 
 - **A: the pool moves into USRFLASH, and the SMK keeps one user sample slot.** Everything else keeps its size:
-  four projects, the presets, the autosave, and all 64 patterns. USR2 and USR3 exist only on the FM-1; on the SMK
+  four projects, the presets, the autosave, and all 64 patterns (the tape store has the same 20 sectors since the tape:
+  the four projects' tapes and sequencers and the music's). USR2 and USR3 exist only on the FM-1; on the SMK
   they aren't offered, and the editor refuses to load them. 11 store sectors stay spare, for example for five more
   project slots later.
 
@@ -249,7 +250,7 @@ Rules the layout keeps:
   flash driver (`FL_GUARD`). Every object has a compile-time assert, and `tests/smk_flash_test.c` checks each one,
   A and B, by its `OBJ_*`.
 - The first boot over another firmware's store (the stock firmware's, or Felucca's SMK port, family `FELUCCA`) erases
-  the nine pairs and any pool sector holding a Skiff pattern chunk, then writes the tag. Samples check themselves.
+  the nine pairs and any sector of the tape store holding a Skiff chunk (a pool chunk of before too), then writes the tag. Samples check themselves.
 - The stock firmware's own USRFLASH mapping stays intact until Skiff first writes there (a sample or a pattern save).
   Just before that, its end marker is erased, so that a return to stock rebuilds the factory mapping instead of
   reading Skiff's data as its own.

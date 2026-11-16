@@ -6,7 +6,7 @@
 </p>
 
 <p align="center"><b>A six-track groovebox firmware for the M-VAVE FM-1 and SMK-37 Pro</b><br>
-synths and drums, patterns and songs, live performance, and a screen that shows what every control does</p>
+synths and drums, a note tape, live performance, and a screen that shows what every control does</p>
 
 <p align="center">
   <a href="https://github.com/illuminus5/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/illuminus5/skiff?label=release" alt="Latest release"></a>
@@ -67,8 +67,8 @@ drawn FM-1, played with the mouse, a touch screen or the computer keyboard.</p>
 
 Skiff turns the FM-1 into a six-track groovebox: fourteen synth and drum engines with 148 factory sounds you can list
 by type (only the basses, only the pads), a 64-step sequencer with chords, notes of any length that overlap, ratchets,
-trig conditions and parameter locks, a shared pool of patterns played through per-track lists and scenes, and a
-performance layer for launching it all live. Every page draws what its knobs do, and holding HOME shows what
+trig conditions and parameter locks, a four-track note tape that records what you and the sequencers play, and a
+performance layer for running and muting the sequencers live. Every page draws what its knobs do, and holding HOME shows what
 every button, encoder and key does right there. FM6 sounds can be built from a bare sine on the unit itself, every
 operator's envelope drawn as it plays and coloured by how bright the FM makes it. A browser editor reaches all of it
 from a computer. The same firmware runs on M-VAVE's SMK-37 Pro keyboard, its pads a step grid and its faders a
@@ -108,6 +108,13 @@ Python). Two steps come first: M-VAVE's firmware V016 on the keyboard, and a bac
 keyboard's own key calibration. [SMK37.md](SMK37.md#install) has both, the way back and what to do if it does not
 start.
 
+**Updating to the note tape** (the pattern pool, lists, song, scenes and LAUNCH modes are gone): the unit converts
+nothing. A project saved before (Skiff's SKF2 to SKF4: its steps were pool patterns, which nothing reads now) shows
+OLD FORMAT in SAVE › PROJECT and keeps its bytes; Felucca's and the oldest Skiff projects the editor's Restore still
+converts, steps into the tape store. Sounds, user sounds and settings stay as they were. Take the editor's backup
+first: a restore of an archive from before brings the projects back as OLD FORMAT and drops the pool's patterns.
+Playing the sequencers live is PERFORM's RUN and MUTE keys now, and REC records to the tape.
+
 **Updating to 2.5:** nothing is converted.
 - Every FM-1 moves to MENU › SYSTEM › CPU 2 CORES once: up to 16 voices. One whose second core doesn't start says
   CORE 2 FAILED and stays on 1 CORE (8 voices). The SMK-37 stays on the CPU setting it has.
@@ -136,8 +143,6 @@ was (Felucca's projects and user sounds, DIGITAL sounds, the oldest formats) and
 of what it converted and of anything with no place in 2.0.
 - `fm1_install.py` converts nothing. 2.0 shows a slot it can't read as OLD FORMAT and keeps it. In the Skiff Editor,
   take a backup and restore it: the Restore converts it.
-- A project the converter couldn't give patterns to (the pattern pool full) also stays OLD FORMAT: free some in
-  SAVE › PATTERNS, then take a backup and restore it.
 - **The way back to 1.x:** install 1.4.x, then restore the dated backup in the Skiff Editor. 1.x doesn't read what
   2.0 saves: such projects and user sounds look empty there (their bytes stay until saved over), and its settings
   start at their defaults.
@@ -151,17 +156,17 @@ Edge, over USB MIDI).
 | --- | --- |
 | **Tracks** | 6, each with its own engine, sound, sequence and mix; (2.5) up to 16 voices a track, 16 shared between them on two cores (MENU › CPU 2 CORES, the FM-1's default), 8 on one (T5 and T6 play every engine but PHYS and GRAIN) |
 | **Engines** | 14: ANALOG, FM6, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE, SLICE, DRUM, DRUM-X; 148 factory sounds, at least 8 an engine, each a BASS, LEAD, PAD, KEYS, PLUCK, DRUM or FX sound that SAVE › PRESETS lists by type; presets for all nine of DRUM's kits and eight DRUM-X kits among them; every value of an FM6 patch (6 operators, 32 algorithms) editable on the unit |
-| **Sequencer** | 64 steps a track; LENGTH 1–64; 1/1 to 1/32, triplets, 2 and 4 bars a step; chords of up to 4 notes, each note its own length (1–99 % of a step, or 1 to 128 steps, past its pattern's end on into a chain's next part) and free to overlap the next; velocity, accent, slide; per-step chance, ratchet ×1–4 or FLAM, 12 trig conditions (FILL, !FILL, 1:2 … 4:4), NUDGE (−32 to +31 64ths of a step); swing, gate; FWD, RVRS, PING or RAND; ranges of steps edited as one, copy, paste and delete |
-| **Recording** | live with overdub, FEEL (keeps where you played), count-in and click; step recording; TAKE keeps the last loop you played, after the fact; (2.5) FREE TAKE: play with the transport stopped, and Skiff finds the tempo, the bars and the first beat |
+| **Sequencer** | 64 steps a track; LENGTH 1–64; 1/1 to 1/32, triplets, 2 and 4 bars a step; chords of up to 4 notes, each note its own length (1–99 % of a step, or 1 to 128 steps) and free to overlap the next; velocity, accent, slide; per-step chance, ratchet ×1–4 or FLAM, 12 trig conditions (FILL, !FILL, 1:2 … 4:4), NUDGE (−32 to +31 64ths of a step); swing, gate; FWD, RVRS, PING or RAND; ranges of steps edited as one, copy, paste and delete |
+| **Recording** | REC writes every note an armed track sounds (keys, MIDI, its sequencer, the arpeggiator) to the tape, on a GRID if you like; count-in and click; FEEL (a take keeps where you played); step entry; TAKE keeps the last loop you played, after the fact; (2.5) FREE TAKE: play with the transport stopped, and Skiff finds the tempo, the bars and the first beat |
 | **Automation** | knob moves and parameter locks (hold a step, turn a knob), 64 records, listed and edited on SEQ › AUTOMATION |
-| **Patterns and songs** | a pool of 64 patterns shared by every project; each track a list of 16 entries (A–P), each a pattern played 1–16 times, or chained into the next as one long pattern; SONG walks each track down its list, round and round or once |
-| **Performance** | PERFORM: launch any track's entries and stage mutes on LOOP, BAR, BEAT or NOW; 16 scenes; throws (CUTOFF, REVERB, DELAY, DIST) that glide back, or stay; one mute a track on the black keys of GLO, FX and PERFORM (a tap latches it, held it cuts); the FX layer: repeat, reverse, filter sweeps, tape stop, freeze, harmonizer, gate, dub echo, flanger, vinyl |
+| **Note tape** | 4 tracks of notes (not audio), 1–256 bars, 1,440 notes a project, merged without loss; overdub; one GRID (1 bar to 1/32, triplets) for recording, playing live, the arpeggiator's start and PERFORM's keys; each track's own step sequencer, run and muted live |
+| **Performance** | PERFORM: turn each track's sequencer on and off (RUN) and mute tracks on the GRID; throws (CUTOFF, REVERB, DELAY, DIST) that glide back, or stay; one mute a track on the black keys of GLO, FX and PERFORM (a tap latches it, held it cuts); the FX layer: repeat, reverse, filter sweeps, tape stop, freeze, harmonizer, gate, dub echo, flanger, vinyl |
 | **Sound** | per track: an envelope (in milliseconds or note values) and a second one for modulation (ENV 2), an LFO (free or synced to the tempo), one MOD page for where they go (the LFO's four depths, the envelope's three, a 4-slot modulation matrix), DIST in five types (INSERT's SOFT, HARD, FOLD, CRUSH, FUZZ) with a TONE, an INSERT (drives, a bitcrusher, phaser, flanger, chorus, (2.5) a filter from low-pass to high-pass) with MIX, the SLICER (16 patterns), DUCK (sidechain), SPREAD (the voices across the stereo field); a drum kit's lanes tuned, their decay set and (2.0) panned one by one; arpeggiator (14 modes), chord keys (9 chords, 5 voicings, (2.5) strummed), 16 scales; MONO, LEGATO, UNISON, glide |
 | **Effects** | chorus (CHORUS, FLANGER or PHASER, with FEEDBACK), delay and reverb (ROOM, SPRING or a stereo HALL) as sends; (2.5) the delay MONO, STEREO or PING, each track's PAN reaching it, and with STEREO or PING the chorus's CHORUS and FLANGER in stereo |
 | **Memory** | 4 projects, 32 user sounds, 3 user sample slots; the music comes back at power-on (RESTORE LAST); 6 levels of undo |
 | **Screen** | 240 × 240 colour; a graph on every page; HOME held shows every control's job; 6 themes and colours of your own; LARGE mode with tall cards |
 | **MIDI and USB** | USB MIDI in and out, TRS MIDI in; (2.2) everything the tracks play goes out on their channels (steps, arp, chords, ratchets), MIDI clock and Start / Stop out, a track as an external synth's (EXT), knob CCs out, remote buttons ((2.5) and knobs), a channel for the selected track, TRS-to-USB thru, Song Position in; clock from inside, USB or TRS; MIDI LEARN for any knob; Program Change; a stereo USB audio input to record the master on a computer ([MIDI implementation](#midi-implementation)) |
-| **Editor** | in the browser: sounds, steps, the mixer, the song lists, scenes and pattern pool, projects, the DRUM-X kit, the settings, PLAY, STOP and REC |
+| **Editor** | in the browser: sounds, steps, the mixer, the note tape, projects, the DRUM-X kit, the settings, PLAY, STOP and REC |
 | **Audio** | 44.1 kHz |
 
 ## A tour
@@ -226,13 +231,13 @@ too. Switching a track to DRUM-X keeps the kit the project has.
 </tr>
 </table>
 
-### Patterns, songs and performance
+### The tape and performance
 
 <table>
 <tr>
-<td width="33%"><img src="docs/img/song_playing.png" alt="SEQ › SONG"><br><sub><b>SONG</b>: each track's list of entries, the one playing filled, the next outlined</sub></td>
-<td width="33%"><img src="docs/img/layer_perform_scenes.png" alt="The PERFORM layer"><br><sub><b>PERFORM</b> (hold ARP): launch entries, stage mutes, recall scenes</sub></td>
-<td width="33%"><img src="docs/img/pool.png" alt="SAVE › PATTERNS"><br><sub><b>PATTERNS</b>: the pool of 64, what uses each one</sub></td>
+<td width="33%"><img src="docs/img/tape_notes.png" alt="SEQ › TAPE"><br><sub><b>TAPE</b>: four lanes of notes, the target's raised, the head a line across</sub></td>
+<td width="33%"><img src="docs/img/layer_perform.png" alt="The PERFORM layer"><br><sub><b>PERFORM</b> (hold ARP): each track's RUN, its mute, throws on the knobs</sub></td>
+<td width="33%"><img src="docs/img/tape_merge.png" alt="SEQ › TAPE, merging"><br><sub><b>MERGE</b>: a track into the target, after a question</sub></td>
 </tr>
 <tr>
 <td><img src="docs/img/layer_glo_active.png" alt="The GLO layer"><br><sub><b>GLO layer</b>: levels, solos, mutes, FILL, tap tempo</sub></td>
@@ -242,10 +247,10 @@ too. Switching a track to DRUM-X keeps the kit the project has.
 <tr>
 <td><img src="docs/img/six_fx.png" alt="The FX layer"><br><sub><b>FX layer</b> (hold FX): 14 effects on the white keys, an octave a row; the tracks' mutes on the black</sub></td>
 <td><img src="docs/img/perform_held.png" alt="The FX layer, effects held"><br><sub>Effects held, a repeat waiting for its sixteenth</sub></td>
-<td><img src="docs/img/song_chains.png" alt="SEQ › SONG with two chains"><br><sub><b>Chains</b> (2.0): entries on CHAIN, one box each, played and edited as one pattern</sub></td>
+<td><img src="docs/img/layer_rec.png" alt="The REC layer"><br><sub><b>REC layer</b> (SHIFT + REC): CLICK, COUNT-IN, GRID and FEEL</sub></td>
 </tr>
 <tr>
-<td><img src="docs/img/song_sounds.png" alt="SEQ › SONG, entries with a sound"><br><sub><b>An entry's sound</b> (2.0): its tile's corner cut off, the footer naming it; loaded as the track comes onto the entry</sub></td>
+<td><img src="docs/img/tape_muted.png" alt="SEQ › TAPE, a track muted"><br><sub><b>A muted track</b>: its lane dimmed, still on the tape</sub></td>
 <td><img src="docs/img/lane_mix.png" alt="EDIT › LANE MIX"><br><sub><b>LANE MIX</b> (2.0): each drum lane's level and pan</sub></td>
 <td><img src="docs/img/lanes_usr.png" alt="EDIT › LANES on a user kit"><br><sub><b>Your own kit</b> (2.0): KIT USR1, the slot's samples on the lanes; BELL has none, dimmed</sub></td>
 </tr>
@@ -319,8 +324,8 @@ them. MENU › DISPLAY › PLAYHEAD LINE leaves HOME's playhead a line, without 
 ### The web editor
 
 The [Skiff Editor](https://illuminus5.github.io/skiff/webapp/editor/) (`web/editor.html`, Chrome or Edge over USB MIDI)
-edits a connected FM-1 live: the sounds and their presets, the steps, the mixer, the Song tab (each track's list, the
-scenes, the pattern pool; an Akai APC mini mk2 plugged into the computer launches them, its LEDs following the FM-1),
+edits a connected FM-1 live: the sounds and their presets, the steps, the mixer, the Tape tab (the four lanes of
+notes, the target track, mute, clear and merge, the length, overdub or replace, the head, each track's sequencer RUN),
 the projects and their names, the DRUM-X kit and the MENU settings, with PLAY, STOP and REC
 at the top. It looks like the unit and follows its THEME, and sets THEME › CUSTOM's colours (Settings › Device
 display). It also keeps a library of sounds on the computer, imports
@@ -334,10 +339,9 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
 <table>
 <tr>
 <td width="50%"><img src="docs/img/editor_sound.png" alt="The editor's Sound tab"><br><sub>The Sound tab: every parameter of the selected track</sub></td>
-<td width="50%"><img src="docs/img/editor_song.png" alt="The editor's Song tab"><br><sub>The Song tab: the lists (a chain boxed, entries with a sound), the scenes, the pattern pool</sub></td>
+<td width="50%"><img src="docs/img/editor_tracks.png" alt="The editor's Mixer tab"><br><sub>The Mixer tab: the six strips</sub></td>
 </tr>
 <tr>
-<td><img src="docs/img/editor_tracks.png" alt="The editor's Mixer tab"><br><sub>The Mixer tab: the six strips</sub></td>
 <td><img src="docs/img/editor_samples.png" alt="The editor's Samples tab, a drum kit"><br><sub>The Samples tab (2.0): USR1 as a drum kit, a WAV a lane</sub></td>
 </tr>
 </table>
@@ -348,7 +352,7 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
   second core (MENU › SYSTEM › CPU 2 CORES, the FM-1's default), 8 on one core; the engines that cost more keep fewer
   (GRAIN and PHYS 3, VOICE 4, FM6 6; UNISON, the drums and SLICE 8), and a new note takes the quietest fading one
   first. T5 and T6 play every engine but
-  PHYS and GRAIN. ALGORITHM selects the track on every page; HOME, PERFORM, SONG and the MIXER show all six
+  PHYS and GRAIN. ALGORITHM selects the track on every page; HOME, PERFORM and the MIXER show all six
 - **Fourteen engines** (below), DRUM-X among them, each with at least 8 factory presets, 148 in all
 - **Sounds by type** (1.2): every factory sound is a BASS, LEAD, PAD, KEYS, PLUCK, DRUM or FX sound; SAVE › PRESETS'
   LIST (KNOB 4) shows one type across every engine, and the PRESETS knob then steps through it on every page
@@ -363,32 +367,36 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
 - **Sequencer:** 64 steps a track with chords, accent, slide, velocity, per-step chance and trig
   conditions (1:2, 3:4 ..), ratchets and **FLAM**, **NUDGE** (a step early or late, in 64ths), a step's own
   GATE, play direction (FWD, RVRS, PING, RAND); a drum grid (white keys steps, black keys lanes; a step's chance,
-  ratchet and condition cover every hit on it); live loop recording with overdub, **FEEL** (recording keeps where
-  you played), step recording, count-in and click. While playing, the step pages follow the playhead past step 16
+  ratchet and condition cover every hit on it); recording to the tape (below), **FEEL** (a take keeps where
+  you played), step entry, count-in and click. While playing, the step pages follow the playhead past step 16
   (1.3); MENU › STEP PREVIEW sounds the step the cursor lands on (1.3); QUANTIZE SEQ+T transposes the
   sequencer's notes by TRANSP before it snaps them to the scale (1.3)
 - **NOTES and FEEL** (2.0): two step pages, PRESETS the cursor on both. SEQ › NOTES, the piano roll, edits a
   **selection** as one, the cursor's step or a range (SHIFT + PRESETS): PITCH (along the scale), START, LENGTH and
   VELOCITY. **Notes overlap**, each with its own length (1–99 % of a step, 1 STEP, or 2 to 128 steps): a long note
-  goes on under the notes after it, a chord's notes can end apart, and REC and TAKE record them so; with REC off a
+  goes on under the notes after it, a chord's notes can end apart, and TAKE and step entry write them so; with REC off a
   key picks one note of a chord. **SHIFT + OCT− / OCT+** copy and paste the selection, **SHIFT + EDIT** deletes it
   (on the drum grid copy and paste follow the LANE: a figure moved from lane to lane). SEQ › FEEL, 16 tiles, sets
   CHANCE (OFF, 1–100 %, then the trig conditions), RATCHET (×1–4, FLAM), NUDGE and TYPE (accent, slide) on every
   selected step. A new note is 1 STEP long (PATTERN's GATE 100 %); PATTERN's PRESETS turns the direction. (2.5) With a
   note in the selection, NOTES' footer says SHIFT + EDIT: DELETE
-- **Patterns and songs:** 64 patterns shared by every project; each track has a list of 16 entries (A–P),
-  each a pattern played REPS times; **SONG** plays each track down its list. Patterns keep themselves: no save
-  needed. (2.0) Entries on **CHAIN** play and edit as one long pattern, **SONG ONCE** plays the lists once and stops,
-  SONG's **NEW** and **COPY+** put a new or a copied pattern in the list in place, and an entry can carry a
-  **sound** of its own, switched in on the entry's first step. (2.5) A song you can follow: while it plays, a line
-  along the header shows where it is, notched at the entries; SONG says BAR 9 OF 32 and its footer the entry's bars
-  (BARS 9-16); **SHIFT + PLAY** plays the song
-  from any entry, **SHIFT + EDIT** empties one, playing too
-  ([Patterns, lists and the song](#patterns-lists-and-the-song))
-- **PERFORM** (hold ARP): launch any track's entries from the white keys, stage mutes on the black ones, on
-  the next LOOP, BAR, BEAT or NOW (2.0: held, a black key cuts its track while it's held); 16 **scenes** (every track's
-  entry and mute), SAVE held + a key stores one; throws on KNOB 1–4 (CUTOFF, REVERB, DELAY, DIST) that glide back over
-  a bar (MENU › CONTROL › RETURN), or stay where they are with OCT+ (2.0)
+- **The note tape** (SEQ › TAPE): REC writes the notes of the armed tracks to a tape of 4 tracks, not audio: what you
+  play on the keys and over MIDI, and what the track's own sequencer and arpeggiator sound. Overdub by default (a note
+  the sequencer plays again each pass is kept once), or replace (the editor's Tape tab: each pass takes the place of the
+  one before); the tape is 1 to 256 bars long (KNOB 2) and holds 1,440 notes in all, kept with each project and with
+  the music now. Merge a track into another (KNOB 3, OCT+; nothing is lost, the notes stay in order) or clear one, each
+  after a question; mute a track (KNOB 4); KNOB 1 picks the track REC writes to. PLAY starts from the bar line the head
+  is on, GLO + PLAY from the top, STOP keeps the head and STOP again sends it home; on the SMK-37 **<** and **>**
+  move it a bar while stopped. A held note keeps its length across the loop's end. Step entry, TAKE and knob
+  recording are as before, and what the tape does not hold is knob moves ([The tape, GRID and the sequencers](#the-tape-grid-and-the-sequencers))
+- **GRID** (MENU › TIMING, REC layer KNOB 3, PERFORM's SELECT): OFF, 1 BAR, 1/2, 1/4, 1/8, 1/16, 1/32 or the triplets
+  1/4T, 1/8T, 1/16T. One grid for recording (a note is kept on the line), for playing live (a key played a little late
+  waits for the next line; "a little" is an eighth of the grid, 20 ms at most), for the arpeggiator's start and for
+  PERFORM's RUN and MUTE keys. 1/8, 1/16 and 1/32 swing with GLOBAL's SWING
+- **PERFORM** (hold ARP): each track has one step sequencer with a **RUN** bit: the white keys 1–6 turn a track's
+  sequencer on and off, the black keys its mute (2.0: held, a black key cuts its track while it's held), playing on the
+  next GRID line (GRID OFF: the track's next step; stopped: at once); throws on KNOB 1–4 (CUTOFF, REVERB, DELAY, DIST)
+  that glide back over a bar (MENU › CONTROL › RETURN), or stay where they are with OCT+ (2.0)
 - **TAKE** (SHIFT + SAVE): keep the last loop you played, notes and knob moves, on the track, after the fact
 - **FREE TAKE** (2.5): play with the transport stopped, up to 30 s, then SHIFT + SAVE. Skiff finds the tempo, the
   length and where the 1 is, and puts the phrase into the track in place of its pattern: KNOB 1 the guess (a double or
@@ -424,7 +432,7 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
 - **Quick layers:** hold FX, GLO, SEL, EDIT, ARP or SEQ for its map on the keys and knobs; SHIFT + the button,
   or the button held + HOME (1.2.1), keeps it open. The GLO layer: solos, mutes, FILL, tap tempo
 - **One mute** (2.0): the black keys F#3 to F#4 are the six tracks' MUTE in the GLO, FX and PERFORM layers alike: a
-  tap mutes or unmutes the track (the MIXER's MUTE, saved; PERFORM's at its LAUNCH point), held the track is cut
+  tap mutes or unmutes the track (the MIXER's MUTE, saved; PERFORM's on the GRID), held the track is cut
   only while the key is. A muted track is silent at once, its sounding notes too
 - **DRUM-X** (from [JIANT FM](https://github.com/juanjiant-bit/JIANT)): a synthesized kit of 8 sounds, each
   with an A and a B patch and MORPH between them, one kit per project, edited a sound at a time on EDIT › SOUND;
@@ -452,9 +460,9 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
 - **SPREAD** (EDIT › VOICE 2, 1.3): a POLY or UNISON track's voices left and right of PAN in turn
 - **Presets and projects:** factory presets, 32 user sounds and 4 projects, named on the device; SAVE › PROJECT
   loads, saves, renames and deletes them, and NEW on an empty slot starts a blank project (1.2.1); the music comes back at
-  power-on (RESTORE LAST, an autosave of its own). (2.5) SAVE › PROJECT's KNOB 3: LOAD, NEW (on any slot), CLEAR SONG
-  (every list emptied, the patterns kept; SAVE held puts the song back) and CLEAR TRACKS (every track's steps, the
-  sounds kept, each pattern kept in SAVE › PATTERNS to load back); the two CLEARs ask first. MENU › CONTROL › KEEP SENDS ON: a
+  power-on (RESTORE LAST, an autosave of its own). A project keeps its sounds, mix, sequencers (each track's steps and
+  automation, and its RUN) and its tape. (2.5) SAVE › PROJECT's KNOB 3: LOAD, NEW (on any slot) and CLEAR TRACKS (every
+  track's steps and automation emptied, the sounds and the tape kept); CLEAR TRACKS asks first. MENU › CONTROL › KEEP SENDS ON: a
   new sound keeps the track's CHORUS, DELAY and REVERB
 - **Screen and LEDs:** the BLOCKS look in Barlow Condensed with Fukiai icons; six themes; MENU › LARGE for tall
   cards ((2.5, #97) HOME's six sounds named under them); messages say the way out; idle buttons glow, what can be
@@ -471,61 +479,48 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
   external synth's track: no sound or voices of its own; its locks and automation go out as CCs). **CC OUT**: the knobs
   send their CCs (the map below). **REMOTE**: a channel on which CC 102–115 press the 14 buttons ((2.5) and CC 116–119, 85–87 turn the knobs). **AUTO CHANNEL**: a
   channel that plays the selected track. **THRU**: what the TRS jack brings in goes out over USB. **Song Position**
-  from a DAW puts the patterns on the right step. See [MIDI implementation](#midi-implementation). **MIDI LEARN** (1.3): MENU › MIDI
+  from a DAW puts the sequencers and the tape on the right step. See [MIDI implementation](#midi-implementation). **MIDI LEARN** (1.3): MENU › MIDI
   › MIDI LEARN, turn a knob, send a CC: the controller sets that parameter, up to 10 of them; **Program Change** (1.3)
   loads the track's nth preset. **Standard CCs**, each on the track its channel plays (recorded as automation while it's
   armed): CC7 LEVEL, CC10 PAN, CC5 GLIDE, CC73 ATTACK, CC75 DECAY, CC72 RELEASE, CC74 the engine's brightness (ANALOG's
   CUTOFF ..), CC71 its resonance, CC91 REVERB, CC93 CHORUS, CC94 DELAY; CC1 mod wheel and CC11 expression (MOD sources),
   CC64 sustain
 
-### Patterns, lists and the song
+### The tape, GRID and the sequencers
 
-The notes live in **patterns**, and a project says which ones each track plays:
+Each of the six tracks has **one step sequencer** (SEQ › NOTES, FEEL, PATTERN, AUTOMATION: 64 steps, its LENGTH, DIV,
+SWING, GATE and DIR, its automation and locks), saved with the project. Its **RUN** bit says whether it plays while
+the transport runs (PERFORM's white keys; all on in a new project). There is no pool of patterns, no lists, no song, no
+scenes and no LAUNCH point: what a track plays is what is on its steps, and the **tape** takes the rest.
 
-- **A pattern** is a track's notes exactly as they play: all 64 steps whole, each note's own length, LENGTH, DIV,
-  SWING, GATE and DIR, and the track's automation and locks. The sound is not part of it. There are 64 of them,
-  **01–64**, in one **pool** that every project shares (SAVE › PATTERNS); entries naming the same pattern share it,
-  and COPY gives an entry its own (2.0: the first free number after its original's, so copies sit beside it).
-- **SAVE › PATTERNS** shows the pool, what each pattern's LENGTH is and how many entries use it; KNOB 4, ACTION, is
-  what OCT+ does (stopped, after asking): **CLEAR** a pattern nothing uses, **EMPTY** one (2.0: its notes and
-  automation go, its number, its settings and the entries naming it stay) or **UNUSED** (2.0: every pattern nothing
-  uses cleared at once).
-- **Each track has a list** of 16 entries, A–P. An entry names a pattern (or none) and its REPS, the passes it plays
-  (1–16). A track is always on one entry, and HOME, the SEQ pages and the keys edit that entry's pattern.
-- **Nothing to save:** what a track has is kept as the pattern it is on, written to flash at the quiet autosave (and
-  before a project save or load, or a backup).
-- **SEQ › SONG** edits the lists: KNOB 1 the entry, KNOB 2 what goes in it (OCT+ puts it in, the footer saying
-  what): REST, a kept pattern, **NEW** (2.0: a new empty pattern), **COPY** (a copy of the entry's pattern),
-  **COPY+** (2.0: the copy into the first empty entry after it, this entry left as it is), CLEAR, then (2.0)
-  **SOUND** (the track's sound now onto the entry: SET SOUND STRINGS) and **NO SOUND**; KNOB 3 the REPS
-  (CHAIN, 1x–16x); KNOB 4 SONG (OFF, ON, ONCE).
-- **An entry's sound** (2.0): when the track comes onto it, the entry loads its sound, as PRESETS or USER would (a
-  program change): all but the track's own settings (LEVEL, PAN, MUTE, ARP, SCALE, the pattern's, the SLICER, the
-  ducking). Playing, it switches on the entry's first step, with its pattern; stopped, at once. An entry without one
-  leaves the sound as it is, so give the first entry one too to come back to it when the song loops. The sound is
-  the preset or user sound as it was loaded: one edited since is refused (SOUND EDITED: save it on SAVE › USER
-  first). A tile with a sound has its corner cut, and with nothing picked the footer names the entry's sound.
-- **Playing an entry** (SEQ › SONG's OCT+, a PERFORM key, a scene, or a double-click in the editor) switches at once
-  when stopped, and when playing at the **LAUNCH** point: the track's pass end (LOOP), the next BAR, BEAT, or NOW.
-- **SONG ON:** while playing, each track moves to its next entry once the current one's REPS are played, at its own
-  pass end; an empty entry between two patterns is a **rest**, silent for its REPS passes of the track's length
-  (1.2.1); the empty ones after the last end the list, and after the last comes the first. KNOB 2 also picks
-  **REST** for an entry anywhere in the list, so a track can start later or end sooner without an empty pattern. Tracks of different
-  lengths move on at different times. **SONG OFF:** each track loops its entry. GLO + PLAY starts every track from
-  its first entry. **SONG ONCE** (2.0): PLAY starts every track from its first entry, each plays its list once, then
-  goes quiet, and when the last one ends the transport stops.
-- **From an entry, and emptying one** (2.5): on SEQ › SONG, **SHIFT + PLAY** plays the song from the entry KNOB 1 is
-  on, stopped or playing: every track starts where its list is at that point, part-way into a pattern if it is in
-  the middle of one. **SHIFT + EDIT** empties that entry at once, playing too, without a dialog: its pattern stays
-  in SAVE › PATTERNS, and SAVE held brings the entry back (KNOB 2's CLEAR still asks, and may erase the pattern).
-- **A chain** (2.0): KNOB 3 below 1x is CHAIN, the entry going on into the next. Entries on CHAIN with the one they
-  end on are one pattern wherever the track plays them, each part with its own LENGTH, DIV and SWING: the header names
-  the chain and the part (A-B · 02), NOTES counts the steps on through the parts (NOTES 71), and a note can go on from
-  one part into the next (LENGTH, REC and TAKE across them). With SONG OFF a track loops the whole chain; with SONG
-  ON or ONCE it plays the chain through, its last entry's REPS repeating all of it. A launch onto any part starts it
-  from its first. An empty entry ends a chain.
-- **Scenes** (16, in the project) keep the entry each track is on and every mute; SAVE held + a key stores one, a key
-  recalls it, staged so that it all lands together.
+- **The tape** (SEQ › TAPE) holds notes: 4 tracks, each in time order, at 480 ticks to a quarter note and in 4/4,
+  1 to 256 bars long, 1,440 notes in all (TAPE FULL when it is). It holds neither knob moves nor audio. PLAY plays
+  it with the sequencers, and a note it plays is sounded by its own track, so followers, MIDI OUT and the engines
+  treat it as a key played.
+- **REC** arms tracks as before; with the transport playing (or a count-in), every note an armed track sounds goes onto
+  the tape's target track: keys, MIDI IN, its sequencer, its arpeggiator, strummed chords (each note as it sounds; chord
+  follow is applied again on playback). Overdub keeps what is there; a note played again within a few ticks of the same note is
+  kept once, so a sequencer left running over four passes leaves one pass. A key held when the loop ends keeps its
+  whole length. Turn RUN off after a pass to keep only the tape's copy. A muted track records nothing.
+- **TAPE's knobs:** 1 TRACK (the target: REC writes there, 3 and 4 act on it), 2 LENGTH (bars), 3 ACTION (CLEAR, or
+  merge track 1–4 into the target), 4 MUTE. OCT+ does the action after asking; a merge empties the source and keeps
+  every note, in order. Notes past the length stay on the tape unplayed; make it longer and they are back.
+- **The head** is where the tape is. PLAY starts from the bar line it is on (so every GRID line falls where the click,
+  the steps and the arpeggiator count it), GLO + PLAY from the top; STOP leaves it, STOP again sends it home; an
+  external Start goes to the top, Song Position moves it. The SMK-37's **<** and **>** step it a bar back and on
+  while stopped (STOP FIRST says why not while playing).
+- **GRID** (MENU › TIMING, REC layer KNOB 3, PERFORM's SELECT; OFF by default) is one setting for everything timed
+  on the keys: recording, live playing, the arpeggiator's start, and PERFORM's keys. Its lines are the click's: 1 BAR,
+  1/2, 1/4, 1/8, 1/16, 1/32 and the triplets 1/4T, 1/8T, 1/16T; 1/8, 1/16 and 1/32 swing with GLOBAL's SWING.
+  - **Recording:** a note you play is kept on its line (it sounds there too, below); the sequencer's and the
+    arpeggiator's notes are kept at the time they sound.
+  - **Playing live:** a key pressed at most an eighth of the grid after a line (20 ms at most) sounds now, as if on it;
+    later, it waits for the next line and sounds then, its release kept at its own length. The arpeggiator does the same
+    when it starts. A track's own sequencer and the tape are not delayed.
+  - **PERFORM:** RUN and MUTE keys land on the next line (GRID OFF: the track's next step; stopped: at once); a second
+    press of the same kind before it lands takes it back.
+- **Saving:** a project's tape is saved with it (SAVE › PROJECT, the autosave and the editor's backup), stopped only.
+  A held note is closed when the transport stops. A project from before the tape is OLD FORMAT (SAVE › PROJECT).
 
 ## Controls
 
@@ -539,11 +534,11 @@ by the keys, with what each key is in Skiff.
   the MENU opens
 - Hold FX, GLO, SEL, EDIT, ARP or SEQ for its layer; **SHIFT + the button** (or the button held, then HOME) keeps it open (the header says
   LOCKED), the button closes it. A locked FX layer latches its effects
-- **SAVE** tapped: its pages (PRESETS, USER, PATTERNS, PROJECT); **held**: undo. **SHIFT + SAVE**: TAKE, or
+- **SAVE** tapped: its pages (PRESETS, USER, PROJECT); **held**: undo. **SHIFT + SAVE**: TAKE, or
   (2.5) stopped, after playing: FREE TAKE
 - **REC** arms the selected track the moment it is pressed; on an armed track it disarms every track (its light is on
   while any track is armed). **SHIFT + REC** opens the REC layer:
-  F3 held clears the track's sequence, then CLICK, COUNT-IN, CLICK LEVEL, FEEL
+  F3 held clears the track's sequence, then CLICK, COUNT-IN, GRID, FEEL
 - **EDIT** opens the EDIT pages everywhere; on NOTES with REC armed it clears the cursor step
 - **SELECT** turns the pages of a family; **GLO + SELECT** sets the tempo (MENU › BPM LOCK, on by default)
 - **PRESETS** changes the sound; on NOTES and FEEL it moves the step cursor, on PATTERN it turns the direction, on
@@ -551,7 +546,8 @@ by the keys, with what each key is in Skiff.
   on a type (BASS, PAD ..) it steps through that type only
 - On NOTES and FEEL, **SHIFT + PRESETS** stretches the selection over a range of steps, **SHIFT + OCT− / OCT+** copy
   and paste it, **SHIFT + EDIT** deletes it; with REC off a key picks its note in the selection
-- (2.5) On SEQ › SONG, **SHIFT + PLAY** plays the song from the entry KNOB 1 is on, **SHIFT + EDIT** empties it
+- On SEQ › TAPE, OCT+ clears the target track or merges another into it (it asks first); on the SMK-37, **<** and **>**
+  move the tape's head a bar while stopped
 - On action pages and in dialogs, **OCT+** does it and **OCT−** goes back
 - Hold a step on SEQ › NOTES (on the drum grid its white key; on the piano roll the step you are entering, REC armed
   and stopped) and turn KNOB 1–4 to lock those parameters on that step: the four of the sound page you were on last
@@ -738,7 +734,7 @@ every setting back as a new unit has it. The web editor's Settings tab reads and
   sounds the step it lands on, when stopped
 - **RETURN** (CONTROL, 2.0): SNAP, 1 BEAT or 1 BAR (default): how MOMENTARY's values (LFO held + a knob), the FX
   layer's macros and PERFORM's throws come back, at once or in a line over that time; OCT+ keeps them instead
-- **KEEP SENDS** (CONTROL, 2.5): OFF (default) or ON: a new sound (PRESETS, a user preset, a song entry's sound)
+- **KEEP SENDS** (CONTROL, 2.5): OFF (default) or ON: a new sound (PRESETS, a user preset)
   keeps the track's CHORUS, DELAY and REVERB sends, as it keeps LEVEL and PAN; OFF, the sound brings its own
 - **CPU** (SYSTEM): **1 CORE** or **2 CORES** (the FM-1's default since 2.5, which moves every FM-1 to it once; the
   SMK-37's stays 1 CORE), then how busy the audio is. A change takes effect at the next power-on: stop playing first
