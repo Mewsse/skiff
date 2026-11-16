@@ -223,6 +223,8 @@ static int test_replace(void)
     song.rec = 0;
     run_to(3u * TAPE_BAR);
     stop();
+    bad += check("replace mode: STOP sweeps the ghosts (the main loop's tape_poll): the count is the notes",
+                 tp_trk[0].count == 1u && list(0) == 1u && !tp_ghosts);
     tape_sweep();
     list(0);
     bad += check("replace mode: the second pass replaces the first (A ghosted as it passed, swept), B stays",
@@ -317,6 +319,48 @@ static int test_count_in(void)
     bad += check("count-in: let go before the start, at 0, a sixteenth long", listed == 1u && nodes[0].at == 0u &&
                  nodes[0].len == TAPE_TPQ / 4u && !nodes[0].held);
     stop();
+    fresh(4, 0);                                        /* (PLAY from bar 3: the head's bar line, not 0) */
+    cin_bars = 1;
+    song.rec = 1;
+    tape_head = 2u * TAPE_BAR;
+    transport_req = 1;
+    for (blk = 0; blk < 10000u && !(cin_left == 1u && cin_pos > click_beat_len() * 3u / 4u); blk++)
+        block();
+    input_on(t, 64, 100);
+    for (blk = 0; blk < 10000u && !song.playing; blk++)
+        block();
+    block();
+    list(0);
+    bad += check("count-in from bar 3: a note held from its last eighth lands on the head's bar line (3840), open",
+                 listed == 1u && nodes[0].at == 2u * TAPE_BAR && nodes[0].held && nodes[0].note == 64u);
+    input_off(t, 64);
+    stop();
+    return bad;
+}
+
+/* an engine switch while the tape sounds a long note of that instrument: the tape's voice ends as the switch begins
+ * (nothing left sounding on the old engine's note), another instrument's keeps sounding */
+static int test_engine_switch_voices(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0, blk, k, inst0 = 0, inst1 = 0;
+    fresh(1, 0);
+    host_preset(t, 0, 1);
+    (void)tape_insert(0, 100u | 60u << 20 | 0u << 27, 1500u | 100u << 20, TAPE_ANY_PASS);
+    (void)tape_insert(1, 100u | 62u << 20 | 1u << 27, 1500u | 100u << 20, TAPE_ANY_PASS);
+    transport_req = 1;
+    run_to(400);
+    t->eng_req = (uint8_t)(t->engine ? 0u : 1u);
+    for (blk = 0; blk < 4u; blk++)
+        block();
+    for (k = 0; k < TAPE_VOICES; k++) {
+        inst0 += tp_voice[k] && TP_INST(tp_voice[k]) == 0u;
+        inst1 += tp_voice[k] && TP_INST(tp_voice[k]) == 1u;
+    }
+    bad += check("engine switch while the tape sounds: that instrument's tape voice ended, another's kept",
+                 !inst0 && inst1 == 1u && !tp_open_n);
+    stop();
+    bad += check("engine switch under the tape: nothing sounding after STOP", !sounding());
     return bad;
 }
 
@@ -422,9 +466,94 @@ static int test_ends(void)
     return bad;
 }
 
+/* STRUM on a POLY track: a chord recorded strummed in pass 1, then each pass plays it back; the replay is never
+ * recorded again (its nodes keep their ticks and lengths, none left held, nothing sounding after STOP) */
+static int test_strum_passes(void)
+{
+    static const uint8_t CHORD[3] = {60, 64, 67};
+    track_t *t = &trk[0];
+    node_t first[3];
+    uint32_t bad = 0, k, wrong = 0, count1;
+    fresh(1, 0);
+    t->p[P_STRUM] = 50;
+    song.rec = 1;
+    transport_req = 1;
+    run_to(100);
+    for (k = 0; k < 3u; k++)
+        input_on(t, CHORD[k], 100);
+    run_to(500);
+    for (k = 0; k < 3u; k++)
+        input_off(t, CHORD[k]);
+    run_to(TAPE_BAR - 10u);
+    count1 = list(0);
+    memcpy(first, nodes, sizeof first);
+    run_to(5u * TAPE_BAR - 10u);
+    list(0);
+    for (k = 0; k < listed && k < 3u; k++)
+        wrong += nodes[k].at != first[k].at || nodes[k].len != first[k].len || nodes[k].held || first[k].len < 100u;
+    bad += check("STRUM 50, overdub: the chord recorded strummed once, 4 passes of its replay leave it as it was",
+                 count1 == 3u && listed == 3u && !wrong && !tp_open_n);
+    stop();
+    bad += check("STRUM: nothing sounding after STOP", !sounding());
+    fresh(1, 0);                                        /* (a step's chord: recorded as it sounded, strummed) */
+    t->p[P_STRUM] = 50;
+    t->p[P_SLEN] = 16;
+    put_step(t, 0, 3, CHORD, ST_NOTE, 0);
+    song.rec = 1;
+    transport_req = 1;
+    run_to(TAPE_BAR - 10u);
+    count1 = list(0);
+    memcpy(first, nodes, sizeof first);
+    run_to(4u * TAPE_BAR - 10u);
+    list(0);
+    for (k = wrong = 0; k < listed && k < 3u; k++)
+        wrong += nodes[k].at != first[k].at || nodes[k].held;
+    bad += check("STRUM 50, a step's chord: recorded spread as it sounded (low to high), the passes after add none",
+                 count1 == 3u && listed == 3u && !wrong && first[0].at < first[1].at && first[1].at < first[2].at &&
+                 first[0].note == 60u && first[2].note == 67u);
+    stop();
+    return bad;
+}
+
+/* GRID 1/16: a late note waits for its line and is let go before its end (SOUNDED, RELEASED, its off still due); the
+ * same key pressed again in the next line's window sounds at once: the old one's pending off never ends it */
+static int test_live_retrigger(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0, k, cut = 0, at2;
+    fresh(4, 5);
+    song.rec = 1;
+    transport_req = 1;
+    run_to(1920u + 120u + 60u);                         /* (60 ticks after a line: late, sounds on the next) */
+    input_on(t, 60, 100);
+    run_to(song_ticks + 20u);
+    input_off(t, 60);
+    run_to(1920u + 240u + 6u);                          /* (in the next line's window: at once) */
+    at2 = tape_head;
+    input_on(t, 60, 100);
+    for (k = 0; k < 8u; k++) {
+        uint32_t i, gate = 0;
+        run_to(song_ticks + 10u);
+        for (i = 0; i < NVOICE; i++)
+            gate |= t->v[i].gate;
+        cut += !gate;
+    }
+    input_off(t, 60);
+    block();
+    list(0);
+    bad += check("live, GRID: a key pressed again while its delayed note's end is due keeps sounding while held",
+                 !cut && listed == 1u && nodes[0].at == at2 - at2 % 120u && nodes[0].len >= 70u && !nodes[0].held &&
+                 !tp_open_n);                           /* (both on the same line: one node, the second's length) */
+    stop();
+    bad += check("live retrigger: nothing sounding after STOP", !sounding());
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
+    fails += test_strum_passes();
+    fails += test_live_retrigger();
     fails += test_live_off();
     fails += test_live_grid();
     fails += test_seq_passes();
@@ -435,6 +564,7 @@ int main(void)
     fails += test_count_in();
     fails += test_mute();
     fails += test_ends();
+    fails += test_engine_switch_voices();
     printf(fails ? "taperec: %u FAILED\n" : "taperec: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

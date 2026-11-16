@@ -44,6 +44,7 @@ static void host_yield(void);
 #define TAPE_N 1440u
 #define TAPE_IRQ_HOOKS
 #define TAPE_YIELD() host_yield()
+#define TAPE_MS() 0u                                    /* (no ms clock here: the ISR's blocks run in TAPE_YIELD) */
 #include "../firmware/src/tape.c"
 
 static int failed;
@@ -608,7 +609,7 @@ static void test_overlap(void)
               off_at[0][61] == 1550);
     play_to(1060, 10);
     stop_at = song_ticks;
-    tape_voices_end(-1);
+    tape_voices_end(-1, 1);
     song.playing = 0;
     check("STOP: every tape voice ends", gates_off() && off_at[0][61] == stop_at);
     tape_poll();
@@ -622,7 +623,7 @@ static void test_all_end(void)
         put(k & 3u, rnd(tape_length()), rnd(128), rnd(NTRK), 1u + rnd(3000));
     start();
     play(tape_length() + 1234u, 7);
-    tape_voices_end(-1);
+    tape_voices_end(-1, 1);
     check("300 notes, STOP mid-pass: voice table empty, every gate off", gates_off());
     start();
     play(tape_length() / 2u, 7);
@@ -755,6 +756,16 @@ static void test_codec(void)
     tape_load_end();
     check("decode: a bad record dropped, the next tracks still in place",
           tp_trk[0].count == counts[0] - 1u && tp_trk[1].count == counts[1] && !consistent(0));
+    store[0 + 3] &= (uint8_t)~0x38u;
+    store[0 + 4] = store[0 + 5] = 0xFFu;            /* (a length of 2^20 - 1 ticks: past any tape) */
+    store[0 + 6] |= 0x0Fu;
+    tape_load_begin(counts);
+    for (page = 0; page < bytes; page += TAPE_PAGE)
+        tape_dec_page(store + page, bytes - page < TAPE_PAGE ? bytes - page : TAPE_PAGE);
+    tape_load_end();
+    check("decode: a length past the longest tape clamped to it (256 bars)",
+          tp_trk[0].count == counts[0] && TP_LEN(tp_w1[tp_trk[0].first]) == TAPE_LEN_MAX &&
+          TP_VEL(tp_w1[tp_trk[0].first]) == TP_VEL(want1[0]) && !consistent(0));
 }
 
 static void test_queue(void)
@@ -780,6 +791,20 @@ static void test_queue(void)
     tape_rq_push(TR_CLOSE_INST, tape_head, 0, 0, 0);
     tape_poll();
     check("TR_CLOSE_INST closes that instrument's notes", !tp_open_n);
+    {
+        uint16_t counts[TAPE_TRACKS] = {0, 0, 0, 0};
+        uint32_t epoch = tp_epoch;
+        tape_rq_push(TR_ON, tape_head, 50, 0, 90);   /* (recorded just before a LOAD) */
+        tp_rq_lost = 1;
+        yield_on = 0;                               /* (no ISR block comes: the wait is bounded) */
+        tp_epoch = epoch ? epoch : 1u;
+        tape_load_begin(counts);
+        tape_load_end();
+        tape_poll();
+        yield_on = 1;
+        check("a LOAD: the record queue emptied (nothing recorded before lands in it); no block: the wait ends",
+              tp_trk[0].first == TAPE_END && !tp_trk[0].count && !tp_open_n && !tp_rq_lost && tp_rq_r == tp_rq_w);
+    }
 }
 
 int main(int argc, char **argv)

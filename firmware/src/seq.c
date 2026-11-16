@@ -891,6 +891,24 @@ static void live_off(const live_ev_t *ev)
     in_solo = 0;
 }
 
+/* track's note sounds again: an earlier one sounded, let go, its end still due, ends now (else that end would cut this
+ * one). keep: the entry sounding (LIVE_N none), its index after the removals returned */
+static __attribute__((noinline)) uint32_t live_settle(uint32_t track, uint32_t note, uint32_t keep)
+{
+    uint32_t i = 0;
+    while (i < live_n) {
+        const live_ev_t *ev = &live_q[i];
+        if (i != keep && ev->trk == track && ev->note == note && (ev->flags & LF_SOUNDED) && (ev->flags & LF_REL)) {
+            live_off(ev);
+            live_remove(i);
+            keep -= i < keep;
+        } else {
+            i++;
+        }
+    }
+    return keep;
+}
+
 /* a note let go: 1 when it was still waiting (its end is kept for when it sounds) */
 static __attribute__((noinline)) int live_release(const track_t *t, uint32_t note)
 {
@@ -914,6 +932,8 @@ static __attribute__((noinline)) void live_tick(void)
     while (i < live_n) {
         live_ev_t *ev = &live_q[i];
         if (!(ev->flags & LF_SOUNDED) && (!grid || (int32_t)(song_ticks - ev->due) >= 0)) {
+            i = live_settle(ev->trk, ev->note, i);
+            ev = &live_q[i];
             in_solo = (ev->flags & LF_SOLO) != 0u;
             input_now(&trk[ev->trk], ev->note, ev->vel, ev->flags & LF_KEY);
             in_solo = 0;
@@ -951,6 +971,8 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
 {
     if (!(t->p[P_AMODE] && !in_solo) && live_hold(t, note, vel))
         return;
+    if (live_n)
+        (void)live_settle(trk_index(t), note, LIVE_N);
     input_now(t, note, vel, in_from_key);
 }
 
@@ -1405,7 +1427,7 @@ static void seq_stop(void)
 {
     uint32_t i;
     song.playing = 0;
-    tape_voices_end(-1);
+    tape_voices_end(-1, 1);
     live_drop((1u << NTRK) - 1u);
     free_stop();                                   /* ((2.5) take.c: what is played from now: a free take */
     thr_out = 0;                                   /* (Skiff) the throws back at once (throw.c) */
@@ -1438,7 +1460,7 @@ static void seq_stop(void)
 static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t pos)
 {
     uint32_t i, k, rem, adv, len, per, u;
-    tape_voices_end(-1);
+    tape_voices_end(-1, 1);
     seq_start();
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
@@ -1480,7 +1502,7 @@ static __attribute__((noinline)) void seq_locate(uint32_t pos)
  * their shape (tests/target_budget.py reads their loops from the layout) */
 static __attribute__((noinline)) void seq_go(void)
 {
-    tape_voices_end(-1);
+    tape_voices_end(-1, 1);
     tape_head -= tape_head % TAPE_BAR;
     seq_start();
 }
@@ -2119,18 +2141,20 @@ static __attribute__((noinline)) void events_block(uint32_t n)
     if (live_n)
         live_drop(pr);
     if (pr == (1u << NTRK) - 1u)
-        tape_voices_end(-1);
+        tape_voices_end(-1, 1);
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         if ((pr >> i) & 1u) {
             if (pr != (1u << NTRK) - 1u)
-                tape_voices_end((int)i);
+                tape_voices_end((int)i, 1);
             midi_forget_track(i);
             trk_all_off(t);
             t->nheld = 0;
             t->arp_phys = 0;
             arp_forget(t);
         }
+        if (t->eng_req != t->engine && !t->xf_on && tp_voices)
+            tape_voices_end((int)i, 0);               /* (an engine switch begins: the tape's notes on it end) */
         if (live_n && t->eng_req != t->engine)
             live_drop(1u << i);                       /* (a note that waits for the GRID: not onto the new engine) */
         engine_block(t);                              /* engine switch: fade, then switch (voice.c) */

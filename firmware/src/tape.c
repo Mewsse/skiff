@@ -17,6 +17,7 @@
 #define TAPE_RQ 128u
 #define TAPE_BURST 16u                 /* nodes a track sounds in one block at most (the rest due then: skipped) */
 #define TAPE_BARS_MAX 256u
+#define TAPE_LEN_MAX (TAPE_BARS_MAX * TAPE_BAR)   /* a note's longest (a stored one past L keeps its own: L can shrink) */
 #define TAPE_PAGE 256u
 #define TAPE_ANY_PASS (1u << 16)         /* tape_insert's pass for an edit, not a recording: plays this pass when ahead */
 
@@ -30,6 +31,12 @@ static uint8_t tape_playing;           /* 1 while the tape sounds a note: the re
 #ifndef TAPE_LOAD_WAIT
 #define TAPE_LOAD_WAIT 1               /* tape_load_begin waits for the ISR's block (hostsim.c: 0, the host's one thread) */
 #endif
+#ifndef TAPE_MS
+#define TAPE_MS() fm1_ms               /* (core.h; tests/tape_test.c its own) */
+#endif
+#define TAPE_LOAD_MS 5u                /* .. at most this long (blocks are 0.7 ms) or TAPE_LOAD_SPINS tests (no ms tick: the
+                                        * web emulator's, whose clock is its audio); then on: no ISR runs a block */
+#define TAPE_LOAD_SPINS (1u << 20)
 #ifndef TAPE_IRQ_HOOKS
 static uint32_t tp_irq_save(void) { fm1_irq_off(); return 0; }
 static void tp_irq_restore(uint32_t flags) { (void)flags; fm1_irq_on(); }
@@ -74,6 +81,8 @@ static uint8_t tp_open_n __attribute__((section(".pool")));
 static uint8_t tp_target __attribute__((section(".pool"))), tp_overdub __attribute__((section(".pool")));   /* tape_init: 0, 1 */
 static uint8_t tp_full __attribute__((section(".pool")));                /* main: a note was refused (TAPE FULL) */
 static volatile uint8_t tp_seek_req __attribute__((section(".pool")));   /* main: the ISR seeks before it plays */
+static volatile uint8_t tp_ghosts __attribute__((section(".pool")));     /* ISR: replace mode ghosted a node (main sweeps
+                                                                          * them once stopped) */
 static uint32_t tp_seen_ticks __attribute__((section(".pool")));         /* ISR: song_ticks, tape_pass of its last block */
 static uint16_t tp_seen_pass __attribute__((section(".pool")));
 
@@ -113,6 +122,7 @@ static void tape_init(void)
     tp_limbo_epoch = 0;
     tp_seen_ticks = song_ticks;
     tp_seen_pass = tape_pass;
+    tp_ghosts = 0;
 }
 
 /* ------------------------------------------------------------------ ISR side --- */
@@ -179,9 +189,10 @@ static void tp_play(uint32_t track, uint32_t wrapped)
                 break;
             w1 = tp_w1[node];
             if (!quiet && !(w0 & TP_GHOST) && !(w1 & TP_HELD)) {
-                if (replace)
+                if (replace) {
                     tp_w0[node] = w0 | TP_GHOST;
-                else if (budget) {
+                    tp_ghosts = 1;
+                } else if (budget) {
                     tp_fire(track, w0, w1);
                     budget--;
                 }
@@ -263,14 +274,17 @@ static void tape_rq_push(uint32_t kind, uint32_t at, uint32_t note, uint32_t ins
     tp_rq_w = (uint16_t)(pos + 1u);
 }
 
-/* ISR: STOP, a locate, SPP, panic, MIDI IN overflow end the tape's voices (inst < 0: all) and close the open notes.
- * Call it before the head moves: the close is stamped with the head now */
-static __attribute__((noinline)) void tape_voices_end(int inst)
+/* ISR: STOP, a locate, SPP, panic, MIDI IN overflow end the tape's voices (inst < 0: all) and, close set, the open
+ * notes (an engine switch: the voices only, a held key's note ends with its key). Call it before the head moves: the
+ * close is stamped with the head now */
+static __attribute__((noinline)) void tape_voices_end(int inst, int close)
 {
     uint32_t k;
     for (k = 0; tp_voices && k < TAPE_VOICES; k++)
         if (tp_voice[k] && (inst < 0 || TP_INST(tp_voice[k]) == (uint32_t)inst))
             tp_voice_end(k);
+    if (!close)
+        return;
     tp_rec_mask &= (uint8_t)(inst < 0 ? 0u : ~(1u << inst));
     tape_rq_push(inst < 0 ? TR_CLOSE_ALL : TR_CLOSE_INST, tape_head, 0, inst < 0 ? 0u : (uint32_t)inst, 0);
 }
@@ -554,8 +568,15 @@ static void tape_poll(void)
         TAPE_YIELD();
     }
     if (tp_rq_lost) {
+        uint32_t irq = tp_irq_save(), lost = tp_rq_lost;   /* (tested and cleared at once: one the ISR sets after stays) */
         tp_rq_lost = 0;
-        tp_close_open(0, 0, tape_head, tape_pass);
+        tp_irq_restore(irq);
+        if (lost)
+            tp_close_open(0, 0, tape_head, tape_pass);
+    }
+    if (tp_ghosts && !song.playing) {             /* stopped: the ghosts go, the counts are the notes (the TAPE page) */
+        tp_ghosts = 0;
+        tape_sweep();
     }
 }
 
@@ -614,7 +635,7 @@ static uint32_t tape_enc_page(tape_it_t *it, uint8_t *page)
 /* stopped only, audio running: every track empties, then the pages come in (tape_dec_page), then tape_load_end */
 static void tape_load_begin(const uint16_t *counts)
 {
-    uint32_t k, irq, epoch;
+    uint32_t k, irq, epoch, since, spins;
     for (k = 0; k < TAPE_TRACKS; k++) {
         irq = tp_irq_save();
         tp_trk[k].first = tp_trk[k].cur = TAPE_END;
@@ -625,8 +646,14 @@ static void tape_load_begin(const uint16_t *counts)
         tp_ld.head[k] = tp_ld.tail[k] = TAPE_END;
     }
     tp_ld.track = 0;
+    irq = tp_irq_save();                          /* (what the ISR recorded before: not into the tape coming in) */
+    tp_rq_r = tp_rq_w;
+    tp_rq_lost = 0;
+    tp_irq_restore(irq);
     epoch = tp_epoch;
-    while (TAPE_LOAD_WAIT && epoch && tp_epoch == epoch)   /* (epoch 0: the audio has not started, no ISR to wait for) */
+    since = TAPE_MS();
+    for (spins = 0; TAPE_LOAD_WAIT && epoch && tp_epoch == epoch && TAPE_MS() - since < TAPE_LOAD_MS &&
+                    spins < TAPE_LOAD_SPINS; spins++)      /* (epoch 0: the audio has not started, no ISR to wait for) */
         TAPE_YIELD();
     for (k = 0; k < TAPE_N; k++)
         tp_nx[k] = (uint16_t)(k + 1u < TAPE_N ? k + 1u : TAPE_END);
@@ -656,6 +683,8 @@ static void tape_dec_page(const uint8_t *page, uint32_t bytes)
         if (TP_INST(word[0]) >= NTRK || !TP_LEN(word[1]) || !TP_VEL(word[1]) ||
             (tail != TAPE_END && TP_AT(tp_w0[tail]) > TP_AT(word[0])) || tp_free == TAPE_END)
             continue;
+        if (TP_LEN(word[1]) > TAPE_LEN_MAX)
+            word[1] = (word[1] & ~0xFFFFFu) | TAPE_LEN_MAX;
         node = tp_free;
         tp_free = tp_nx[node];
         tp_w0[node] = word[0];

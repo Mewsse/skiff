@@ -450,6 +450,10 @@ static void trk_sound_on(track_t *t, uint32_t note, uint32_t vel);
  * events_block, the audio ISR; the main loop's notes start at once); strum_flush, at its end, orders them, starts the
  * first and times the others; strum_tick, at the next blocks' start, starts each as its time comes. A note let go
  * before its time never starts; a panic forgets them. One note, a kit, MONO / LEGATO / UNISON, STRUM OFF: at once */
+static uint8_t tape_playing;                       /* 1 while the tape sounds a note: the record hooks skip it (tape.c) */
+#define TAPE_HAVE_PLAYING
+static void tape_rec(const track_t *t, uint32_t note, uint32_t vel);   /* (seq.c: REC onto the tape; vel 0 an end) */
+
 #define SQ_N 8u
 static struct { uint8_t n, fresh, alt, note[SQ_N], vel[SQ_N]; uint16_t due[SQ_N]; } sq[NTRK];   /* fresh: the last
                                                          * ones, this block's, not yet timed */
@@ -516,8 +520,8 @@ static __attribute__((noinline)) void strum_flush(void)   /* this block's, order
 static int strum_add(track_t *t, uint32_t note, uint32_t vel)   /* kept for strum_flush: 1; to start now: 0 */
 {
     uint32_t k = (uint32_t)(t - trk) % NTRK;
-    if (!sq_in || !t->p[P_STRUM] || trk_vmode(t) != V_POLY || chord_kit(t) || sq[k].n >= SQ_N)
-        return 0;
+    if (!sq_in || tape_playing || !t->p[P_STRUM] || trk_vmode(t) != V_POLY || chord_kit(t) || sq[k].n >= SQ_N)
+        return 0;                                       /* (the tape's own: recorded strummed already, at once) */
     sq[k].note[sq[k].n] = (uint8_t)note;
     sq[k].vel[sq[k].n] = (uint8_t)vel;
     sq[k].due[sq[k].n++] = 0;
@@ -535,10 +539,6 @@ static void strum_drop(const track_t *t, uint32_t note)   /* let go before its t
         } else
             j++;
 }
-
-static uint8_t tape_playing;                       /* 1 while the tape sounds a note: the record hooks skip it (tape.c) */
-#define TAPE_HAVE_PLAYING
-static void tape_rec(const track_t *t, uint32_t note, uint32_t vel);   /* (seq.c: REC onto the tape; vel 0 an end) */
 
 /* a note starts on track t: (2.5) a strum's kept for its time, else trk_note_go now */
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
