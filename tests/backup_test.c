@@ -273,13 +273,13 @@ int main(void)
         memset(&po, 0, sizeof po);
         po.magic = PERSIST_MAGIC; po.palette = palette_to_stored(2); po.lowcut = 1; po.panel = panel;
         po.favorites.factory[15][24] = 0xA5u;
-        po.favorites.factory[15][26] = 2u;               /* (a byte nothing reads now: kept as it came) */
+        po.favorites.factory[15][26] = 2u;               /* (LAUNCH's old byte, before ui_set_rev 4: GRID OFF) */
         po.favorites.factory[9][0] = 4;                  /* (PHYS's third preset starred) */
         bad += check("(2.0) settings of a PER4 archive restore, stored as SKS1",
                      put_all(1, &po, sizeof po, st_crc32(&po, sizeof po)) == 0 && settings.palette == 2u &&
-                     settings.lowcut == 1u && favorites.factory[15][26] == 2u && favorites.factory[9][0] == 4u &&
+                     settings.lowcut == 1u && favorites.factory[15][26] == 0u && favorites.factory[9][0] == 4u &&
                      st_load(OBJ_SETTINGS, &got, sizeof got) == (int)sizeof got && got.magic == SKS_MAGIC &&
-                     got.s.launch == 2u && got.fav[9][0] == 4u && !memcmp(&got, &persist_saved, sizeof got));
+                     got.s.grid == 0u && got.fav[9][0] == 4u && !memcmp(&got, &persist_saved, sizeof got));
         before = erases;
         po.magic = SKS_MAGIC;
         bad += check("  a PER4-sized record of another magic is refused, nothing written",

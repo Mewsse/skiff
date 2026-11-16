@@ -10,6 +10,7 @@
 #define ENGI_SAMPLE 4u
 #define ENGI_DRUM 10u
 #define SMP_SET_PERC 4u
+#define GRID_N 10u                               /* (grid.c: OFF .. 1/16T) */
 static uint8_t fx_lowcut;
 static void fm1_led_key(unsigned k, int on) { (void)k; (void)on; }
 static int fm1_enc_take(unsigned k) { (void)k; return 0; }
@@ -218,6 +219,7 @@ int main(void)
         for (i = 0; i < 32u; i++)
             p.favorites.factory[15][i] = (uint8_t)(i + 1u);
         p.favorites.factory[15][21] = 3; p.favorites.factory[15][24] = 0xA5u;   /* (LIST: a type; Skiff's mark) */
+        p.favorites.factory[15][26] = 7;                                       /* (GRID 1/4T) */
         p.favorites.factory[15][27] = 7; p.favorites.factory[15][28] = 0xD5u;   /* (SCREEN OFF 4; CLICK .. FEEL) */
         for (i = 0; i < 22u; i++)
             p.favorites.factory[14][8u + i] = (uint8_t)(0x40u + i);
@@ -232,11 +234,26 @@ int main(void)
         settings_export(&s);
         assert(s.magic == SKS_MAGIC && s.s.restore_slot == 1u && s.s.restore_clean[3] == 5u && s.s.cpu == 6u &&
                s.s.mch[0] == 7u && s.s.mch[5] == 12u && s.s.cpal == 15u && s.s.ret == 17u && s.s.unit_g[2] == 21u &&
-               s.s.ptag == 3u && s.s.set_rev == 24u && !s.s.rsv24 && s.s.launch == 27u && s.s.scr == 7u &&
+               s.s.ptag == 3u && s.s.set_rev == 24u && !s.s.rsv24 && s.s.grid == 7u && s.s.scr == 7u &&
                s.s.rec == 0xD5u && s.s.prefs == 31u && s.s.layers == 32u);
         assert(s.cpal_cols[0] == 0x40u && s.cpal_cols[21] == 0x40u + 21u && s.ml[0] == 0x80u && s.ml[29] == 0x80u + 29u &&
                s.fav[14][0] == 0x0Fu && !s.fav[14][8] && !s.fav[14][29] && !s.fav[ENGI_DIGITAL][2] &&
                !s.fav[ENGI_DIGITAL][31] && s.fav[8][0] == 1u && s.room[0] == 0x33u && s.room[31] == 0x33u);
+        {   /* (P3) GRID, [15][26]: LAUNCH's before ui_set_rev 4 (a record of before reads OFF), a value past the table is OFF */
+            sks_t g;
+            memset(&g, 0, sizeof g);
+            g.magic = SKS_MAGIC;
+            g.s.set_rev = 3; g.s.grid = 2;
+            assert(settings_import(&g, sizeof g) == 1 && g.s.grid == 0u && favorites.factory[15][26] == 0u);
+            memset(&g, 0, sizeof g);
+            g.magic = SKS_MAGIC;
+            g.s.set_rev = 4; g.s.grid = 9;
+            assert(settings_import(&g, sizeof g) == 1 && g.s.grid == 9u && favorites.factory[15][26] == 9u);
+            memset(&g, 0, sizeof g);
+            g.magic = SKS_MAGIC;
+            g.s.set_rev = 4; g.s.grid = 10;
+            assert(settings_import(&g, sizeof g) == 1 && g.s.grid == 0u && favorites.factory[15][26] == 0u);
+        }
         memset(favorites.factory, 0, sizeof favorites.factory);
         t = s;
         assert(settings_import(&t, sizeof t) == 1 && !memcmp(&t, &s, sizeof t) &&

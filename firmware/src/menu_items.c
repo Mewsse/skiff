@@ -25,13 +25,13 @@
 enum { MI_COLOR, MI_PHEAD, MI_LARGE, MI_ANIM, MI_SCROFF, MI_HINTS, MI_HOLD, MI_ACCEL, MI_BPMLOCK, MI_SCLLED, MI_PREVIEW,
        MI_RETURN, MI_KEEPS, MI_KVEL, MI_LOWCUT, MI_USB, MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_TUNE, MI_CLOCK, MI_CLKOUT, MI_ROUTE,
        MI_AUTOCH, MI_TCH1, MI_TCH2, MI_TCH3, MI_TCH4, MI_TCH5, MI_TCH6, MI_NOTES, MI_CCOUT, MI_THRU, MI_REMOTE, MI_LEARN,
-       MI_LCLEAR, MI_SERIAL_IN MI_RESTORE, MI_CPU, MI_CLK, MI_PANEL, MI_RESET, MI_ABOUT, MI_COUNT, MI_LEDS MI_SERIAL_OUT };
+       MI_LCLEAR, MI_GRID, MI_SERIAL_IN MI_RESTORE, MI_CPU, MI_CLK, MI_PANEL, MI_RESET, MI_ABOUT, MI_COUNT, MI_LEDS MI_SERIAL_OUT };
 static const char *const KVEL_N[SMK_KV_N] = {"DYNAMIC", "SOFT", "HARD", "FIXED 64", "FIXED 100", "FIXED 127"};
 #else
 enum { MI_COLOR, MI_PHEAD, MI_LARGE, MI_ANIM, MI_LEDS, MI_SCROFF, MI_HINTS, MI_HOLD, MI_ACCEL, MI_BPMLOCK, MI_SCLLED,
        MI_PREVIEW, MI_RETURN, MI_KEEPS, MI_LOWCUT, MI_USB, MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_TUNE, MI_CLOCK, MI_CLKOUT, MI_ROUTE,
        MI_AUTOCH, MI_TCH1, MI_TCH2, MI_TCH3, MI_TCH4, MI_TCH5, MI_TCH6, MI_NOTES, MI_CCOUT, MI_THRU, MI_REMOTE, MI_LEARN,
-       MI_LCLEAR, MI_SERIAL_IN MI_RESTORE, MI_CPU, MI_CLK, MI_PANEL, MI_RESET, MI_ABOUT, MI_COUNT MI_SERIAL_OUT };
+       MI_LCLEAR, MI_GRID, MI_SERIAL_IN MI_RESTORE, MI_CPU, MI_CLK, MI_PANEL, MI_RESET, MI_ABOUT, MI_COUNT MI_SERIAL_OUT };
 #endif   /* ((Skiff U4, A3) HINTS; RESET SETTINGS, a row with no value: its dialog) */   /* ((Skiff U3, R8, R2) CLOCK, MIDI IN, TUNE: the unit's, GLOBAL's and SYSTEM's before; CPU: read) */   /* (1.1: the metronome's rows in
                                                                                              * AUDIO; 1.2: RESTORE LAST in SYSTEM, SCALE LEDS
                                                                                              * in CONTROL) */
@@ -48,17 +48,18 @@ static const char *const MI_NAME[MI_COUNT] = {"THEME", "PLAYHEAD", "LARGE", "ANI
                                               "SPEAKER EQ", "USB LEVEL", "CLICK", "CLICK LEVEL", "COUNT-IN", "TUNE",
                                               "CLOCK", "CLOCK OUT", "MIDI IN", "AUTO CHANNEL",
                                               "T1 CHANNEL", "T2 CHANNEL", "T3 CHANNEL", "T4 CHANNEL", "T5 CHANNEL", "T6 CHANNEL",
-                                              "NOTES OUT", "CC OUT", "THRU", "REMOTE", "MIDI LEARN", "LEARN CLEAR",
+                                              "NOTES OUT", "CC OUT", "THRU", "REMOTE", "MIDI LEARN", "LEARN CLEAR", "GRID",
                                               MI_SERIAL_NAME "RESTORE LAST", "CPU", "CPU CLOCK", "CALIBRATION", "RESET SETTINGS",
                                               "ABOUT"};
 /* 1.0.5: the MENU's tabs (ui_menu.c: ALGORITHM steps between them, PRESETS among one tab's rows; the editor gets a
  * row's tab after its MENU_DESC reply). A tab's rows follow each other in MI order (tests/ui_test.c checks it); the
  * page shows MTAB_ROWS of them (ui_menu.c fits them; (1.3) MIDI's ten scroll, the cursor's row the last shown). A new
  * row joins a tab here, a new tab is appended (its index is what the editor is told) */
-enum { MTAB_DISPLAY, MTAB_CONTROL, MTAB_AUDIO, MTAB_SYSTEM, MTAB_MIDI, MTAB_COUNT };   /* ((Skiff 1.3) MIDI, appended: its
-                                                         * rows sit before SYSTEM's in MI order, as value rows must) */
+enum { MTAB_DISPLAY, MTAB_CONTROL, MTAB_AUDIO, MTAB_SYSTEM, MTAB_MIDI, MTAB_TIMING, MTAB_COUNT };   /* ((Skiff 1.3) MIDI, appended:
+                                                         * its rows sit before SYSTEM's in MI order, as value rows must;
+                                                         * (P3) TIMING: GRID) */
 #define MTAB_ROWS 6u
-static const char *const MTAB_NAME[MTAB_COUNT] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM", "MIDI"};
+static const char *const MTAB_NAME[MTAB_COUNT] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM", "MIDI", "TIMING"};
 static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY,                 /* COLOR (Skiff #27) PLAYHEAD LARGE ANIM */
 #if !BOARD_SMK37
@@ -85,6 +86,7 @@ static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI,       /* (1.3) T1..T6 CHANNEL */
     MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI,                             /* (2.2) NOTES OUT, CC OUT, THRU, REMOTE */
     MTAB_MIDI, MTAB_MIDI,                                                   /* (1.3) MIDI LEARN, LEARN CLEAR */
+    MTAB_TIMING,                                                            /* GRID */
     MI_SERIAL_TAB MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM,                    /* USB SERIAL, RESTORE LAST, (Skiff U3) CPU,
                                                                              * (Skiff) CPU CLOCK (SYSTEM's seven scroll) */
     MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM,                                  /* CALIBRATION, (U4) RESET SETTINGS, ABOUT */
@@ -142,6 +144,8 @@ static const char *const SCROFF_N[5] = {"NEVER", "5 MIN", "15 MIN", "30 MIN", "6
 /* (2.0, D 2A) RETURN (ui.c ret_mode): MOMENTARY's values, FX's macros and PERFORM's throws come back at once or over
  * this long; 1 BAR the default */
 static const char *const RET_N[3] = {"SNAP", "1 BEAT", "1 BAR"};
+/* GRID (ui.c ui_grid, grid.c GRID_TICKS' order): what recording, live playing, the ARP's start and PERFORM's keys snap to */
+static const char *const GRID_NAME[GRID_N] = {"OFF", "1 BAR", "1/2", "1/4", "1/8", "1/16", "1/32", "1/4T", "1/8T", "1/16T"};
 
 /* MENU > USB SERIAL (#67). The serial console is a developer tool (README: FELUCCA_CDC). ON (the default) presents it,
  * the descriptors byte for byte as before; OFF re-enumerates as audio + MIDI only, device class 0 (the bytes of a
@@ -178,7 +182,7 @@ static uint32_t menu_n(uint32_t row)
            row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) :
            row == MI_CLOCK ? NELEM(N_CLOCK) : row == MI_TUNE ? 101u : row == MI_CPU ? 1u + FELUCCA_CPU2 :
            MI_TCH(row) ? 33u : row == MI_LEARN || row == MI_LCLEAR ? 1u :
-           row == MI_AUTOCH || row == MI_REMOTE ? 17u : row == MI_NOTES ? 3u :
+           row == MI_AUTOCH || row == MI_REMOTE ? 17u : row == MI_NOTES ? 3u : row == MI_GRID ? GRID_N :
 #if BOARD_SMK37
            row == MI_KVEL ? SMK_KV_N :
 #endif
@@ -207,6 +211,7 @@ static uint32_t menu_get(uint32_t row)
     case MI_HINTS: return ui_hints_off != 0;
     case MI_PREVIEW: return PREVIEW_SET ? 1u : 0u;
     case MI_RETURN: return ret_mode();
+    case MI_GRID: return ui_grid_idx();
     case MI_TUNE: return (uint32_t)clamp(song.g[G_TUNE] + 50, 0, 100);
 #if FELUCCA_CPU2
     case MI_CPU: return CPU2_SET ? 1u : 0u;            /* ((Skiff 1.3) 1 CORE, 2 CORES (BETA): from the next power-on) */
@@ -263,6 +268,7 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     case MI_HINTS: return v & 1u ? "OFF" : "ON";
     case MI_PREVIEW: return v & 1u ? "ON" : "OFF";
     case MI_RETURN: return RET_N[v % 3u];
+    case MI_GRID: return GRID_NAME[v % GRID_N];
     case MI_TUNE: case MI_CPU: {                       /* "+12 CT"; the audio's share of each half-buffer ("14 %") */
         static char b[20] __attribute__((section(".pool")));
         int32_t c = row == MI_TUNE ? (int32_t)v - 50 : (int32_t)ui_cpu;
@@ -345,6 +351,7 @@ static void menu_put(uint32_t row, uint32_t v)
         CPU2_BYTE = (uint8_t)(v & 1u ? CPU2_BYTE | 2u : CPU2_BYTE & ~2u);
         break;
     case MI_RETURN: RET_BYTE = (uint8_t)(RET_BAR - v % 3u); break;   /* ((2.0) ui.c ret_mode) */
+    case MI_GRID: ui_grid = (uint8_t)(v % GRID_N); break;
 #if FELUCCA_CPU2
     case MI_CPU:                                       /* ((Skiff 1.3) the second core: started at power-on only, main.c) */
         CPU2_BYTE = (uint8_t)(v ? CPU2_BYTE | 1u : CPU2_BYTE & ~1u);
@@ -392,6 +399,7 @@ static void settings_reset(void)
     menu_put(MI_PHEAD, 0);
     menu_put(MI_PREVIEW, 0);
     menu_put(MI_RETURN, RET_BAR);
+    menu_put(MI_GRID, 0);
 #if FELUCCA_CPU2
     menu_put(MI_CPU, CPU2_DEFAULT);                    /* ((2.5) 2 CORES on the FM-1, 1 CORE on the SMK-37: ui.c) */
 #endif

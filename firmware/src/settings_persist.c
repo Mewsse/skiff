@@ -7,7 +7,7 @@
  * zoom: no longer used (the large readout); kept as it was saved, unless it holds the LEDS setting (panel.c).
  * favorites.factory[15][28..31]: CLICK / CLICK LEVEL / COUNT-IN (1.1), STYLE (retired, Skiff U2: left as saved), MENU's flags, the layers seen (bytes no
  * engine uses; 0 in older settings = every one's default); [15][27]: SCREEN OFF (1.1.5; 0 = 30 MIN, the default);
- * [15][26], [15][25]: Skiff's LAUNCH and PERFORM KEYS before the song layer went, read by nothing; [15][24]: Skiff's mark, 0xA5 (before 2.0 bank.c's, set once it had freed its
+ * [15][26]: the global GRID (ui.c ui_grid; Skiff's LAUNCH before it: a record with ui_set_rev below 4 reads it as OFF); [15][25]: Skiff's PERFORM KEYS, read by nothing; [15][24]: Skiff's mark, 0xA5 (before 2.0 bank.c's, set once it had freed its
  * old scenes); [15][23]: (Skiff U1) ui.c ui_set_rev, the one-time changes done; [15][21]: (Skiff phase 9) PRESETS' LIST type (ui.c ui_ptag; 0 = none, an unknown value
  * read as none). ([14][0] .. [15][17] held Skiff's scenes before phase 5; row 14 is DRUM-X's since.)
  * MENU's flags (ui.c PREF_*) are append-only bits whose 0 is the default: BPM LOCK (16) is clear in every older setting
@@ -35,7 +35,7 @@ typedef struct {                               /* Skiff's settings: favorites.fa
                                                 * (2.2) MENU > MIDI's switches (ui.c MIDI_BYTE) */
     uint8_t unit_g[3];                         /* the unit's CLOCK, MIDI IN, TUNE (ui.c ui_unit_g) */
     uint8_t ptag, hints_off, set_rev, rsv24;   /* PRESETS' LIST type, HINTS OFF, the one-time changes; (24: RAM's mark) */
-    uint8_t perf_keys, launch, scr, rec;       /* PERFORM KEYS, LAUNCH, SCREEN OFF, CLICK .. FEEL (ui_rec_prefs) */
+    uint8_t perf_keys, grid, scr, rec;         /* PERFORM KEYS, GRID, SCREEN OFF, CLICK .. FEEL (ui_rec_prefs) */
     uint8_t style, prefs, layers;              /* (STYLE, retired: as saved), MENU's flags (ui_prefs), the layers seen */
 } sks_skiff_t;
 typedef struct {
@@ -80,6 +80,8 @@ static int settings_import_per(persist_t *p, int n)
     }
     if ((p->favorites.factory[15][27] ^ 3u) > 4u)  /* SCREEN OFF (1.1.5, ui.c ui_scr): stored ^ 3, unknown = 0 (30 MIN) */
         p->favorites.factory[15][27] = 0;
+    if (p->favorites.factory[15][23] < 4u || p->favorites.factory[15][26] >= GRID_N)   /* GRID: LAUNCH's old byte, or */
+        p->favorites.factory[15][26] = 0;                                              /* a value past the table: OFF */
     if (p->favorites.factory[15][21] >= 8u)        /* (Skiff phase 9) PRESETS' LIST type (ui.c ui_ptag, below PT_N) */
         p->favorites.factory[15][21] = 0;
     if (p->favorites.factory[15][24] != 0xA5u) {   /* (no Skiff mark: Felucca's or JIANT's settings) [15][18..26]

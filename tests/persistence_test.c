@@ -655,7 +655,7 @@ static int cpu2_once_test(void)
     favorites.factory[15][24] = 0xA5u;
     settings_save();
     boot_settings();
-    ok = CPU2_SET == CPU2_DEFAULT && ui_set_rev == 2u + CPU2_DEFAULT;
+    ok = CPU2_SET == CPU2_DEFAULT && ui_set_rev == 4u;
     e0 = erases;
     boot_settings();
     bad += check("(2.5) 2.2's 1 CORE: the FM-1's first boot moves it to 2 CORES, saved, once (the SMK-37 stays)",
@@ -667,6 +667,35 @@ static int cpu2_once_test(void)
     bad += check("  .. set back to 1 CORE, it stays so at the next power-on", !CPU2_SET && erases == e0);
     settings_reset();
     bad += check("  .. RESET SETTINGS: 2 CORES on the FM-1, 1 CORE on the SMK-37", CPU2_SET == CPU2_DEFAULT);
+    return bad;
+}
+
+/* (P3) GRID, [15][26]: kept through a save and a power-on; a settings record of before (ui_set_rev 3, LAUNCH's value
+ * there) reads OFF at the boot and once more through settings_import, and the boot saves it as revision 4 */
+static int grid_boot_test(void)
+{
+    int bad = 0, ok;
+    uint32_t e0;
+    reset();
+    settings_init();
+    favorites.factory[15][24] = 0xA5u;
+    ui_set_rev = 4;
+    menu_put(MI_GRID, 6);
+    settings_save();
+    boot_settings();
+    bad += check("(P3) GRID 1/32 survives a save and a power-on", menu_get(MI_GRID) == 6u && ui_grid_idx() == 6u);
+    ui_set_rev = 3;
+    ui_grid = 2;
+    settings_save();
+    boot_settings();
+    ok = menu_get(MI_GRID) == 0u && ui_set_rev == 4u;
+    e0 = erases;
+    boot_settings();
+    bad += check("  a record of before (ui_set_rev 3, [15][26] = 2): OFF at the boot, saved as revision 4, once",
+                 ok && menu_get(MI_GRID) == 0u && erases == e0);
+    menu_put(MI_GRID, 5);
+    settings_reset();
+    bad += check("  RESET SETTINGS: GRID OFF", menu_get(MI_GRID) == 0u);
     return bad;
 }
 
@@ -700,7 +729,7 @@ static int other_fw_test(void)
         if (i < 2)
             ok = !song.g[G_CLOCK] && !song.g[G_ROUTE] && !song.g[G_TUNE] && !ui_ptag && !ui_hints_off &&
                  !(ui_rec_prefs & REC_FEEL) && (ui_prefs & PREF_BPM_LOCK) &&
-                 ui_set_rev == 2u + CPU2_DEFAULT;
+                 ui_set_rev == 4u;
         else
             ok = song.g[G_CLOCK] == 1 && song.g[G_ROUTE] == 1 && song.g[G_TUNE] == -4 && ui_ptag == 3u && ui_hints_off &&
                  (ui_rec_prefs & REC_FEEL) && !(ui_prefs & PREF_BPM_LOCK);
@@ -1074,6 +1103,7 @@ int main(void)
     bad += autosave_save_test();
     bad += other_fw_test();
     bad += cpu2_once_test();
+    bad += grid_boot_test();
     printf("%s\n", bad ? "PERSISTENCE TEST FAILED" : "persistence test passed");
     return bad != 0;
 }

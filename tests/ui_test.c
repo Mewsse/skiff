@@ -1581,9 +1581,10 @@ static int test_menu_tabs(void)
             }
     }
     ui_prefs = 0;
-    bad += check("MENU tabs: DISPLAY CONTROL AUDIO SYSTEM MIDI ((1.3) MIDI appended), rows in a run, 6 shown fit the page; "
+    bad += check("MENU tabs: DISPLAY CONTROL AUDIO SYSTEM MIDI TIMING ((1.3) MIDI, (P3) TIMING appended), rows in a run, 6 shown fit the page; "
                  "tab gaps constant (S, LARGE)",
-                 ok && MTAB_COUNT == 5u && str_eq(MTAB_NAME[0], "DISPLAY") && str_eq(MTAB_NAME[MTAB_MIDI], "MIDI") &&
+                 ok && MTAB_COUNT == 6u && str_eq(MTAB_NAME[0], "DISPLAY") && str_eq(MTAB_NAME[MTAB_MIDI], "MIDI") &&
+                 str_eq(MTAB_NAME[MTAB_TIMING], "TIMING") && mtab_rows(MTAB_TIMING) == 1u && MI_TAB[MI_GRID] == MTAB_TIMING &&
                  mtab_rows(MTAB_DISPLAY) == 7u && mtab_rows(MTAB_CONTROL) == 7u && mtab_rows(MTAB_AUDIO) == 6u &&   /* (#27; (2.0) RETURN; (2.5) KEEP SENDS) */
                  mtab_rows(MTAB_SYSTEM) == 6u + FELUCCA_CDC && mtab_rows(MTAB_MIDI) == 16u);   /* ((Skiff) SYSTEM: CPU
                                                          * CLOCK; (Skiff 2.0) USB SERIAL with the console only; (2.2)
@@ -1603,7 +1604,7 @@ static int test_menu_tabs(void)
     turn(EN_ALGO, 1); ok &= ui.menu_sel == MI_LOWCUT && menu_tab() == MTAB_AUDIO;
     turn(EN_ALGO, -1); ok &= ui.menu_sel == MI_BPMLOCK;   /* (back at the row left there) */
     turn(EN_ALGO, -1); ok &= ui.menu_sel == MI_SCROFF;
-    turn(EN_ALGO, -1); ok &= ui.menu_sel == MI_CLOCK && menu_tab() == MTAB_MIDI;   /* (wraps; (1.3) MIDI last) */
+    turn(EN_ALGO, -1); ok &= ui.menu_sel == MI_GRID && menu_tab() == MTAB_TIMING;   /* (wraps; (P3) TIMING last) */
     turn(EN_ALGO, 1); ok &= ui.menu_sel == MI_SCROFF;
     bad += check("MENU: ALGORITHM steps between the tabs and wraps, each tab back at its last row", ok && ui.menu == 1);
     turn(EN_ALGO, 1); turn(EN_PRESET, -1);            /* CONTROL: from FX LATCH up to KNOB ACCEL */
@@ -6446,43 +6447,54 @@ static int test_rec_layer(void)
     rp_apply();
     ok = 1;
     rec_open(); frames(100);
-    for (k = 0; k < 3u; k++) {
-        static const char *const NM[3][3] = {{"CLICK REC", "CLICK ON", "CLICK OFF"},
-                                             {"COUNT-IN 1 BAR", "COUNT-IN 2 BARS", "COUNT-IN OFF"},
-                                             {"CLICK LEVEL HIGH", "CLICK LEVEL LOW", "CLICK LEVEL MID"}};
-        static const uint32_t WANT[3][3] = {{1, 2, 0}, {1, 2, 0}, {2, 0, 1}};
+    for (k = 0; k < 2u; k++) {
+        static const char *const NM[2][3] = {{"CLICK REC", "CLICK ON", "CLICK OFF"},
+                                             {"COUNT-IN 1 BAR", "COUNT-IN 2 BARS", "COUNT-IN OFF"}};
+        static const uint32_t WANT[2][3] = {{1, 2, 0}, {1, 2, 0}};
         for (i = 0; i < 3u; i++) {
             key_down(white(k + 1u)); frame(); key_up(white(k + 1u)); frame();
             ok &= menu_rec(k) == WANT[k][i] && msg_is(NM[k][i]) && !gates() &&
-                  str_eq(menu_vname(k == 0u ? MI_CLICK : k == 1u ? MI_COUNTIN : MI_CLKLVL, menu_rec(k)),
-                         rl_name(k, rp_get(RL_F[k])));
+                  str_eq(menu_vname(k == 0u ? MI_CLICK : MI_COUNTIN, menu_rec(k)), rl_name(k, rl_get(k)));
         }
     }
-    ok &= ui_rec_prefs == 0u;                           /* (round: as it was) */
-    bad += check("REC + G3 CLICK OFF>REC>ON, A3 COUNT-IN OFF>1 BAR>2 BARS, B3 LEVEL MID>HIGH>LOW: MENU's values", ok);
+    for (i = 1; i <= 10; i++) {                         /* B3 GRID: OFF, 1 BAR, 1/2 .. 1/16T, round to OFF */
+        char want[24] = "GRID ";
+        key_down(white(3)); frame(); key_up(white(3)); frame();
+        str_cpy(want + 5, GRID_NAME[i % 10], sizeof want - 5u);
+        ok &= menu_get(MI_GRID) == (uint32_t)i % 10u && ui_grid_idx() == (uint32_t)i % 10u && msg_is(want) &&
+              str_eq(menu_vname(MI_GRID, menu_get(MI_GRID)), rl_name(2, rl_get(2)));
+    }
+    ok &= ui_rec_prefs == 0u && !ui_grid;               /* (round: as it was) */
+    bad += check("REC + G3 CLICK OFF>REC>ON, A3 COUNT-IN OFF>1 BAR>2 BARS, B3 GRID OFF>1 BAR>1/2 .. 1/16T>OFF: MENU's values", ok);
     key_down(white(1)); frame(); key_up(white(1)); frame();        /* CLICK REC */
     key_down(white(2)); frame(); key_up(white(2)); frame();        /* COUNT-IN 1 BAR */
-    key_down(white(3)); frame(); key_up(white(3)); frame();        /* LEVEL HIGH */
-    ok = click_mode == 1u && cin_bars == 1u && click_lvl == 2u && lys.rp_dirty;
+    key_down(white(3)); frame(); key_up(white(3)); frame();        /* GRID 1 BAR */
+    ok = click_mode == 1u && cin_bars == 1u && ui_grid == 1u && lys.rp_dirty;
     rec_close();
     ok &= !ui.layer && !lys.rp_dirty;                  /* (closed: settings_save) */
     {
         sks_t p = {0};
         uint8_t was = ui_rec_prefs;
         p.magic = SKS_MAGIC; p.panel = panel;
+        ui_set_rev = 4;                                 /* (GRID's own byte since: ui.c unit_g_boot) */
         settings_export(&p); ui_rec_prefs = 0;
         ok &= settings_import(&p, sizeof p) && ui_rec_prefs == was && menu_get(MI_CLICK) == 1u &&
-              menu_get(MI_COUNTIN) == 1u && menu_get(MI_CLKLVL) == 2u;
+              menu_get(MI_COUNTIN) == 1u && menu_get(MI_GRID) == 1u;
     }
     bad += check("  applied at once (click.c, seq.c), saved when the layer closes, kept with the settings", ok);
     rec_open(); frames(100);
     turn(EN_K1, 1);                                     /* CLICK REC -> ON */
     turn(EN_K2, -1);                                    /* COUNT-IN 1 BAR -> OFF */
-    turn(EN_K3, -5);                                    /* LEVEL HIGH -> LOW (stops at the end) */
-    turn(EN_K4, 3);                                     /* nothing */
-    ok = menu_get(MI_CLICK) == 2u && menu_get(MI_COUNTIN) == 0u && menu_get(MI_CLKLVL) == 0u && ui.home;
+    turn(EN_K3, 3);                                     /* GRID 1 BAR -> 1/8 */
+    ok = menu_get(MI_GRID) == 4u;
+    turn(EN_K3, 30);                                    /* .. stops at 1/16T */
+    ok &= menu_get(MI_GRID) == 9u;
+    turn(EN_K3, -30);                                   /* .. and at OFF */
+    ok &= menu_get(MI_GRID) == 0u;
+    turn(EN_K4, 3);                                     /* FEEL */
+    ok &= menu_get(MI_CLICK) == 2u && menu_get(MI_COUNTIN) == 0u && rec_feel && ui.home;
     rec_close();
-    bad += check("  KNOB 1..3 CLICK COUNT-IN LEVEL, stopping at the ends; KNOB 4 nothing; the page untouched", ok);
+    bad += check("  KNOB 1..3 CLICK COUNT-IN GRID, stopping at the ends; KNOB 4 FEEL; the page untouched", ok);
 
     /* OCT- puts back the settings and the track as the layer opened */
     ui_power_on();
@@ -6490,17 +6502,19 @@ static int test_rec_layer(void)
     sel_set(1);
     my_steps(&trk[1]);
     memcpy(before, trk[1].step, sizeof before);
+    ui_grid = 0;
     rec_open(); frames(100);
     key_down(white(1)); frame(); key_up(white(1)); frame();
+    key_down(white(3)); frame(); key_up(white(3)); frame();
     rec_clear_held();
-    ok = seq_is_empty(&trk[1]) && click_mode == 1u;
+    ok = seq_is_empty(&trk[1]) && click_mode == 1u && ui_grid == 1u;
     press(B_OCTDN);
-    ok &= !memcmp(trk[1].step, before, sizeof before) && ui_rec_prefs == 0u && click_mode == 0u &&
+    ok &= !memcmp(trk[1].step, before, sizeof before) && ui_rec_prefs == 0u && click_mode == 0u && !ui_grid &&
           msg_is("UNDONE: REC") && song.octave == 0 && ui.layer == LAYER_REC;
     rec_close();
-    bad += check("  OCT- puts back CLICK and the cleared track; no octave shift", ok);
+    bad += check("  OCT- puts back CLICK, GRID and the cleared track; no octave shift", ok);
 
-    /* the LEDs: CLEAR breathes when there is something; a setting on lit (LEVEL: with the click on), else breathing */
+    /* the LEDs: CLEAR breathes when there is something; a setting on lit (GRID: not OFF), else breathing */
     ui_power_on();
     ui_rec_prefs = 0; rp_apply();
     my_steps(TSEL);
@@ -6509,7 +6523,7 @@ static int test_rec_layer(void)
         uint32_t a = leds_at(0), b = leds_at(250), w0 = 1u << white(0), w1 = 1u << white(1), w2 = 1u << white(2),
                  w3 = 1u << white(3);
         ok = ((a ^ b) & (w0 | w1 | w2 | w3)) == (w0 | w1 | w2 | w3) && !(a & b) && !((a | b) & ~(w0 | w1 | w2 | w3));
-        rp_put(RP_CLICK, 2); rp_put(RP_COUNTIN, 2);
+        rp_put(RP_CLICK, 2); rp_put(RP_COUNTIN, 2); ui_grid = 3;
         a = leds_at(0); b = leds_at(250);
         ok &= (a & b) == (w1 | w2 | w3) && (a ^ b) == w0;
         track_defaults_steps(TSEL);
@@ -6517,7 +6531,7 @@ static int test_rec_layer(void)
         ok &= !((a | b) & w0);
     }
     rec_close();
-    bad += check("  LEDs: CLEAR breathes (dark when empty), CLICK / COUNT-IN lit when on, LEVEL with the click", ok);
+    bad += check("  LEDs: CLEAR breathes (dark when empty), CLICK / COUNT-IN / GRID lit when on", ok);
 
     /* locked: PLAY works in it; another layer locked: REC arms, the lock stays */
     ui_power_on();
@@ -8476,7 +8490,7 @@ static int test_u3(void)
     project_load(1);
     ok &= song.g[G_TUNE] == 7;
     unit_g_boot();
-    ok &= (int8_t)ui_unit_g(2) == 7 && ui_set_rev == 2u + CPU2_DEFAULT && !unit_g_adopt;   /* ((2.5) 3: cpu2_move's) */
+    ok &= (int8_t)ui_unit_g(2) == 7 && ui_set_rev == 4u && !unit_g_adopt;   /* ((2.5) 3: cpu2_move's; (P3) 4: GRID's) */
     bad += check("U3 R8: TUNE is the unit's: a project load leaves it, boot puts it back; the first boot takes the session's", ok);
     song.g[G_TUNE] = 0;
     ui_power_on();                                      /* R5: AUTOMATION's top row */
@@ -9168,6 +9182,31 @@ static int test_perform(void)
         turn(EN_K1, -3);
         ok = t->p[id] == own && throw_value(song.sel, 0, &out) == own - 3 && out && (thr_out & 1u);
         bad += check("  KNOB 1: a throw of HOME's first parameter (its own value kept; the card: the thrown one)", ok);
+    }
+    {   /* SELECT turns GRID (stops at its ends, saved when the layer lets go); a key armed on a GRID lands on its line */
+        uint32_t from_head;
+        ui_grid = 0;
+        lys.rp_dirty = 0;
+        turn(EN_SELECT, 1);
+        ok = ui_grid == 1u && msg_is("GRID 1 BAR") && lys.rp_dirty;
+        turn(EN_SELECT, -1);
+        turn(EN_SELECT, -1);
+        ok &= ui_grid == 0u && msg_is("GRID OFF");
+        for (i = 0; i < 12u; i++)
+            turn(EN_SELECT, 1);
+        ok &= ui_grid == GRID_N - 1u && msg_is("GRID 1/16T");
+        ui_grid = 1;
+        from_head = tape_head;
+        tape_head = 100;
+        ly_tap(white(1));
+        ok &= arm[1].op == ARM_RUN_OFF && arm[1].at == song_ticks + TAPE_BAR - 100u && msg_is("T2 RUN OFF ON GRID");
+        ly_tap(white(1));
+        ui_grid = 0;
+        ly_tap(white(1));
+        ok &= arm[1].op == ARM_RUN_OFF && arm[1].at == song_ticks && msg_is("T2 RUN OFF NEXT STEP");
+        ly_tap(white(1));
+        tape_head = from_head;
+        bad += check("  PERFORM SELECT turns GRID (OFF .. 1/16T, stops at the ends); a key lands on the next GRID line, OFF: next step", ok);
     }
     ly_tap(key_at(1, 2));                             /* (T3's mute armed) */
     ly_tap(white(4));                                 /* (T5's RUN OFF armed) */

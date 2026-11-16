@@ -22,7 +22,7 @@
  *   REC  SET   (1.1.5; (Skiff U2) REC is a transport button again, arming on its press: the layer opens locked by
  *              SHIFT + REC only) the white keys from F3: CLEAR (held for the hold time: the selected track's steps and
  *              automation, no dialog: one undo, SAVE held), CLICK (OFF REC ON), COUNT-IN (OFF 1 BAR
- *              2 BARS), CLICK LEVEL (LOW MID HIGH), each press the next value; KNOB 1..3 the same three, (Skiff) KNOB 4
+ *              2 BARS), GRID (the global one, OFF .. 1/16T: MENU > TIMING), each press the next value; KNOB 1..3 the same three, (Skiff) KNOB 4
  *              FEEL (OFF ON: REC and TAKES keep a note's time as its step's NUDGE, seq.c feel_of). The settings
  *              are MENU > AUDIO's (ui.c rp_get / rp_put: one store), saved when the layer closes; OCT- puts back the
  *              settings and the track as the layer opened (tl_put_back). Replaces the old REC held on SEQ (Discussion #91:
@@ -269,8 +269,10 @@ static void layer_opened(uint32_t l)
         lys.v[NTRK + k] = trk[k].p[P_LEVEL];
     }
     lys.v[LY_BPM] = song.g[G_BPM];
-    if (l == LAYER_REC)
+    if (l == LAYER_REC) {
         lys.v[0] = ui_rec_prefs;
+        lys.v[1] = ui_grid_idx();
+    }
     memcpy(lys.mute, drum_mute, sizeof lys.mute);
 }
 
@@ -466,21 +468,38 @@ static void rec_clear_poll(void)
         rec_clear();
     }
 }
-/* REC's settings, row r (G3 A3 B3, KNOB 1..3): CLICK, COUNT-IN, CLICK LEVEL as MENU > AUDIO steps them (ui.c rp_*) */
-static const uint8_t RL_F[3] = {RP_CLICK, RP_COUNTIN, RP_LEVEL};
-static const char *const RL_LABEL[3] = {"CLICK", "COUNT-IN", "CLICK LVL"};   /* ((Skiff U4, R9) MENU > AUDIO's names, as
+/* REC's settings, row r (G3 A3 B3, KNOB 1..3): CLICK, COUNT-IN as MENU > AUDIO steps them (ui.c rp_*), then the global
+ * GRID (ui.c ui_grid, MENU > TIMING) */
+#define RL_GRID 2u
+static const uint8_t RL_F[RL_GRID] = {RP_CLICK, RP_COUNTIN};
+static const char *const RL_LABEL[3] = {"CLICK", "COUNT-IN", "GRID"};   /* ((Skiff U4, R9) MENU > AUDIO's names, as
                                                        * they fit Barlow's card and key cell) */
-static const uint8_t RL_ICON[3] = {ICON_TEMPO, ICON_TIME, ICON_LEVEL};
+static const uint8_t RL_ICON[3] = {ICON_TEMPO, ICON_TIME, ICON_STEPS};
+static uint32_t rl_get(uint32_t r) { return r == RL_GRID ? ui_grid_idx() : rp_get(RL_F[r]); }
+static uint32_t rl_n(uint32_t r) { return r == RL_GRID ? GRID_N : 3u; }
 static const char *rl_name(uint32_t r, uint32_t v)
 {
-    return (r == 0u ? CLICK_N : r == 1u ? COUNTIN_N : CLKLVL_N)[v % 3u];
+    return r == RL_GRID ? GRID_NAME[v % GRID_N] : (r == 0u ? CLICK_N : COUNTIN_N)[v % 3u];
 }
 static void rec_set(uint32_t r, uint32_t v)
 {
-    if (v == rp_get(RL_F[r]))
+    if (v == rl_get(r))
         return;
-    rp_put(RL_F[r], v);
+    if (r == RL_GRID)
+        ui_grid = (uint8_t)v;
+    else
+        rp_put(RL_F[r], v);
     lys.rp_dirty = 1;
+}
+/* PERFORM's SELECT: the global GRID a step, stopping at its ends; saved when the layer lets go */
+static void perf_grid_turn(int32_t s)
+{
+    uint32_t v = (uint32_t)clamp((int32_t)ui_grid_idx() + (s > 0 ? 1 : -1), 0, (int32_t)GRID_N - 1);
+    if (v == ui_grid_idx())
+        return;
+    ui_grid = (uint8_t)v;
+    lys.rp_dirty = 1;
+    ui_say("GRID ", GRID_NAME[v]);
 }
 static void rec_key(uint32_t p)
 {
@@ -490,13 +509,13 @@ static void rec_key(uint32_t p)
         ui_message("HOLD: CLEAR");
         return;
     }
-    v = (rp_get(RL_F[r]) + 1u) % 3u;                    /* the next value, round */
+    v = (rl_get(r) + 1u) % rl_n(r);                     /* the next value, round */
     rec_set(r, v);
-    ui_say(r == 2u ? "CLICK LEVEL " : r ? "COUNT-IN " : "CLICK ", rl_name(r, v));
+    ui_say(r == RL_GRID ? "GRID " : r ? "COUNT-IN " : "CLICK ", rl_name(r, v));
 }
 
-/* (Skiff) PERFORM's keys (launch.c, the arm table): track k's op, stopped (a count-in too) at once; playing at its
- * next step. A second press of the same kind before it lands takes it back; the other kind replaces it. Said */
+/* (Skiff) PERFORM's keys (launch.c, the arm table): track k's op, stopped (a count-in too) at once; playing at the
+ * next GRID line, GRID OFF at its next step. A second press of the same kind before it lands takes it back; the other kind replaces it. Said */
 static const char *const ARM_NAME[5] = {"", "RUN ON", "RUN OFF", "MUTE", "UNMUTE"};
 static void arm_set(uint32_t k, uint32_t op)
 {
@@ -520,10 +539,10 @@ static void arm_set(uint32_t k, uint32_t op)
         return;
     }
     arm[k].op = ARM_NONE;
-    arm[k].at = song_ticks;
+    arm[k].at = arm_when(ui_grid_idx());
     RING_PUBLISH();
     arm[k].op = (uint8_t)op;
-    ui_say(b, " NEXT STEP");
+    ui_say(b, ui_grid_idx() ? " ON GRID" : " NEXT STEP");
 }
 static void arm_run(uint32_t k) { arm_set(k, seq_running(k % NTRK) ? ARM_RUN_OFF : ARM_RUN_ON); }
 static void arm_mute(uint32_t k) { arm_set(k, trk[k % NTRK].p[P_MUTE] ? ARM_UNMUTE : ARM_MUTE); }
@@ -663,9 +682,9 @@ static void layer_knob(uint32_t k, int32_t s)
         throw_turn(song.sel, k, accel(EN_K1 + k, s, d->max - d->min));
         ui.hot_col = (uint8_t)k;
         ui.hot_t = 40;
-    } else if (l == LAYER_REC) {                        /* CLICK, COUNT-IN, LEVEL, (Skiff) FEEL */
+    } else if (l == LAYER_REC) {                        /* CLICK, COUNT-IN, GRID, (Skiff) FEEL */
         if (k < 3u)
-            rec_set(k, (uint32_t)clamp((int32_t)rp_get(RL_F[k]) + s, 0, 2));
+            rec_set(k, (uint32_t)clamp((int32_t)rl_get(k) + s, 0, (int32_t)rl_n(k) - 1));
         else if ((s > 0) != rec_feel) {
             ui_rec_prefs = (uint8_t)(s > 0 ? ui_rec_prefs | REC_FEEL : ui_rec_prefs & ~REC_FEEL);
             rp_apply();
@@ -745,8 +764,9 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
             if (lys.loaded)                             /* (SAVE held then: the tools / the clear again) */
                 (void)tl_put_back(t);
             if (lys.l == LAYER_REC) {                   /* REC: the settings as it opened */
-                lys.rp_dirty |= (uint8_t)(ui_rec_prefs != (uint8_t)lys.v[0]);
+                lys.rp_dirty |= (uint8_t)(ui_rec_prefs != (uint8_t)lys.v[0] || ui_grid_idx() != (uint32_t)lys.v[1]);
                 ui_rec_prefs = (uint8_t)lys.v[0];
+                ui_grid = (uint8_t)lys.v[1];
                 rp_apply();
             } else {
                 for (k = 0; k < 4u; k++)
@@ -830,9 +850,9 @@ static uint32_t layer_leds(uint32_t *br)
         } else if (l == LAYER_PERF && !b && p < NTRK) { /* (Skiff) a track's sequencer running lit; stopped or armed: */
             on = seq_running(p) && (arm[p].op == ARM_NONE || arm[p].op >= ARM_MUTE);   /* breathe */
             can = 1;
-        } else if (l == LAYER_REC && !b && p < 4u) {    /* a setting on (LEVEL: the click on) lit, the rest breathe; */
+        } else if (l == LAYER_REC && !b && p < 4u) {    /* a setting on (GRID: not OFF) lit, the rest breathe; */
             on = p == 1u ? rp_get(RP_CLICK) != 0u : p == 2u ? rp_get(RP_COUNTIN) != 0u :   /* CLEAR: something to */
-                 p == 3u && rp_get(RP_CLICK) != 0u;    /* clear */
+                 p == 3u && ui_grid_idx() != 0u;       /* clear */
             can = p ? 1u : rec_clearable();
         }
         m |= on << k;
@@ -1195,8 +1215,15 @@ static void layer_rec(void)
             cv_text_in(vx, y + CAP_IN(S, LR_H), w, &AF_S, b, ink, fill);
             continue;
         }
+        if (r - 1u == RL_GRID) {                         /* (ten values: the one now, over the three cells' width) */
+            int32_t w = 234 - vx;
+            fill = lc_box(vx, y, w, LR_H, lc_fill(LS_SEL, &ink));
+            GFX_HOOK_ALIGN(vx, y, vx + w, y + LR_H, AL_HV, "rec layer value cell centred");
+            cv_text_in(vx, y + CAP_IN(S, LR_H), w, &AF_S, rl_name(RL_GRID, ui_grid_idx()), ink, fill);
+            continue;
+        }
         for (v = 0; v < 3u; v++, vx += LR_VW + 4) {
-            fill = lc_box(vx, y, LR_VW, LR_H, lc_fill(v == rp_get(RL_F[r - 1u]) ? LS_SEL : LS_OFF, &ink));
+            fill = lc_box(vx, y, LR_VW, LR_H, lc_fill(v == rl_get(r - 1u) ? LS_SEL : LS_OFF, &ink));
             GFX_HOOK_ALIGN(vx, y, vx + LR_VW, y + LR_H, AL_HV, "rec layer value cell centred");
             cv_text_in(vx, y + CAP_IN(S, LR_H), LR_VW, &AF_S, rl_name(r - 1u, v), ink, fill);
         }
@@ -1248,10 +1275,11 @@ static void layer_cards(uint32_t l)
             draw_column(c, c ? TL[c] : d->label, val, "", out ? VR_ACCENT : VR_LIVE, 500 + o * 500 / (r ? r : 1),
                         param_icon(d, TSEL->p[id]));
         }
-    } else if (l == LAYER_REC) {                        /* CLICK COUNT-IN LEVEL, (Skiff) FEEL */
+    } else if (l == LAYER_REC) {                        /* CLICK COUNT-IN GRID, (Skiff) FEEL */
         for (c = 0; c < 3u; c++) {
-            uint32_t v = rp_get(RL_F[c]);
-            draw_column(c, RL_LABEL[c], rl_name(c, v), "", c < 2u && !v ? VR_DIM : VR_LIVE, (int32_t)v * 500, RL_ICON[c]);
+            uint32_t v = rl_get(c);
+            draw_column(c, RL_LABEL[c], rl_name(c, v), "", !v ? VR_DIM : VR_LIVE, (int32_t)(v * 1000u / (rl_n(c) - 1u)),
+                        RL_ICON[c]);
         }
         draw_column(3, "FEEL", rec_feel ? "ON" : "OFF", "", rec_feel ? VR_LIVE : VR_DIM, rec_feel ? 1000 : 0, ICON_TIME);
     } else if (l == LAYER_SEQ && eu.on) {               /* ((1.3) EUCLID: HITS STEPS ROT, the lane (DRUM)) */
@@ -1291,7 +1319,7 @@ static void draw_layer(void)
     else if (l == LAYER_SCL)
         sig += (uint32_t)TSEL->p[P_SCALE] * 31u;
     else if (l == LAYER_REC)
-        sig += (uint32_t)ui_rec_prefs * 31u + (uint32_t)rec_clearable() * 5u + song.sel * 977u;
+        sig += (uint32_t)ui_rec_prefs * 31u + ui_grid_idx() * 65537u + (uint32_t)rec_clearable() * 5u + song.sel * 977u;
     else if (l == LAYER_PERF)                           /* (Skiff) */
         sig += song.sel * 977u + perf_sig() * 131u;
     else if (l == LAYER_SEQ)

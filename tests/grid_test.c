@@ -232,6 +232,47 @@ static int test_arm(void)
     return bad;
 }
 
+/* GRID: a key armed mid-bar lands on its line, the first step boundary on or after it (never before) */
+static uint32_t grid_land(uint32_t grid, uint32_t op, uint32_t *line_ticks)
+{
+    uint32_t blk, line;
+    *line_ticks = 0;
+    arm[0].at = arm_when(grid);
+    line = arm[0].at;
+    arm[0].op = (uint8_t)op;
+    for (blk = 0; blk < 4000u && arm[0].op; blk++)
+        events_block(CTL);
+    *line_ticks = song_ticks - line;
+    return arm[0].op == ARM_NONE;
+}
+static int test_arm_grid(void)
+{
+    track_t *t = &trk[0];
+    uint32_t i, blk, late, head0;
+    int bad = 0, ok;
+    fresh(120);
+    for (i = 0; i < NSTEP; i++)
+        t->step[i] = (step_t){{60}, 1, ST_NOTE, 0, 100};
+    t->p[P_SLEN] = 16;
+    transport_req = 1;
+    for (blk = 0; blk < 4000u && tape_head < 500u; blk++)
+        events_block(CTL);
+    head0 = tape_head;
+    ok = head0 >= 500u && head0 < 700u && arm_when(0) == song_ticks;
+    ok &= arm_when(1) == song_ticks + TAPE_BAR - head0 && arm_when(3) == song_ticks + 960u - head0 &&
+          arm_when(5) == song_ticks + 600u - head0;
+    bad += check("arm_when: OFF now, 1 BAR / 1/4 / 1/16 the next line after the head", ok);
+    ok = grid_land(1, ARM_RUN_OFF, &late) && late < 200u && !seq_running(0) && tape_head % TAPE_BAR < 200u;
+    bad += check("GRID 1 BAR: RUN OFF armed mid-bar lands on the bar line (the first step boundary from it)", ok);
+    for (blk = 0; blk < 4000u && (tape_head % TAPE_BAR < 300u || tape_head % TAPE_BAR > 400u); blk++)
+        events_block(CTL);
+    ok = grid_land(3, ARM_RUN_ON, &late) && late < 200u && seq_running(0) && tape_head % 480u < 200u;
+    bad += check("GRID 1/4: RUN ON armed lands on the next beat line", ok);
+    transport_req = 2;
+    events_block(CTL);
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
@@ -244,6 +285,7 @@ int main(void)
     fails += test_tempo();
     fails += test_external();
     fails += test_arm();
+    fails += test_arm_grid();
     printf(fails ? "grid: %u FAILED\n" : "grid: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

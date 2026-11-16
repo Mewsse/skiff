@@ -198,7 +198,7 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
-| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4; Skiff phase 6: 6), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, Skiff U2: 16) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) and (Skiff phase 6) `54 01 tracks e0 e1 e2` (light tracks) (below) and (Skiff W1) `43 01 count` (a step's FLAM, COND, NUDGE; count: the trig conditions) and (Skiff W3) `4B 01 8` (the DRUM-X kit, below) and (Skiff W3) `57 01 caps` (bit 0 TRANSPORT, bit 1 PROJ_NAME, bit 2 POOL, (#21) bit 5 SMP_MIX, (2.0) bit 6 a step's ties, below; bits 3 LIST and 4 PERFORM: gone) and (Skiff 1.3) `49 01 c0 c1 e0 e1` (wide ids: P_COUNT and P_E0, above) and (2.0) `58 01 caps` (bit 0: the pool's EMPTY and CLEAR UNUSED; "Pool" below) ; older firmware ends earlier |
+| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4; Skiff phase 6: 6), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, Skiff U2: 16, (P3) 20) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) and (Skiff phase 6) `54 01 tracks e0 e1 e2` (light tracks) (below) and (Skiff W1) `43 01 count` (a step's FLAM, COND, NUDGE; count: the trig conditions) and (Skiff W3) `4B 01 8` (the DRUM-X kit, below) and (Skiff W3) `57 01 caps` (bit 0 TRANSPORT, bit 1 PROJ_NAME, bit 2 POOL, (#21) bit 5 SMP_MIX, (2.0) bit 6 a step's ties, below; bits 3 LIST and 4 PERFORM: gone) and (Skiff 1.3) `49 01 c0 c1 e0 e1` (wide ids: P_COUNT and P_E0, above) and (2.0) `58 01 caps` (bit 0: the pool's EMPTY and CLEAR UNUSED; "Pool" below) ; older firmware ends earlier |
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine: its defaults, then its first preset (as on the device) |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
@@ -1076,6 +1076,7 @@ rc 1), and the indexes after them are lower than before:
 | 16 | 19 | PLAYHEAD | 0 | 0 THEME, 1 LINE (Skiff #27) | THEME | 0 DISPLAY |
 | 17 | 20 | RETURN | 0 | 0 SNAP, 1 "1 BEAT", 2 "1 BAR" (Skiff 2.0) | 1 BAR | 1 CONTROL |
 | 18 | 21 | KEEP SENDS | 0 | 0 OFF, 1 ON (Skiff 2.5): ON, a sound load keeps the track's CHORUS DELAY REVERB sends | OFF | 1 CONTROL |
+| 19 | 22 | GRID | 0 | 0 OFF, 1 "1 BAR", 2 1/2, 3 1/4, 4 1/8, 5 1/16, 6 1/32, 7 1/4T, 8 1/8T, 9 1/16T | OFF | 5 TIMING |
 
 PLAYHEAD (id 19, Skiff #27): THEME draws the THEME's figure at the playhead on HOME's selected lane (CRYPT's torch,
 NEON's car, QUARK's collision), LINE the playhead's line only; SKIFF, HI-CON and PAPER draw no figure either way.

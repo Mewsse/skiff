@@ -69,6 +69,10 @@ static uint32_t up_gen;                      /* bumped on every user bank change
 /* (Skiff U1) the settings' one-time changes done, in a byte no engine uses (0 in every older setting): 1 BPM LOCK
  * turned ON once on every unit, so SELECT turns pages (main.c) */
 #define ui_set_rev (favorites.factory[15][23])
+/* the global GRID (grid.c: OFF, 1 BAR .. 1/16T), what the tape, live playing, the ARP's start and PERFORM's keys snap to.
+ * [15][26] was Skiff's LAUNCH: ui_set_rev 4 sets it to 0 once; a value past the table reads as OFF */
+#define ui_grid (favorites.factory[15][26])
+static uint32_t ui_grid_idx(void) { return ui_grid < GRID_N ? ui_grid : 0u; }
 /* (Skiff U4, the review's A3; DESIGN.md rule 11) MENU > DISPLAY > HINTS OFF: the one line of hint (HOME's HOLD HOME:
  * SHIFT, the step pages' PRESETS: STEP and KEYS: STEPS, a layer's first-tap HOLD [X]: SHORTCUTS, (U5) SHIFT's map)
  * goes; an action page's OCT+ / OCT- line stays (what they do now). A byte no engine uses, 0 = ON */
@@ -255,7 +259,7 @@ static struct {
     uint8_t hot_col, hot_t;      /* column whose knob was just turned (drawn white) */
     uint8_t menu;                /* 0 off, 1 list, 2 about + credits (HOME held) */
     uint8_t menu_sel;            /* MENU: the row (menu_items.c MI_*; its tab MI_TAB), kept while the device runs */
-    uint8_t menu_row[5];         /* MENU: the row last picked in each tab, from its first (ALGORITHM comes back to it) */
+    uint8_t menu_row[6];         /* MENU: the row last picked in each tab, from its first (ALGORITHM comes back to it) */
     uint32_t cc_last;            /* ((2.2) CC OUT: the last a knob sent, track << 16 | CC << 8 | value, + 1 (midi_learn.c) */
     volatile uint8_t mpc[NTRK];  /* ((1.3) MIDI Program Change per track, 0x80 | program, 0 none: midi_control.c mpc_io
                                   * notes it, midi_pc_poll loads it) */
@@ -650,7 +654,7 @@ static void cpu2_move(void)
 #endif
 
 /* after the session came back (main.c, autosave_boot): the unit's into song.g; the first boot the other way. Then the
- * boot's one-time changes saved: ui_set_rev 2 (these), (2.5) 3 (cpu2_move's) */
+ * boot's one-time changes saved: ui_set_rev 2 (these), (2.5) 3 (cpu2_move's), 4 (GRID takes LAUNCH's byte, at OFF) */
 static void unit_g_boot(void)
 {
     uint32_t i, save = unit_g_adopt;
@@ -665,6 +669,11 @@ static void unit_g_boot(void)
     }
     if (CPU2_DEFAULT && ui_set_rev < 3u) {
         ui_set_rev = 3;
+        save = 1;
+    }
+    if (ui_set_rev < 4u) {
+        ui_grid = 0;
+        ui_set_rev = 4;
         save = 1;
     }
     if (save)

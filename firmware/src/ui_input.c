@@ -1858,6 +1858,7 @@ static void layer_show(void);
 static void layer_tap(uint32_t l);
 static void layer_keys(uint32_t keys);
 static void layer_knob(uint32_t k, int32_t s);
+static void perf_grid_turn(int32_t s);
 static int layer_play(void);
 static void free_hint(void);                        /* ((2.5) ui_layer.c) */
 static int layer_set_open(void);
@@ -2144,8 +2145,12 @@ static void ui_input(void)
         for (k = 0; k < 4u; k++)                        /* KNOB 1..4: the layer's (ui_layer.c layer_knob) */
             if ((ks[k] = panel_enc(EN_K1 + k)) != 0)
                 combo = 1;
-        if (ui.ly == LAYER_PERF) {                      /* (Skiff) PERFORM: SELECT, PRESETS read, nothing yet */
-            if (panel_enc(EN_SELECT) | panel_enc(EN_PRESET))
+        if (ui.ly == LAYER_PERF) {                      /* (Skiff) PERFORM: SELECT turns GRID, PRESETS read, nothing yet */
+            if ((sel = panel_enc(EN_SELECT)) != 0) {
+                perf_grid_turn(sel);
+                combo = 1;
+            }
+            if (panel_enc(EN_PRESET))
                 combo = 1;
         } else {
             panel_enc(EN_PRESET);                       /* (a stray turn would load another sound) */

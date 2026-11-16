@@ -213,11 +213,11 @@ static void menu_head(void)
  *                   CLOSE is in the header: the four would not fit in S (cv_key_row drops words, from the last)
  * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows; while the tabs slide only their
  * strip (24..58) is drawn again */
-static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_X_COG, ICON_MIDI};
+static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_X_COG, ICON_MIDI, ICON_TIME};
 #define MT_Y 29                                        /* the tab bar */
 #define MT_H 24
-#define MT_IW 28                                       /* a cushion with its icon alone (the icon centred in it; (1.3) 28,
-                                                        * was 32: five tabs) */
+#define MT_IW 22                                       /* a cushion with its icon alone (the icon centred in it; (1.3) 28,
+                                                        * was 32: five tabs; (P3) 22: six) */
 #define MT_NX 26                                       /* the name's pen in the one shown; 10 px after it */
 #define MT_X0 6
 #define MT_X1 234

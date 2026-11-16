@@ -12,6 +12,14 @@ static arm_t arm[NTRK];
 static uint8_t seq_run = (uint8_t)((1u << NTRK) - 1u);   /* a bit a track; RAM only (default all on) */
 
 static int seq_running(uint32_t k) { return (seq_run >> k) & 1u; }
+/* when a press now lands: the next GRID line (the swung one, as the tape's), OFF: the next step */
+static uint32_t arm_when(uint32_t grid)
+{
+    int32_t swing = song.g[G_SWING];
+    if (!grid)
+        return song_ticks;
+    return song_ticks + grid_next(grid, swing < 0 ? 0u : (uint32_t)swing, tape_head) - tape_head;
+}
 /* track k's armed op now (the ISR at a step boundary, or the main loop stopped) */
 static void arm_do(track_t *t, uint32_t op)
 {
