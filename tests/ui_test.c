@@ -123,8 +123,8 @@ static struct { uint32_t stage; } felucca_dbg;
 #include "../firmware/src/ui_layer.c"
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
-#define BK_RAM 1                                  /* (Skiff: the pattern bank's sectors in RAM: no flash here) */
-#include "../firmware/src/bank.c"
+#define TS_RAM 1                                  /* ((Skiff P10) the tape store's sectors in RAM: no flash here) */
+#include "../firmware/src/tape_store.c"
 #include "phrases.h"                              /* (test material: the phrases the firmware no longer ships) */
 
 static int check(const char *what, int ok)
@@ -166,9 +166,9 @@ static void ui_power_on(void)
     layer_seen = 1u;                              /* ((2.5) the stopped capture's hint seen: test_free_hint's own) */
     memset(undo_ring, 0, sizeof undo_ring);   /* (Skiff: the undo ring, ui.c) */
     memcpy(dx_kit, DX_KIT_DEF, sizeof dx_kit);   /* ((Skiff phase 9) the factory kit: a DRUM-X preset loads others) */
-    memset(bk_ram, 0xFF, sizeof bk_ram);         /* (Skiff: the pattern bank erased, as from a new unit) */
+    memset(ts_ram, 0xFF, sizeof ts_ram);         /* ((Skiff P10) the tape store erased, as on a new unit) */
     tape_init();                                  /* (.. the tape's free list: main.c felucca_main) */
-    bank_boot();
+    ts_boot();
     (void)arm_cancel();                           /* (.. nothing armed: launch.c) */
     seq_run = (uint8_t)((1u << NTRK) - 1u);
     memset(thr, 0, sizeof thr);
@@ -179,7 +179,6 @@ static void ui_power_on(void)
     memset(&sp, 0, sizeof sp);                    /* (SLICES: the marker, ui_slice.c) */
 #endif
     undo_clear();
-    memset(trk_pid, 0, sizeof trk_pid);           /* (Skiff phase 5: no patterns on the tracks) */
     motion_lost = 0;
     memset(proj_slot, 0, sizeof proj_slot);
     memset(up_bank, 0, sizeof up_bank);
@@ -542,7 +541,6 @@ static int test_sound_loads(void)
     before = *t;
     project_save(0);
     apply_preset_to(t, 0);
-    trk_pid[t - trk] = 0;                      /* (phase 5: new steps; the saved project's pattern as saved) */
     track_defaults_steps(t);
     project_load(0);
     bad += check("saved SAMPLE PERC project: a DRUM track (its kit), the rest of the sound and every step kept",
@@ -806,8 +804,7 @@ static int test_save(void)
                      !name_on() && up_used(0) && up_value(up_rec(0), p_sid(P_E0)) == 5 && ui.act == 0u && str_eq(nmb, au));
     }
     press(B_SAVE);
-    bad += check("SAVE again cycles to (Skiff) PATTERNS, then PROJECT", cur_page()->graph == GR_BANK &&
-                 (press(B_SAVE), cur_page()->graph == GR_SLOTS));
+    bad += check("SAVE again cycles to PROJECT ((Skiff P10) PATTERNS gone)", cur_page()->graph == GR_SLOTS);
     go_home();
     press(B_SAVE);
     int ok = cur_page()->graph == GR_SLOTS;                /* ((U3, N3) the page it was left on) */
@@ -935,8 +932,8 @@ static int test_actions(void)
     press(B_OCTUP);
     bad += check("HOME: OCT+ shifts the octave (lit)", song.octave == 1 && oct_leds() == 2u);
     my_steps(t);
-    go_page(GR_BANK);                             /* (Skiff phase 5) SAVE > PATTERNS, the pool view: CLEAR always picked */
-    bad += check("PATTERNS: CLEAR picked, OCT+ dark on an empty pattern, OCT- lit", act_col() == 4u &&
+    go_page(GR_TAPE);                             /* ((Skiff P10) SEQ > TAPE: CLEAR always picked; SAVE > PATTERNS was) */
+    bad += check("TAPE: CLEAR picked, OCT+ dark on an empty track, OCT- lit", act_col() == 4u &&
                  oct_leds_seen(0) == 1u && oct_leds_seen(1) == 1u);
     {
         char a[16], b[16];
@@ -946,14 +943,8 @@ static int test_actions(void)
     press(B_OCTUP);
     bad += check("..OCT+ on it: NOTHING TO CLEAR, the octave stays", msg_is("NOTHING TO CLEAR") && song.octave == 1 &&
                  !ui.home);
-    {
-        static uint8_t r[BK_REC];
-        bk_pack(r, t);
-        pool_put(1, r);                           /* (02 kept, nothing using it) */
-    }
-    turn(EN_K1, 1);
-    bad += check("..KNOB 1 the next pattern (02, nothing uses it): OCT+ breathes", ui.bslot == 1u &&
-                 oct_leds_seen(0) == (1u | OCT_BREATH));
+    (void)tape_insert(0, 60u << 20, 90u << 20 | 240u, TAPE_ANY_PASS);   /* (a note on the target track) */
+    bad += check("..a note on the track: OCT+ breathes", oct_leds_seen(0) == (1u | OCT_BREATH));
     fm1_in.buttons |= 1u << panel.btn[B_OCTUP];   /* both together (the UPDATE MODE hold): nothing */
     host_pressed |= 1u << panel.btn[B_OCTUP];
     frame();
@@ -964,18 +955,19 @@ static int test_actions(void)
     frame();
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTDN]);
     frame();
-    bad += check("OCT- + OCT+ together: no clear, no HOME, no octave change", pool_used(1) && !ui.confirm && !ui.home &&
+    bad += check("OCT- + OCT+ together: no clear, no HOME, no octave change", tp_trk[0].count == 1u && !ui.confirm && !ui.home &&
                  song.octave == 1);
     go_home();
-    fm1_in.buttons |= 1u << panel.btn[B_OCTUP];   /* pressed on HOME, let go on PATTERNS: no clear */
+    fm1_in.buttons |= 1u << panel.btn[B_OCTUP];   /* pressed on HOME, let go on TAPE: no clear */
     host_pressed |= 1u << panel.btn[B_OCTUP];
     frame();
-    go_page(GR_BANK);
+    go_page(GR_TAPE);
     fm1_in.buttons &= ~(1u << panel.btn[B_OCTUP]);
     frame();
-    bad += check("a press that began elsewhere does not act (no dialog)", pool_used(1) && !ui.confirm && song.octave == 2);
+    bad += check("a press that began elsewhere does not act (no dialog)", tp_trk[0].count == 1u && !ui.confirm &&
+                 song.octave == 2);
     press(B_OCTDN);
-    bad += check("PATTERNS: OCT- goes HOME (CLEAR is always picked; the octave stays)", ui.home && song.octave == 2);
+    bad += check("TAPE: OCT- goes HOME (CLEAR is always picked; the octave stays)", ui.home && song.octave == 2);
     /* the dialogs and the menu */
     open_family(FAM_SEQ);
     my_steps(t);
@@ -2117,8 +2109,6 @@ static int test_presets_knob(void)
                 n_mix++;
             } else if (g == GR_USER) {
                 sel_ok &= ui.uslot == uslot + 1u && same_snd && same_steps;
-            } else if (g == GR_BANK) {                 /* (Skiff) PATTERNS: the slot */
-                sel_ok &= ui.bslot == 1u && same_snd && same_steps;
             } else if (g == GR_SLOTS) {
                 sel_ok &= song.g[G_SLOT] == slot + 1 && same_snd && same_steps;
             } else if (g == GR_EVENTS) {   /* (AUTOMATION, U3: the list; its row) */
@@ -6363,7 +6353,7 @@ static void rec_clear_held(void) { key_down(white(0)); frames(HOLD_MS[settings_h
 static uint32_t menu_rec(uint32_t r) { return menu_get(r == 0u ? MI_CLICK : r == 1u ? MI_COUNTIN : MI_CLKLVL); }
 static int test_rec_layer(void)
 {
-    static const uint8_t G[8] = {GR_ROLL, GR_STEPS, GR_FEEL, GR_EVENTS, GR_SCALE, GR_BANK, GR_LFO, GR_TRK};   /* ((U3)
+    static const uint8_t G[8] = {GR_ROLL, GR_STEPS, GR_FEEL, GR_EVENTS, GR_SCALE, GR_USER, GR_LFO, GR_TRK};   /* ((U3)
                                                          * T2's FM6 has no ENV page: LFO) */
     int bad = 0, ok = 1;
     uint32_t k, i, n;
@@ -8217,11 +8207,10 @@ static int test_u2(void)
 /* (Skiff U4, the review's words) */
 static int test_u4(void)
 {
-    static const char *const M[] = {"SAVE > PATTERNS: CLEAR", "AUTOMATION: DELETE ONE", "GLO + SELECT: TEMPO",
-        "UNDO NEEDS PATTERN 07", "DISARM REC FOR A TAKE", "PLAY ONE LOOP FIRST", "NOTHING BEFORE TO JOIN", "STOP TO RENAME",
+    static const char *const M[] = {"AUTOMATION: DELETE ONE", "GLO + SELECT: TEMPO", "DISARM REC FOR A TAKE", "PLAY ONE LOOP FIRST", "NOTHING BEFORE TO JOIN", "STOP TO RENAME",
         "TAP: CLOCK IS EXTERNAL", "RESTART: CLOCK EXTERNAL", "SLICES NOW MANUAL", "PICK A USR SAMPLE FIRST",
         "SAVED UNTIL POWER OFF", "RENAMED UNTIL POWER OFF", "ERASED UNTIL POWER OFF", "STORAGE ERROR", "KEYS RECORD LANES",
-        "HOLD [GLO]: SHORTCUTS", "HOLD [EDIT]: SHORTCUTS", "SOUND INITIALIZED", "PATTERN 06 CLEARED", "UNDONE: SEQUENCE",
+        "HOLD [GLO]: SHORTCUTS", "HOLD [EDIT]: SHORTCUTS", "SOUND INITIALIZED", "PATTERN CLEARED", "UNDONE: SEQUENCE",
         "SESSION NOT RESTORED", "IT STOPPED BEFORE", "HOLD [SAVE]: UNDO", "PICK WITH A KNOB FIRST", "ONE LAYER AT A TIME",
         "TAP 2 MORE", "SETTINGS RESET", "WAITING FOR USB CLOCK", "WAITING FOR TRS CLOCK", "MENU > MIDI > CLOCK"};
     int bad = 0, ok = 1;
@@ -8997,20 +8986,6 @@ static int test_blocks(void)
     return bad;
 }
 
-/* (phase 5) track k on no pattern, one note: new steps (kept as a new pattern) */
-static void fresh_pattern(uint32_t k, uint8_t note)
-{
-    track_defaults_steps(&trk[k]);
-    trk_pid[k] = 0;
-    trk[k].step[0] = (step_t){{note}, 1, ST_NOTE, 0, 90};
-}
-/* track k's steps kept as a new pattern (the first free id), the track on it */
-static uint32_t keep_new(uint32_t k)
-{
-    trk_pid[k] = 0;
-    (void)keep_all();
-    return trk_pid[k] ? trk_pid[k] - 1u : NPAT;
-}
 /* SEQ > TAPE (the note tape's page): its place in SEQ, KNOB 1 the target, 2 the length, 3 CLEAR / merge source, 4 MUTE,
  * OCT+ behind a dialog, the header's bar.beat */
 static void tape_put(uint32_t track, uint32_t at, uint32_t note, uint32_t part)
@@ -9139,71 +9114,6 @@ static int test_tape(void)
     tape_head = 0;
     press(B_OCTDN);
     bad += check("  OCT- goes HOME", ui.home != 0u);
-    return bad;
-}
-
-/* Skiff phase 5: SAVE > PATTERNS, the pool view (bank.c pool_refs, pool_clear; the pool itself: tests/bank_test.c):
- * KNOB 1 the pattern (01 .. 64), its LEN and how many use it on the cards; CLEAR always picked: OCT+ clears a pattern
- * nothing uses (no track on it, no saved project naming it), after its dialog; on a used one it says how many use it;
- * playing: STOP TO CLEAR; OCT- back HOME */
-static int test_pool(void)
-{
-    int bad = 0, ok;
-    uint32_t a, c, d;
-    ui_power_on();
-    fresh_pattern(song.sel, 50);                     /* 01: T1 back on it; 02: kept, then nothing uses it */
-    a = keep_new(song.sel);
-    fresh_pattern(song.sel, 60);
-    c = keep_new(song.sel);
-    (void)pat_load(TSEL, a);
-    go_page(GR_BANK);
-    frame();
-    ok = act_col() == 4u && a == 0u && c == 1u && pool_refs(a) == 1u && !pool_refs(c) && !act_ready();
-    turn(EN_K1, 1);
-    ok &= ui.bslot == c && act_ready();
-    bad += check("PATTERNS (the pool): KNOB 1 the pattern; CLEAR ready on one nothing uses (02), not on T1's (01)", ok);
-    turn(EN_K1, -1);
-    press(B_OCTUP);
-    ok = !ui.confirm && msg_is("USED BY 1 ENTRY") && pool_used(a);
-    turn(EN_K1, 1);
-    song.playing = 1;
-    press(B_OCTUP);
-    ok &= !ui.confirm && msg_is("STOP TO CLEAR");
-    song.playing = 0;
-    bad += check("  OCT+ on a used one: USED BY 1 ENTRY; playing: STOP TO CLEAR", ok);
-    press(B_OCTUP);
-    ok = ui.confirm == CF_ERASE_BANK && ui.confirm_trk == c;
-    press(B_OCTUP);
-    ok &= !pool_used(c) && msg_is("CLEARED 02") && pool_used(a);
-    press(B_OCTUP);
-    ok &= msg_is("NOTHING TO CLEAR");
-    bad += check("  OCT+ on 02: its dialog, then cleared (CLEARED 02); again: NOTHING TO CLEAR", ok);
-    fresh_pattern(song.sel, 61);                     /* ((2.0, #46) 02 and 03 kept, then nothing uses them */
-    c = keep_new(song.sel);
-    fresh_pattern(song.sel, 62);
-    d = keep_new(song.sel);
-    (void)pat_load(TSEL, a);                         /* (T1 on 01 again) */
-    go_page(GR_BANK); frame();
-    ui.bslot = (uint8_t)a;
-    turn(EN_K4, 1);
-    ok = ui.bact == BA_EMPTY && act_ready() && trk_pid[song.sel] == a + 1u && TSEL->step[0].time == ST_NOTE;
-    press(B_OCTUP);
-    ok &= ui.confirm == CF_EMPTY_BANK && ui.confirm_trk == a;
-    press(B_OCTUP);
-    ok &= msg_is("EMPTIED 01") && pool_used(a) && trk_pid[song.sel] == a + 1u && TSEL->step[0].time == ST_REST;
-    bad += check("  (2.0, #46) KNOB 4 EMPTY: 01's steps gone, T1 on it too; the pattern kept", ok);
-    turn(EN_K4, 1);
-    ok = ui.bact == BA_UNUSED && c == 1u && d == 2u && pool_unused() == 2u && act_ready();
-    press(B_OCTUP);
-    ok &= ui.confirm == CF_CLEAR_UNUSED && ui.confirm_trk == 2u;
-    press(B_OCTUP);
-    ok &= msg_is("CLEARED 2 PATTERNS") && !pool_used(c) && !pool_used(d) && pool_used(a) && !pool_unused();
-    press(B_OCTUP);
-    bad += check("  KNOB 4 CLEAR UNUSED: 02 and 03 after its dialog; again: NOTHING UNUSED", ok && msg_is("NOTHING UNUSED"));
-    ok = pool_used(0u) && !pool_used(1u) && !pool_used(2u) && pool_alloc() == 1u;
-    bad += check("  a new pattern's number: the first free", ok);
-    press(B_OCTDN);
-    bad += check("  OCT- back HOME", ui.home != 0u);
     return bad;
 }
 
@@ -9346,11 +9256,11 @@ static int test_free_hint(void)
     return bad;
 }
 /* (2.5, the user's 3A) SAVE > PROJECT's KNOB 3: LOAD NEW CLEAR TRACKS (an empty slot's from NEW); OCT+ asks; CLEAR
- * TRACKS empties every track's steps, the sounds kept, its pattern kept in the pool (loads back) */
+ * TRACKS empties every track's steps, the sounds kept; the saved project's steps load back */
 static int test_proj_k3(void)
 {
     int bad = 0, ok;
-    uint32_t k, pid0;
+    uint32_t k;
     uint8_t eng0[NTRK];
     ui_power_on();
     song.playing = 0;
@@ -9372,7 +9282,6 @@ static int test_proj_k3(void)
     bad += check("(2.5, 3A) SAVE > PROJECT's KNOB 3: LOAD NEW CLEAR TRACKS (an empty slot's from NEW)", ok);
     for (k = 0; k < NTRK; k++)
         eng0[k] = trk[k].eng_req;
-    pid0 = trk_pid[0];
     for (k = 0; k < 10000u && ui.undo_w; k++)         /* (the undo box's window: OCT+ would redo) */
         frame();
     go_page(GR_SLOTS); frame();
@@ -9381,11 +9290,10 @@ static int test_proj_k3(void)
     ok = ui.confirm == CF_CLEAR_TRKS;
     press(B_OCTUP);
     for (k = 0; k < NTRK; k++)
-        ok &= !step_on(&trk[k].step[0]) && trk[k].eng_req == eng0[k] && !trk_pid[k];
-    ok &= pid0 != 0u;                                 /* (its pattern: kept, loads back) */
-    (void)pat_load(&trk[0], pid0 - 1u);
+        ok &= !step_on(&trk[k].step[0]) && trk[k].eng_req == eng0[k];
+    project_load(1);                                  /* ((Skiff P10) the slot's set: its steps back) */
     ok &= step_on(&trk[0].step[0]) && trk[0].step[0].note[0] == 48u;
-    bad += check("  CLEAR TRACKS: asks, every track's steps emptied, the sounds kept, its pattern kept (loads back)", ok);
+    bad += check("  CLEAR TRACKS: asks, every track's steps emptied, the sounds kept; the saved steps load back", ok);
     return bad;
 }
 /* (2.5, the user's 4A) NOTES' footer: the delete hint while a note (or a hit) starts in the selection */
@@ -9731,7 +9639,6 @@ int main(void)
     bad += test_blocks();
     bad += test_undo_levels();
     bad += test_tape();                               /* SEQ > TAPE */
-    bad += test_pool();                               /* Skiff phase 5: SAVE > PATTERNS, the pool view */
     bad += test_perform();                            /* Skiff: the PERFORM layer (live switching) */
     bad += test_duck_page();                          /* Skiff: FX > DUCK */
     bad += test_fx_bus_pages();                       /* (2.5) FX > DELAY, FX > REVERB */

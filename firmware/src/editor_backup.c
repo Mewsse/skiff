@@ -10,17 +10,23 @@
  * editor converts the others first); a slot's whole project of before (one the converter couldn't: the archive's
  * patterns full) is kept as it is, OLD FORMAT, and backed up as flash keeps it (proj_old).
  * Id 9 is the user presets' FM6 patches (up_fm6.c), appended in 1.0.3.
- * (Skiff) Ids 16..31 are the pattern bank's 16 chunks (bank.c, each 4 patterns; 0 bytes: all empty): a restore checks
- * every pattern, then writes the chunk as a save does (its commit record last). Firmware without the bank refuses them
- * (rc 1 at begin, nothing written): the web tool skips them there.
+ * (Skiff P10) Ids 40..59 are the tape store's chunks (tape_store.c: slot (id - 40) / 4, the music now's last; chunk 0
+ * with its meta after it; 0 bytes: the slot has no set): a restore checks every record, then writes the chunk into
+ * that slot's set coming in, which is the slot's once its four are in. LIST writes the music's set first (the tracks'
+ * steps, the tape), as the project record (id 0) names none. Ids 16..31, the pattern pool's chunks of before, are
+ * taken (up to 3552 bytes) and dropped: an archive of before restores its projects (OLD FORMAT) and settings.
+ * Firmware without the store refuses 40..59 (rc 1 at begin, nothing written): the web tool skips them there.
  */
-static const uint8_t ED_BK_IDS[29] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                                      29, 30, 31, 32, 33, 34};
-#define ED_BK_BANK(id) ((id) >= 16u && (id) < 32u)   /* (Skiff) the pattern bank's chunks */
+static const uint8_t ED_BK_IDS[33] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
+                                      53, 54, 55, 56, 57, 58, 59, 32, 33, 34};
+#define ED_BK_OLD(id) ((id) >= 16u && (id) < 32u)    /* (Skiff) the pattern pool's chunks of before: dropped */
+#define ED_BK_OLD_LEN 3552u
+#define ED_BK_TAPE(id) ((id) >= TS_OBJ0 && (id) < TS_OBJ0 + TS_OBJS)   /* (Skiff P10) the tape store's */
 #define ED_BK_N ((uint32_t)sizeof ED_BK_IDS)
 #define ED_BK_MAX ((uint32_t)sizeof proj_wire_u.raw)
 #define ED_BK_RAW (proj_wire_u.raw)  /* reuse the existing serialized main-loop scratch */
-_Static_assert(sizeof proj_wire_u.raw >= sizeof(upf_t) && sizeof proj_wire_u.raw >= sizeof(fm6_bank_t), "backup staging");
+_Static_assert(sizeof proj_wire_u.raw >= sizeof(upf_t) && sizeof proj_wire_u.raw >= sizeof(fm6_bank_t) &&
+               sizeof proj_wire_u.raw >= TS_LEN + sizeof(ts_meta_t) && ED_BK_N == 33u, "backup staging");
 static sks_t ed_bk_settings;
 static uint8_t ed_bk_valid, ed_bk_put, ed_bk_id, ed_bk_gen;
 static uint32_t ed_bk_len, ed_bk_crc, ed_bk_pos, ed_bk_ms, ed_bk_usb;
@@ -42,7 +48,7 @@ static void ed_bk_pack(const uint8_t *p, uint32_t n)
 static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
 {
     *len = 0;
-    if (id == 0u) { *len = PROJ_SKF->size; return ED_BK_RAW; }    /* (Skiff phase 5: SKF2; phase 6: SKF3; 2.0: SKF4) */
+    if (id == 0u) { *len = PROJ_SKF->size; return ED_BK_RAW; }    /* (Skiff phase 5: SKF2 .. 2.0: SKF4; P10: SKF5) */
     if (id == 1u) { *len = sizeof ed_bk_settings; return (const uint8_t *)&ed_bk_settings; }
     if (id >= 2u && id <= 5u) {                     /* ((2.0) the record's own size; one of a format of before as flash
                                                      * keeps it, for the editor's Restore to convert: proj_old) */
@@ -65,8 +71,6 @@ static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
         if (upf_valid(&upf)) *len = sizeof upf;
         return (const uint8_t *)&upf;
     }
-    if (ED_BK_BANK(id))                             /* (Skiff) a bank chunk, read into bank.c's buffer */
-        return bank_chunk(id - 16u, len);
     if (id >= 32u && id < 32u + SMP_USER_SLOTS) {
         uint32_t k = id - 32u;
         const smp_user_hdr_t *h = (const smp_user_hdr_t *)smp_user_xip(k);
@@ -76,10 +80,22 @@ static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
     }
     return 0;
 }
+/* (Skiff P10) tape store object n's CRC-32, len bytes read a page at a time */
+static uint32_t ed_bk_ts_crc(uint32_t n, uint32_t len)
+{
+    uint32_t off, crc = 0xFFFFFFFFu;
+    for (off = 0; off < len; off += 256u) {
+        uint32_t part = len - off < 256u ? len - off : 256u;
+        if (ts_obj_read(n, off, ed_smp_buf, part))
+            return 0;
+        crc = st_crc32_on(crc, ed_smp_buf, part);
+    }
+    return ~crc;
+}
 static uint32_t ed_bk_capture(void)
 {
     if (ed_flash_stop()) return 3;
-    (void)keep_all();                               /* (phase 5) the tracks' patterns written: the chunks hold them */
+    if (ts_on() && ts_save(TS_MUSIC)) return 2;    /* ((Skiff P10) the music's set: its steps and tape, ids 56..59) */
     project_capture(&proj_scratch);
     if (!proj_pack2((project_store_t *)ED_BK_RAW, &proj_scratch, PROJ_SKF)) return 2;
     ed_bk_gen = ++proj_wire_gen;
@@ -115,14 +131,17 @@ static int ed_bk_set_ok(uint32_t palette, uint32_t lowcut, uint32_t zoom, uint32
 static uint32_t ed_bk_commit(void)
 {
     uint8_t *raw = ED_BK_RAW;
-    uint32_t obj, old = 0;
+    uint32_t obj, old = 0, set = TS_NONE;
     if (ed_bk_pos != ed_bk_len || st_crc32(raw, ed_bk_len) != ed_bk_crc) return 2;
     if (ed_bk_id == 0u || (ed_bk_id >= 2u && ed_bk_id <= 5u)) {
-        if (ed_bk_len && !proj_import(&proj_scratch, raw, (int)ed_bk_len)) {   /* ((2.0) SKF3, SKF4: the editor converts */
-            if (FELUCCA_LEGACY || !ed_bk_id || !(old = proj_old_whole(raw, ed_bk_len)))   /* the others; one it couldn't, */
-                return 2;                           /* whole, kept as it is: OLD FORMAT, converted another time) */
+        if (ed_bk_len && !proj_import(&proj_scratch, raw, (int)ed_bk_len)) {   /* ((2.0) one of a format of before, */
+            if (FELUCCA_LEGACY || !(old = proj_old_whole(raw, ed_bk_len)))   /* whole: kept as it is, OLD FORMAT, */
+                return 2;                           /* converted another time; (Skiff P10) as the music: the music */
+            if (!ed_bk_id) return 0;                /* stays as it is) */
             ed_bk_len = old;
         }
+        if (ed_bk_len && proj_fmt_of(raw, (int)ed_bk_len) == &PROJ_SKF5)
+            set = TS_MUSIC;                         /* ((Skiff P10) the music's: its set, ids 56..59) */
         if (ed_bk_len && !old) {                    /* SKF2 .. SKF4 as they are; an older format becomes SKF1 inside its */
             const proj_fmt_t *f = proj_fmt_of(raw, (int)ed_bk_len);   /* ranges */
             proj_bound(&proj_scratch);
@@ -138,7 +157,7 @@ static uint32_t ed_bk_commit(void)
 #endif
         }
         if (ed_bk_id == 0u) {                       /* (the last object of a restore: fm1backup.js) */
-            if (!ed_bk_len || project_restore_runtime(&proj_scratch)) return 2;
+            if (!ed_bk_len || project_restore_runtime(&proj_scratch, set)) return 2;
 #if FELUCCA_LEGACY
             (void)proj_migrate(1);                  /* (phase 5) an older archive's projects (ids 2..5): SKF2 (SKF3) */
 #endif
@@ -183,10 +202,11 @@ static uint32_t ed_bk_commit(void)
         if (ed_bk_len) memcpy(&upf, raw, sizeof upf); else upf_empty();
         sync_reload = 1; ui.force = 1;
         return upf_save() == 2 ? 4u : 0u;           /* (a failed write keeps the restored RAM copy) */
-    } else if (ED_BK_BANK(ed_bk_id)) {              /* (Skiff) a bank chunk: every pattern checked, then written */
-        if (!bank_chunk_ok(raw, ed_bk_len)) return 2;
-        sync_reload = 1; ui.force = 1;
-        return bank_restore(ed_bk_id - 16u, raw, ed_bk_len) ? 4u : 0u;
+    } else if (ED_BK_TAPE(ed_bk_id)) {              /* ((Skiff P10) a tape store chunk: every record checked, then */
+        if (!ts_obj_ok(ed_bk_id - TS_OBJ0, raw, ed_bk_len)) return 2;   /* written into its slot's set coming in */
+        return ts_obj_put(ed_bk_id - TS_OBJ0, raw, ed_bk_len) ? 4u : 0u;
+    } else if (ED_BK_OLD(ed_bk_id)) {               /* (the pattern pool's of before: dropped) */
+        return 0;
     } else return 1;
 #if FELUCCA_FLASH
     if (!flash_ok || st_save(obj, raw, ed_bk_len)) return 4;
@@ -227,7 +247,7 @@ static int proj_store_len(uint32_t len)
 static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
 {
     /* the arguments first: a malformed request never stops the transport */
-    if (n < 2u || a[0] > 3u || (a[1] > 9u && !ED_BK_BANK(a[1]))) return 1;
+    if (n < 2u || a[0] > 3u || (a[1] > 9u && !ED_BK_OLD(a[1]) && !ED_BK_TAPE(a[1]))) return 1;
     if (a[0] == 0u) {
         if (n != 12u || a[6] > 15u || a[11] > 15u) return 1;
         uint32_t len = ed_bk_r32(a + 2);
@@ -237,7 +257,9 @@ static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
             ((a[1] == 6u || a[1] == 7u) && len && len != sizeof(up_bank_t)) ||
             (a[1] == 8u && len && (!FELUCCA_LEGACY || len != sizeof(fm6_bank_t))) ||   /* ((2.0) only empty: web/conv) */
             (a[1] == 9u && len && len != sizeof(upf_t)) ||
-            (ED_BK_BANK(a[1]) && len && len != BK_LEN)) return 1;
+            (ED_BK_OLD(a[1]) && len > ED_BK_OLD_LEN) ||
+            (ED_BK_TAPE(a[1]) && len && len != TS_LEN + ((a[1] - TS_OBJ0) % TS_CHUNKS ? 0u : sizeof(ts_meta_t))))
+            return 1;
         if (ed_flash_stop()) return 3;
         ed_bk_valid = 0; ed_bk_put = 1; ed_bk_id = a[1]; ed_bk_len = len; ed_bk_gen = ++proj_wire_gen;
         ed_bk_crc = ed_bk_r32(a + 7); ed_bk_pos = 0;
@@ -268,21 +290,36 @@ static int ed_backup_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         uint32_t rc = n ? 1u : ed_bk_capture();
         ed_b(1); ed_b(rc); ed_b(rc ? 0u : ED_BK_N);
         if (!rc) for (uint32_t i = 0; i < ED_BK_N; i++) {
-            uint32_t len;
-            const uint8_t *p = ed_bk_object(ED_BK_IDS[i], &len);
-            ed_b(ED_BK_IDS[i]); ed_bk_u32(len); ed_bk_u32(st_crc32(p, len));
+            uint32_t len, crc;
+            if (ED_BK_TAPE(ED_BK_IDS[i])) {
+                len = ts_obj_len(ED_BK_IDS[i] - TS_OBJ0);
+                crc = ed_bk_ts_crc(ED_BK_IDS[i] - TS_OBJ0, len);
+            } else {
+                const uint8_t *p = ed_bk_object(ED_BK_IDS[i], &len);
+                crc = st_crc32(p, len);
+            }
+            ed_b(ED_BK_IDS[i]); ed_bk_u32(len); ed_bk_u32(crc);
             fm1_wdt_feed();
         }
         return 1;
     }
     if (cmd == ED_BACKUP_GET) {
-        uint32_t len = 0, off = n >= 6u ? ed_bk_r32(a + 1) : 0u;
+        uint32_t len = 0, off = n >= 6u ? ed_bk_r32(a + 1) : 0u, at = off;
         uint32_t count = n == 8u ? (uint32_t)a[6] | (uint32_t)a[7] << 7 : 0u;
-        const uint8_t *p = n ? ed_bk_object(a[0], &len) : 0;
-        uint32_t rc = (!ed_bk_valid || ed_bk_usb != usb.resets || (n && !a[0] && ed_bk_gen != proj_wire_gen)) ? 5u : transport_busy() ? 3u :
+        int tape = n && ED_BK_TAPE(a[0]);
+        const uint8_t *p = !n ? 0 : tape ? ed_smp_buf : ed_bk_object(a[0], &len);
+        uint32_t rc;
+        if (tape)
+            len = ts_obj_len(a[0] - TS_OBJ0);
+        rc = (!ed_bk_valid || ed_bk_usb != usb.resets || (n && !a[0] && ed_bk_gen != proj_wire_gen)) ? 5u : transport_busy() ? 3u :
             n != 8u || a[5] > 15u || !p || !count || count > 256u || off > len || count > len - off ? 1u : 0u;
+        if (!rc && tape) {                          /* ((Skiff P10) read from the store, a piece at a time) */
+            at = 0;
+            if (ts_obj_read(a[0] - TS_OBJ0, off, ed_smp_buf, count))
+                rc = 1;
+        }
         ed_b(n ? a[0] : 127u); ed_b(rc); ed_bk_u32(off); ed_b(rc ? 0u : count & 127u); ed_b(rc ? 0u : count >> 7);
-        if (!rc) ed_bk_pack(p + off, count);
+        if (!rc) ed_bk_pack(p + at, count);
         return 1;
     }
     if (cmd == ED_BACKUP_PUT) {

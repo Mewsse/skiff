@@ -27,19 +27,6 @@ static int project_rename(uint32_t slot, const char *name);
 static int project_erase(uint32_t slot);   /* (1.2.1, #6) SAVE > PROJECT: DELETE, NEW (project.c) */
 static void project_new(void);
 static int step_page(uint32_t g) { return g == GR_ROLL; }   /* (Skiff 2.0) NOTES: the keys write (REC) or pick there */
-static int keep_all(void);                       /* (Skiff phase 5) bank.c: keeping the tracks' patterns */
-static int keep_poll(void);
-static uint32_t keep_waiting(void);
-static int pat_load(track_t *t, uint32_t id);
-static int pool_used(uint32_t id);
-static uint32_t pool_alloc(void);
-static uint32_t bank_gen(void);
-static uint32_t pool_len(uint32_t id);         /* (Skiff phase 5) SAVE > PATTERNS, the pool view (bank.c) */
-static uint32_t pool_refs(uint32_t id);
-static void pool_clear(uint32_t id);
-static uint32_t pool_unused(void);               /* ((2.0, #46) its ACTION: EMPTY, CLEAR UNUSED) */
-static void pool_empty(uint32_t id);
-static void pool_clear_unused(void);
 static void project_cur_name(char *b);
 static uint32_t project_mark(void);   /* (Skiff U3, A2) project.c: the slot's letter ('A'..'D', 0 none) | changed << 8 */
 static int project_dirty(void);
@@ -279,8 +266,6 @@ static struct {
     uint8_t confirm;             /* the OCT- / OCT+ dialog: CF_*, 0 = none */
     uint8_t confirm_trk;         /* the track it clears, the slot it overwrites */
     uint8_t uslot;               /* SAVE > USER: the selected user preset slot */
-    uint8_t bslot;               /* (Skiff phase 5) SAVE > PATTERNS: the pattern picked, 01 .. 64 (the pool view) */
-    uint8_t bact;                /* ((2.0, #46) .. KNOB 4's ACTION: BA_*) */
     uint8_t tsrc;                /* SEQ > TAPE's KNOB 3: 0 CLEAR the target track, 1..4 merge that track into it */
     uint8_t ev_row;              /* SEQ > AUTO LIST (ui_input.c ev_*): the row selected (the track's count: + ADD LOCK) */
     uint8_t ev_step, ev_id;      /* .. + ADD LOCK: the step and the parameter a lock is added on */
@@ -315,16 +300,12 @@ static struct {
 
 enum { CF_NONE, CF_CLEAR_SEQ, CF_OVR_PROJ, CF_OVR_USER,
        CF_INIT_SOUND, CF_CLEAR_MOTION, CF_ERASE_USER,
-       CF_ERASE_BANK, CF_LOAD_PROJ, CF_RESET_SET, CF_ERASE_PROJ, CF_NEW_PROJ,
-       CF_EMPTY_BANK, CF_CLEAR_UNUSED, CF_CLEAR_TRKS, CF_TAPE_CLEAR, CF_TAPE_MERGE, CF_COUNT };   /* ui.confirm: TOOLS' clears; SAVE
-                                   * over a used slot; USER ERASE; (Skiff phase 5) SAVE > PATTERNS: CLEAR an unused pattern;
-                                   * (Skiff U1) PROJECT LOAD over the session; ((2.0, #46) SAVE > PATTERNS: EMPTY a
-                                   * pattern, CLEAR every unused one; (2.5, 3A) SAVE > PROJECT's KNOB 3: CLEAR TRACKS; SEQ > TAPE: CLEAR a
-                                   * track, MERGE one into another: confirm_trk = track | source << 4) */
-/* (2.0, #46) SAVE > PATTERNS' KNOB 4, ACTION: CLEAR (an unused pattern, as before), EMPTY (its steps and automation, the
- * pattern and its entries kept), CLEAR UNUSED (every pattern nothing uses) */
-enum { BA_CLEAR, BA_EMPTY, BA_UNUSED, BA_N };
-static const char *const BA_NAME[BA_N] = {"CLEAR", "EMPTY", "UNUSED"};
+       CF_LOAD_PROJ, CF_RESET_SET, CF_ERASE_PROJ, CF_NEW_PROJ,
+       CF_CLEAR_TRKS, CF_TAPE_CLEAR, CF_TAPE_MERGE, CF_COUNT };   /* ui.confirm: TOOLS' clears; SAVE over a used slot;
+                                   * USER ERASE; (Skiff U1) PROJECT LOAD over the session; (2.5, 3A) SAVE > PROJECT's
+                                   * KNOB 3: CLEAR TRACKS; SEQ > TAPE: CLEAR a track, MERGE one into another: confirm_trk =
+                                   * track | source << 4 ((Skiff P10) SAVE > PATTERNS' CLEAR, EMPTY, CLEAR UNUSED gone with
+                                   * the pattern pool) */
 /* ((Skiff U2) here: bank.c opens one too) the OCT- / OCT+ dialog (ui_draw.c draws it); trk: the track or the slot it is about */
 static void confirm_open(uint32_t kind, uint32_t trk)
 {
@@ -503,7 +484,7 @@ static uint32_t large_kind(void)
     if (ui.home)
         return LK_TALL;
     g = cur_page()->graph;
-    return g == GR_BROWSE || g == GR_SLOTS || g == GR_USER || g == GR_BANK || step_page(g) ||
+    return g == GR_BROWSE || g == GR_SLOTS || g == GR_USER || step_page(g) ||
            g == GR_FEEL || g == GR_SLICES || g == GR_EVENTS || sheet_of(g) ? LK_LABEL : LK_TALL;
 }
 /* the geometry of the page shown: the cards' height, the panel's top and height */
@@ -730,7 +711,6 @@ static void ui_way(const char *s, const char *way)
     ui_say(s, "");
     str_cpy(ui.msg2, way, sizeof ui.msg2);
 }
-#define WAY_PATTERNS "SAVE > PATTERNS: CLEAR"           /* PATTERNS FULL: free a number */
 #define WAY_MOTION "AUTOMATION: DELETE ONE"           /* AUTOMATION FULL: free a record */
 /* a message led by an icon: its first byte (ui_draw.c draw_head draws the icon, then the words) */
 #define MSG_NOFILE "\x01"                      /* the no-file icon (ICON_X_NOFILE) */
@@ -1331,7 +1311,6 @@ typedef struct {
     uint8_t keep;                /* the track is as the last load left it (undo.after): a next load keeps the copy */
     uint8_t what;                /* UNDO_SOUND | UNDO_PAT: what the loads since the copy changed (undo_swap) */
     uint8_t eng, preset, user;
-    uint8_t pid;                 /* (Skiff phase 5) the pattern the track was on (trk_pid): only there does it undo */
     uint8_t fm6_slot;            /* the track's FM6 patch and its SLOT (eng_fm6.c): an edited or a project's */
     uint8_t fm6[FP_SIZE + 1u];   /* patch is the track's own, not a factory one */
     dx_lane_t dx[DV_NLANE];      /* (Skiff phase 7, UNDO_KIT) the DRUM-X kit as it was */
@@ -1396,10 +1375,6 @@ static void undo_push(uint32_t what)                       /* a new copy: the ca
 }
 static uint8_t undo_depth;       /* loads nest (an engine jump loads its first preset): the outer one counts;
                                   * felucca_init / project_load raise it to take no copy at all */
-/* (Skiff phase 5) trk_pid: the pattern id + 1 the track's steps came from, where they are kept (0: none yet, given an
- * id when first kept) */
-static uint8_t trk_pid[NTRK] __attribute__((section(".pool")));   /* (.pool: off the ISR's merged globals) */
-static uint32_t trk_pat(uint32_t k) { return trk_pid[k % NTRK] ? trk_pid[k % NTRK] - 1u : PAT_NONE; }
 /* (Skiff phase 6) the first of the four tracks a screen shows (HOME, SONG, PERFORM, MIXER, the GLO cards): T1..T4, or
  * with T5 or T6 selected the four ending at it */
 static uint32_t trk_top(void) { return song.sel > 3u ? song.sel - 3u : 0u; }
@@ -1602,7 +1577,6 @@ static void load_begin(track_t *t, uint32_t what)
     undo.fm6_slot = fm6_slot[i];
     if (what & UNDO_KIT)
         memcpy(undo.dx, dx_kit, sizeof undo.dx);
-    undo.pid = trk_pid[i];
     motion_snapshot_track(t, &undo.motion_backup);
     load_motion_hold(t, what);
 }
@@ -1661,7 +1635,6 @@ static void motion_undo_take(track_t *t, uint32_t tag)
     memcpy(undo.step, t->step, sizeof undo.step);
     memcpy(undo.fm6, fm6_patch[i], FP_SIZE);
     undo.fm6_slot = fm6_slot[i];
-    undo.pid = trk_pid[i];
     motion_snapshot_track(t, &undo.motion_backup);
     undo.keep = 0;
 }
@@ -1674,25 +1647,13 @@ static void motion_undo_done(track_t *t)
 
 /* a copy and its track change places: what its loads changed (c->what). The sound: engine, preset and its
  * parameters (not param_kept); the pattern: the steps and LEN DIV SWING GATE; the track's motion. The mix (LEVEL PAN
- * MUTE) stays: no load changes it. Swapped again, the track is back: one copy is its undo and its redo.
- * (Skiff phase 5) a copy of the steps or the motion undoes only on the pattern it was taken on (the track's steps are
- * kept as that pattern: another one's would go into this one). 0: nothing changed (AUTOMATION FULL, OTHER PATTERN) */
-static void undo_other_pattern(uint32_t pid)      /* a copy of pattern pid's steps, the track on another one */
-{
-    char b[24] = "UNDO NEEDS PATTERN 00";             /* ((Skiff U4) which one: its number) */
-    b[19] = (char)('0' + (pid + 1u) / 10u % 10u);
-    b[20] = (char)('0' + (pid + 1u) % 10u);
-    ui_message(b);
-}
+ * MUTE) stays: no load changes it. Swapped again, the track is back: one copy is its undo and its redo. 0: nothing
+ * changed (AUTOMATION FULL) */
 static int undo_swap(undo_t *c)
 {
     track_t *t = &trk[(c->trk - 1u) % NTRK];
     uint32_t i;
     motion_store_t current_motion;
-    if ((c->what & (UNDO_PAT | UNDO_MOT)) && c->pid != trk_pid[trk_index(t)]) {
-        undo_other_pattern(c->pid);
-        return 0;
-    }
     motion_restore(t);
     motion_snapshot_track(t, &current_motion);
     if (motion_replace_track(t, &c->motion_backup) != 0) {
@@ -2242,18 +2203,11 @@ static void track_select(uint32_t i)
 #include "ui_events.c"                            /* SEQ > AUTO LIST: the locks and events as a list (an action page) */
 
 /* ---------------------------------------------------- action pages --- */
-/* Pages whose purpose is an action (SAVE > USER, PATTERNS, PROJECT, EDIT > SLICES; SEQ > AUTOMATION, SONG): the knobs pick,
+/* Pages whose purpose is an action (SAVE > USER, PROJECT, EDIT > SLICES; SEQ > AUTOMATION, SONG): the knobs pick,
  * OCT+ does it, OCT- cancels the picked action or goes HOME (ui_input.c). There OCT- / OCT+ do not
  * shift the octave */
 static int go_id(uint32_t id) { return id == G_LOAD || id == G_SAVE; }
 
-/* (Skiff phase 5) pattern id as the pages write it, "01" .. "64" (b: 3 bytes) */
-static void pat_num(char *b, uint32_t id)
-{
-    b[0] = (char)('0' + (id + 1u) / 10u % 10u);
-    b[1] = (char)('0' + (id + 1u) % 10u);
-    b[2] = 0;
-}
 static uint32_t act_cols(void)                   /* the columns that are actions, a bit each; 0 = not such a page */
 {
     const page_t *pg = cur_page();
@@ -2266,8 +2220,6 @@ static uint32_t act_cols(void)                   /* the columns that are actions
         return 14u;                              /* LOAD ERASE (or NAME, ui.act2) SAVE */
     if (pg->graph == GR_SLOTS)
         return 14u;                              /* ((Skiff U2) NAME, was EDIT; (1.2.1) DELETE or NAME) LOAD (or NEW) SAVE */
-    if (pg->graph == GR_BANK)
-        return 8u;                               /* ((Skiff phase 5) the pool view: CLEAR, always picked: act_col) */
     if (pg->graph == GR_TAPE)
         return 8u;                               /* TAPE: the footer's hint; no knob is an action (ui_input.c tape_knob) */
     if (pg->graph == GR_SLICES)
@@ -2283,25 +2235,10 @@ static uint32_t act_cols(void)                   /* the columns that are actions
 static uint32_t act_col(void)
 {
     if (!ui.home && cur_page()->graph == GR_EVENTS && !ui.ev_top) return 5u;
-    if (!ui.home && (cur_page()->graph == GR_BANK || cur_page()->graph == GR_TAPE)) return 4u;
+    if (!ui.home && cur_page()->graph == GR_TAPE) return 4u;
     return ui.act;
 }
 
-/* (2.0, #46) SAVE > PATTERNS' ACTION as the footer says it: CLEAR, EMPTY 21, CLEAR 3 UNUSED */
-static const char *bank_act_name(void)
-{
-    static char b[16] __attribute__((section(".pool")));
-    if (ui.bact == BA_CLEAR)
-        return "CLEAR";
-    str_cpy(b, ui.bact == BA_EMPTY ? "EMPTY " : "CLEAR ", sizeof b);
-    if (ui.bact == BA_EMPTY) {
-        pat_num(b + 6, ui.bslot % NPAT);
-    } else {
-        fmt_int(b + 6, (int32_t)pool_unused());
-        str_cpy(b + str_len(b), " UNUSED", sizeof b - str_len(b));
-    }
-    return b;
-}
 /* SEQ > TAPE: OCT+ does KNOB 3's pick (ui.tsrc): CLEAR the target track, or merge a track into it. Ready when there is
  * something to move; a merge source never is the target itself */
 static const char *tape_act_name(void) { return ui.tsrc ? "MERGE" : "CLEAR"; }
@@ -2331,8 +2268,6 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
         static const char *const K3[3] = {"LOAD", "NEW", "CLEAR TRACKS"};   /* slot's), CLEAR TRACKS */
         return K3[proj_k3()];
     }
-    if (cur_page()->graph == GR_BANK)
-        return bank_act_name();
     if (cur_page()->graph == GR_TAPE)
         return tape_act_name();
     if (cur_page()->graph == GR_SLICES)
@@ -2354,9 +2289,6 @@ static int act_ready(void)
         return project_used((uint32_t)song.g[G_SLOT] - 1u) && !transport_busy();
     if (cur_page()->graph == GR_TAPE)
         return tape_act_ready();
-    if (cur_page()->graph == GR_BANK)                   /* (Skiff phase 5) a pattern nothing uses, stopped */
-        return !transport_busy() && (ui.bact == BA_UNUSED ? pool_unused() != 0u : pool_used(ui.bslot % NPAT) &&
-                                     (ui.bact == BA_EMPTY || !pool_refs(ui.bslot % NPAT)));   /* ((2.0) ACTION) */
 #if FELUCCA_SLICE
     if (cur_page()->graph == GR_SLICES)
         return slice_act_ready(c);

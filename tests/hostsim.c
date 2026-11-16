@@ -52,6 +52,7 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 static void fm1_irq_off(void);                     /* (each test its own) */
 static void fm1_irq_on(void);
 #define TAPE_IRQ_HOOKS                              /* (tape.c's irq-off sections: the host has one thread) */
+#define TAPE_LOAD_WAIT 0                            /* (tape.c: no ISR block to wait for, the host's one thread) */
 static uint32_t tp_irq_save(void) { return 0; }
 static void tp_irq_restore(uint32_t flags) { (void)flags; }
 #include "../firmware/src/grid.c"

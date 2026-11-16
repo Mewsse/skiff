@@ -156,7 +156,7 @@ static void cast_piece(void);
 #endif
 #include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #include "project.c"
-#include "bank.c"                /* Skiff: the pattern bank (SAVE > PATTERNS) */
+#include "tape_store.c"          /* Skiff: each project's tape and sequencers, and the music now's, in flash */
 #if FELUCCA_OTA
 #include "ota.c"
 #include "ota_hw.c"

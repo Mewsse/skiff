@@ -238,7 +238,7 @@ static void fl_plain_window_init(void) {}
 #include "../../firmware/src/storage.c"
 #include "../../firmware/src/upreset.c"
 #include "../../firmware/src/project.c"
-#include "../../firmware/src/bank.c"           /* (Skiff: the patterns; phase 5: a project names them) */
+#include "../../firmware/src/tape_store.c"     /* ((Skiff P10) each project's tape and steps, the music's) */
 
 /* ------------------------------------------------- main.c and its HAL --- */
 #if FELUCCA_CPU2
@@ -360,7 +360,8 @@ static void follow_demo(void)
 static void web_power_on(void)
 {
     persist_boot();
-    bank_boot();                          /* main.c: the patterns (bank.c; phase 5: every project's steps) */
+    tape_init();                          /* main.c: the note tape's lists */
+    ts_boot();                            /* main.c: the projects' tapes and steps (tape_store.c) */
     settings_init();
     usb_serial_apply();
     lcd_init();
@@ -378,9 +379,6 @@ static void web_power_on(void)
     kb_boot_hold = 1;                     /* main.c (#137): the keys silent under the splash */
     audio_init();
     boot_leds();                          /* main.c: the power-on LED sweep, from the scan's start */
-#if FELUCCA_LEGACY
-    proj_migrate(boot_clean);             /* main.c: projects of before phase 5 become SKF2 (bank.c) */
-#endif
     unit_g_adopt = ui_set_rev < 2u;       /* main.c: (Skiff U3, R8) the unit's CLOCK MIDI IN TUNE */
     autosave_boot(boot_clean);            /* main.c: the last session's music (1.2, project.c) */
     unit_g_boot();
@@ -483,7 +481,8 @@ EXPORT void web_boot(void)
 /* (Skiff Studio) a unit's backup (the editor's, fm1backup.js: its objects) into this flash as the unit keeps it, so a
  * copy boots as the unit does after the cast's restart: on an empty unit (web_nor_erase, web_boot) each object into
  * web_obj_buf(), then web_restore_object(id, size); then this NOR (web_nor) into a fresh instance, which boots from
- * it. The current music (id 0) is the autosave: the cast's restart stores it first. 0 = written */
+ * it. The current music (id 0) is the autosave (its steps and tape the music's set, ids 56..59): the cast's restart
+ * stores it first. 0 = written */
 static uint8_t web_obj[96u * 1024u];
 EXPORT uint8_t *web_obj_buf(void) { return web_obj; }
 EXPORT int32_t web_restore_object(uint32_t id, uint32_t n)
@@ -504,8 +503,10 @@ EXPORT int32_t web_restore_object(uint32_t id, uint32_t n)
         memcpy(&upf, web_obj, n < sizeof upf ? n : sizeof upf);
         return upf_save() == 2;
     }
-    if (id >= 16u && id < 32u)
-        return bank_restore(id - 16u, web_obj, n);
+    if (id >= 16u && id < 32u)                     /* (the pattern pool's of before: dropped, as the unit does) */
+        return 0;
+    if (id >= TS_OBJ0 && id < TS_OBJ0 + TS_OBJS)   /* ((Skiff P10) the tape store's chunks) */
+        return ts_obj_ok(id - TS_OBJ0, web_obj, n) ? ts_obj_put(id - TS_OBJ0, web_obj, n) : -1;
     if (id >= 32u && id < 32u + SMP_USER_SLOTS && n <= SMP_USER_SIZE) {   /* (a slot's flash as the unit has it) */
         memcpy(nor + SMP_USER_BASE + (id - 32u) * SMP_USER_SIZE, web_obj, n);
         return 0;

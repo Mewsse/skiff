@@ -79,14 +79,6 @@
   .browser select[size] { min-width: 150px; }
   .slots { display: grid; grid-template-columns: auto auto auto auto; gap: 3px 8px; align-items: center; justify-content: start; }
   .slots.named { grid-template-columns: auto auto auto auto auto; }   /* ((Skiff W3) RENAME too) */
-  /* ((Skiff W3) the Song tab's pool: the one picked ringed; empty dim; a pattern nothing uses dashed and dim) */
-  .pool button { min-width: 2.6em; padding: 1px 2px; background: var(--bg); color: var(--fg); border: 1px solid var(--line);
-    font-variant-numeric: tabular-nums; }
-  .pool button.on { background: var(--fg); color: var(--bg); }
-  .pool button.pick { box-shadow: 0 0 0 2px var(--fg); }
-  .pool button.empty { color: var(--dim); }
-  .pool button.unused { color: var(--dim); border-style: dashed; }
-  .pool { display: grid; grid-template-columns: repeat(8, 2.8em); gap: 3px; }
   table { border-collapse: collapse; }
   th { font-weight: 400; color: var(--dim); text-align: left; padding: 0 6px 2px 0; }
   td { padding: 1px 6px 1px 0; }
@@ -242,8 +234,6 @@
   .strip .num[aria-pressed="true"] { background: var(--s); color: var(--on-trk); }   /* (selected: as the track bar's) */
   .strip input[type=range] { accent-color: var(--s); }
   .grid button.on { background: var(--trk); border-color: var(--trk); color: var(--on-trk); }
-  .pool button { background: var(--raise); border-color: var(--raise); border-radius: 3px; }
-  .pool button.empty { background: var(--tile); border-color: var(--tile); }
   #trec[aria-pressed="true"] { background: var(--rec); color: var(--on-trk); }
   .list tr.sel td { background: var(--trk); color: var(--on-trk); }
   /* (Skiff #27) THEME CUSTOM: the colour wells, each role under its well */
@@ -266,7 +256,7 @@
   body { font-family: "Barlow Condensed", -apple-system, sans-serif; font-weight: 500; font-size: 15px; letter-spacing: .02em; }
   main { max-width: 1320px; }
   button, select, input[type=text], input[type=number], input[type=search], .group, .strip, .tabs button,
-  .seg button, button.tog, .pool button { border-radius: 0; }
+  .seg button, button.tog { border-radius: 0; }
   button { font: 700 15px "Barlow Condensed", sans-serif; letter-spacing: .03em; text-transform: uppercase; }
   select { font: 700 15px "Barlow Condensed", sans-serif; text-transform: uppercase; }
   label, th, h3, #status, #version, #live, #tstate, #mock, .hint, #ctlhelp { text-transform: uppercase; }
@@ -528,12 +518,6 @@
   </section>
 
   <section class="panel" id="p-song" data-tab="song" data-dev hidden>
-    <div class="group" id="sg-pool" hidden>
-      <h2 data-t="sgPool" data-ic="symbol_folder"></h2>
-      <p class="dim" data-t="sgPoolHelp"></p>
-      <div id="sgpool" class="pool"></div>
-      <p class="bar" id="sgpoolpick"></p>
-    </div>
   </section>
 
   <section class="panel" id="p-tracks" data-tab="tracks" data-dev hidden>
@@ -665,7 +649,7 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
   TRACK_PARAM: 31, TRACK_CHANGED: 32, SONG: 33,
   UI_STATE: 34, UI_SET: 35, UI_PALETTES: 36, FAV_GET: 37, FAV_SET: 38, COLORS: 39,
   MOTION: 64, BACKUP_LIST: 65, BACKUP_GET: 66, BACKUP_PUT: 67,
-  FM6_GET: 68, FM6_PUT: 69, FM6_LIST: 70, FM6_ERASE: 71, MENU_DESC: 72, MENU_SET: 73, KIT_GET: 74, KIT_PUT: 75, TRANSPORT: 76, PROJ_NAME: 77, POOL: 78,
+  FM6_GET: 68, FM6_PUT: 69, FM6_LIST: 70, FM6_ERASE: 71, MENU_DESC: 72, MENU_SET: 73, KIT_GET: 74, KIT_PUT: 75, TRANSPORT: 76, PROJ_NAME: 77,
   SMP_MIX: 81, CAST: 83 };
 /* frames the device sends on its own (while WATCH is on); never replies */
 const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANGED]);
@@ -844,10 +828,8 @@ const parse = {
     o.locks = false;                              /* (1.1, INFO 4C 01) MOTION ops 5..7: locks, their kinds */
     o.menuCount = 0;                              /* (1.0.4, INFO 4E 01 count) the MENU settings MENU_DESC offers */
     o.kitLanes = 0;                               /* (Skiff W3, INFO 4B 01 8) KIT_GET / KIT_PUT: the DRUM-X kit's lanes */
-    o.skiff = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 POOL, (#21)
+    o.skiff = 0;                                  /* (Skiff W3, INFO 57 01 caps) bits: 0 TRANSPORT, 1 PROJ_NAME, 2 (POOL: gone), (#21)
                                                      5 SMP_MIX, (2.0, #25) 6 a step's ties (3 LIST, 4 PERFORM: gone) */
-    o.song2 = 0;                                  /* (2.0, INFO 58 01 caps) bit 0: the pool's EMPTY and CLEAR UNUSED (a unit
-                                                     of 2.0 on) */
     o.cast = 0;                                   /* (Skiff Studio, INFO 59 01 caps) bit 0: the cast (cmd 83), the Screen tab;
                                                      bit 1: an SMK-37's (its copy: felucca_cast_smk.wasm) */
     for (const p of [8, 11]) if (o.motionMax && trailer[p] === 0x46 && trailer[p + 1] === 1) {   /* for the editor's */
@@ -872,7 +854,6 @@ const parse = {
         o.pe0 = trailer[r + 4] | trailer[r + 5] << 7;
         r += 6;
       }
-      if (trailer[r] === 0x58 && trailer[r + 1] === 1) { o.song2 = trailer[r + 2] & 127; r += 3; }   /* (2.0) the pool's */
       if (trailer[r] === 0x59 && trailer[r + 1] === 1) o.cast = trailer[r + 2] & 127;   /* (Skiff Studio) the cast, last */
     }
     o.light = o.light || { tracks: 0, engines: 0 };   /* the tracks that may not play some engines, and those engines */
@@ -955,13 +936,6 @@ const parse = {
     const r = new Reader(a), o = { op: r.b(), rc: r.b(), cur: r.b(), changed: !!r.b(), name: r.s() };
     if (o.cur === 127) o.cur = -1;
     o.slots = [0, 1, 2, 3].map(() => ({ used: !!r.b(), name: r.s() }));
-    return o;
-  },
-  /* (Skiff W3) POOL: op, rc (0 cleared, 1 nothing to clear, 2 in use, 3 playing, 4 failed), each pattern: LEN (0 empty),
-     what uses it */
-  [CMD.POOL](a) {
-    const r = new Reader(a), o = { op: r.b(), rc: r.b(), pats: [] };
-    for (let i = 0; i < 64; i++) o.pats.push({ len: r.b(), refs: r.b() });
     return o;
   },
   [CMD.PROJECT](a) { const r = new Reader(a); return { op: r.b(), slot: r.b(), used: r.b() }; },
@@ -1157,8 +1131,6 @@ const req = {
   kitGet: (lane) => [CMD.KIT_GET, [lane & 7]],
   kitPut: (k) => [CMD.KIT_PUT, [k.lane, k.wave, k.filt, +k.snap, k.pmod, +k.drive, ...k.a, ...k.b].map((x) => x & 0x7F)],
   transport: (op = 0) => [CMD.TRANSPORT, op ? [op] : []],            /* 1 PLAY, 2 STOP, 3 RESTART, 4 REC; none: the state */
-  /* id: CLEAR it ((2.0, INFO 58 01) op 2: EMPTY it; 3, no id: CLEAR UNUSED); none: the pool */
-  pool: (id, op = 1) => [CMD.POOL, op === 3 ? [3] : id == null ? [] : [op === 2 ? 2 : 1, id & 63]],
   projName: (op = 0, slot = 0, name = "") => [CMD.PROJ_NAME, op ? [op, slot & 3, ...strEnc(cleanProjName(name))] : []],   /* 1 SAVE AS, 2 RENAME */
 };
 /* (Skiff W3) the device's MENU settings, each as MENU_DESC describes it (none asked of firmware without them) */
@@ -1179,7 +1151,7 @@ function replyMatches(cmd, args, a) {
     case CMD.MENU_DESC: return a[0] === args[0];
     case CMD.MENU_SET: return a[1] === args[0];
     case CMD.KIT_GET: case CMD.KIT_PUT: return a[0] === args[0];
-    case CMD.PROJ_NAME: case CMD.POOL: return a[0] === (args[0] || 0);
+    case CMD.PROJ_NAME: return a[0] === (args[0] || 0);
     case CMD.BACKUP_GET: return a[0] === args[0] && a.slice(2, 7).every((v, i) => v === args[i + 1]);
     case CMD.BACKUP_PUT: return a[0] === args[0] && a[1] === args[1];
     case CMD.UI_SET: return a[1] === args[0] && a[2] === args[1];
@@ -2546,10 +2518,6 @@ function makeMockDevice(opt = {}) {
     g: GP.map((d) => d.def),
     slots: [null, null, null, null], songRows: [], chainPlaying: false, chainRow: 0, chainRemaining: 0,
     slotNames: ["", "", "", ""], projCur: -1, projName: "", projSig: "", playing: false,   /* ((Skiff W3) PROJ_NAME, TRANSPORT) */
-    /* ((Skiff W3) the pool (each pattern's LEN, 0 empty: 01 T1's, 03 T4's, 02 04 kept and unused), each track's pattern
-       + 1 (bank.c) */
-    pool: [16, 16, 16, 8].concat(new Array(60).fill(0)),
-    pid: [1, 0, 0, 3, 0, 0],
     smp: [0, 1, 2].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF,
       mix: SMP.MIX0() })),                            /* ((#21) LEVEL x 16, REV x 16, DLY x 16) */
     bank: new Array(opt.slots || 32).fill(null),     /* user presets: {engine, name, p, pattern, grid, fm6 (FM6: its patch)} */
@@ -2647,9 +2615,8 @@ function makeMockDevice(opt = {}) {
   const locksOn = () => ratchetOn() && !opt.noLocks;   /* (1.1, INFO 4C 01 01) MOTION ops 5..7 */
   const kitOn = () => stepxOn() && !opt.noKit;         /* (Skiff W3, INFO 4B 01 08) the DRUM-X kit */
   const projOn = () => kitOn() && !opt.noProj;         /* (Skiff W3, INFO 57 01 03) TRANSPORT, PROJ_NAME */
-  const songOn = () => projOn() && !opt.noSong;        /* (Skiff W3, INFO 57 01 bit 2) POOL */
+  const songOn = () => projOn() && !opt.noSong;        /* (INFO 57 01 SMP_MIX, ties; before: 3) */
   const tiesOn = () => songOn() && !opt.noTies;        /* ((2.0, #25) INFO 57 01 bit 6) a step's ties after its NUDGE */
-  const song2On = () => songOn() && !opt.noSong2;      /* ((2.0) INFO 58 01: the pool's 2 3) */
   const stepOut = (x, b) => { b(x.n); x.notes.forEach(b); b(x.time); b(x.flags); b(x.vel); hitsEnc(x.hit, x.acc).forEach(b); if (!opt.legacy && !opt.v3 && !opt.v5) b(x.chance ?? 100); if (ratchetOn()) b(x.ratchet ?? 1);
     if (stepxOn()) { b(x.flam ? 1 : 0); b(x.cond | 0); b(((x.nudge | 0) + 32) & 63); } if (tiesOn()) b(x.ties | 0); };
   function stepIn(x, a) {                         /* editor.c ed_step_put: n, 4 notes, time, flags, vel [, hits (3) [, chance [, ratchet]]] */
@@ -2679,9 +2646,6 @@ function makeMockDevice(opt = {}) {
   st.tracks[1].p[39] = -24; st.tracks[2].p[39] = 20; st.tracks[2].p[0] = 92;
   const project = () => JSON.parse(JSON.stringify({ tracks: st.tracks, sel: st.sel, g: st.g, songRows: st.songRows }));
   st.slots[0] = project();
-  /* ((Skiff W3) bank.c pool_refs, as the mock needs it: the tracks on pattern id (no saved project names one here) */
-  const refsOf = (id) => st.pid.filter((p) => p === id + 1).length;
-
   function handle(cmd, a) {
     const out = [];
     const b = (x) => out.push(x & 0x7F), v = (x) => out.push(...v14enc(x)), s = (x) => out.push(...strEnc(x));
@@ -2690,9 +2654,8 @@ function makeMockDevice(opt = {}) {
       [0x54, 1, 0x30, e, e >> 7, e >> 14].forEach(b);
       if (stepxOn()) [0x43, 1, TC_NAMES.length].forEach(b);   /* (Skiff W1) */
       if (kitOn()) [0x4B, 1, 8].forEach(b);                    /* (Skiff W3) */
-      if (projOn()) [0x57, 1, songOn() ? (tiesOn() ? 103 : 39) : 3].forEach(b);   /* ((#21) 32: SMP_MIX, with the pool's; (2.0) 64 the ties) */
+      if (projOn()) [0x57, 1, songOn() ? (tiesOn() ? 99 : 35) : 3].forEach(b);   /* ((#21) 32: SMP_MIX; (2.0) 64 the ties) */
       if (projOn()) [0x49, 1, P_COUNT & 127, P_COUNT >> 7, P_E0 & 127, P_E0 >> 7].forEach(b);   /* ((Skiff 1.3) wide ids) */
-      if (song2On()) [0x58, 1, 1].forEach(b);                  /* ((2.0) EMPTY, UNUSED) */
     };
     const wid = (s, i) => (s === 2 ? [0, i + 128] : [s, i]);   /* ((1.3) scope 2: a track id from 128 on) */
     if (opt.legacy && cmd >= CMD.UP_LIST) return null;
@@ -2861,23 +2824,6 @@ function makeMockDevice(opt = {}) {
         }
         b(a.length ? a[0] : 0); b(rc); b(st.projCur < 0 ? 127 : st.projCur); b(JSON.stringify(project()) !== st.projSig ? 1 : 0); s(st.projName);
         for (let k = 0; k < 4; k++) { b(st.slots[k] ? 1 : 0); s(st.slots[k] ? st.slotNames[k] : ""); }
-        break;
-      }
-      case CMD.POOL: {                         /* (Skiff W3) editor_song.c; ((2.0) 2 EMPTY, 3 CLEAR UNUSED) */
-        const good = !a.length || (song2On() && a.length === 1 && a[0] === 3) ||
-          (a.length === 2 && (a[0] === 1 || (song2On() && a[0] === 2)) && a[1] <= 63);
-        if (!songOn() || !good) return null;
-        let rc = 0;
-        if (a.length && a[0] === 3) {
-          const un = st.pool.map((x, i) => (x && !refsOf(i) ? i : -1)).filter((i) => i >= 0);
-          if (!un.length) rc = 1; else if (st.playing) rc = 3; else un.forEach((i) => { st.pool[i] = 0; });
-        } else if (a.length) {
-          const id = a[1];
-          if (!st.pool[id]) rc = 1; else if (a[0] === 1 && refsOf(id)) rc = 2; else if (st.playing) rc = 3;
-          else if (a[0] === 1) st.pool[id] = 0;        /* (EMPTY: its steps, which the mock doesn't keep; its LEN stays) */
-        }
-        b(a.length ? a[0] : 0); b(rc);
-        for (let i = 0; i < 64; i++) { b(st.pool[i]); b(Math.min(127, refsOf(i))); }
         break;
       }
       case CMD.COLORS: {                       /* (Skiff #27) editor_preferences.c ed_colors */
@@ -3448,15 +3394,6 @@ const TEXT = {
     projRefused: "本体が受け付けませんでした（空のスロット、またはパターンがいっぱい）", projFailed: "本体での保存に失敗しました",
     play: "再生", stop: "停止", playTitle: "再生（Shift+クリック: 頭から）", playing: "再生中", stopped: "停止中", countIn: "カウントイン",
     sgTab: "ソング",
-    sgClear: "クリア",
-    sgEmptyIt: "空にする", sgClearUnused: "未使用の {n} 個をクリア",
-    sgPool: "パターンプール", sgPoolHelp: "全プロジェクト共通の 64 パターン（本体の SAVE › PATTERNS）。どこからも使われていないパターンだけ、停止中にクリアできます。",
-    sgUsedBy: "{n} か所で使用", sgUnused: "未使用（クリア可）", sgEmptyPat: "空",
-    sgConfirmPat: "パターン {n} をクリアしますか？ どこからも使われていません。元に戻せません。",
-    sgConfirmEmpty: "パターン {n} を空にしますか？ ステップ、NUDGE、オートメーションが消えます。パターンは残ります。元に戻せません。",
-    sgConfirmUnused: "未使用のパターン {n} 個をクリアしますか？ どこからも使われていません。元に戻せません。",
-    sgStopClear: "停止してからクリアしてください",
-    sgFailed: "本体で失敗しました", sgNothing: "クリアするものがありません", sgInUse: "使用中です",
     sgNoFw: "このファームウェアにはソングのコマンドがありません。Skiff を更新してください。",
     confirmSave: "スロット {n} に上書き保存しますか？", confirmLoad: "スロット {n} を読み込みますか？ すべてのトラックの音色とシーケンスが置き換わります（元に戻せません）。",
     confirmLoadFile: "「{name}」を読み込みますか？ 今の音色は置き換わります（本体の SAVE 長押しで元に戻せます）。",
@@ -3520,7 +3457,7 @@ const TEXT = {
     bankConnect: "FM-1 を接続すると本体のユーザープリセットも扱えます。", bankNone: "このファームウェアにはユーザープリセットがありません。",
     mixer: "ミキサー", mixHelp: "本体の MIXER ページと同じ全トラック。フェーダーはレベル。パンはどのトラックも選択を変えずに書き込みます（0.8 のファームウェアでは一瞬そのトラックを選びます）。REC は本体での録音待機の表示です。",
     level: "レベル", pan: "パン", rev: "REV", mute: "ミュート", rec: "REC", selectTrack: "選択", selectedTrack: "選択中",
-    projHelp: "プロジェクト（A〜D）は、全トラックの音色、各トラックのリスト（どのパターンを何回）、シーン、DRUM-X キット、グローバル設定を保存します。パターンそのものは全プロジェクト共通の 64 個のプール（本体の SAVE › PATTERNS）にあり、プロジェクトには入りません。パターンを変えると、それを使うすべてのプロジェクトで変わります。",
+    projHelp: "プロジェクト（A〜D）は、全トラックの音色とステップ、ノートテープ、シーン、DRUM-X キット、グローバル設定を保存します。プロジェクト間で共有されるものはありません。",
     slot: "スロット",
     system: "システム", firmware: "ファームウェア", sync: "同期", tracksN: "トラック", stepsN: "ステップ数", enginesL: "エンジン",
     smpSlots: "サンプルスロット", userBank: "ユーザープリセット", none: "なし",
@@ -3597,15 +3534,6 @@ const TEXT = {
     projRefused: "The device refused (an empty slot, or the patterns are full)", projFailed: "Saving failed on the device",
     play: "Play", stop: "Stop", playTitle: "Play (Shift+click: from the top)", playing: "Playing", stopped: "Stopped", countIn: "Count-in",
     sgTab: "Song",
-    sgClear: "Clear",
-    sgEmptyIt: "Empty", sgClearUnused: "Clear {n} unused",
-    sgPool: "Pattern pool", sgPoolHelp: "The 64 patterns every project shares (SAVE › PATTERNS). Only a pattern nothing uses can be cleared, while stopped.",
-    sgUsedBy: "used by {n}", sgUnused: "unused: can be cleared", sgEmptyPat: "empty",
-    sgConfirmPat: "Clear pattern {n}? Nothing uses it. It can't be undone.",
-    sgConfirmEmpty: "Empty pattern {n}? Its steps, NUDGEs and automation go; the pattern stays. It can't be undone.",
-    sgConfirmUnused: "Clear the {n} unused patterns? Nothing uses them. It can't be undone.",
-    sgStopClear: "Stop to clear",
-    sgFailed: "Failed on the device", sgNothing: "Nothing to clear", sgInUse: "In use",
     sgNoFw: "This firmware has no song commands: update Skiff.",
     confirmSave: "Overwrite slot {n}?", confirmLoad: "Load slot {n}? The sounds and sequences of every track are replaced (no undo).",
     confirmLoadFile: "Load \"{name}\"? It replaces the current sound (hold SAVE on the device to undo).",
@@ -3669,7 +3597,7 @@ const TEXT = {
     bankConnect: "Connect the FM-1 to see its user presets too.", bankNone: "This firmware has no user presets.",
     mixer: "Mixer", mixHelp: "Every track of the device's MIXER page. The fader is the level. Pan is written to any track without changing the selection (firmware 0.8: by selecting it for a moment). REC shows a track armed for live recording on the device.",
     level: "Level", pan: "Pan", rev: "REV", mute: "Mute", rec: "REC", selectTrack: "Select", selectedTrack: "Selected",
-    projHelp: "A project (A to D) keeps every track's sound, each track's list (which patterns it plays, how many times), the scenes, the DRUM-X kit and the global settings. The patterns themselves live in one pool of 64 that every project shares (SAVE › PATTERNS on the device): a project doesn't hold them, and changing a pattern changes it in every project that uses it.",
+    projHelp: "A project (A to D) keeps every track's sound, steps and the note tape, the scenes, the DRUM-X kit and the global settings. Nothing is shared between projects.",
     slot: "Slot",
     system: "System", firmware: "Firmware", sync: "Sync", tracksN: "Tracks", stepsN: "Steps", enginesL: "Engines",
     smpSlots: "Sample slots", userBank: "User presets", none: "none",
@@ -3691,7 +3619,7 @@ function applyLang() {
   renderBank();
   renderPreferences(true);
   renderPanels();
-  if (dev) { renderSlots(); renderStepHead(); renderSamples(); renderTrackbar(); renderMixer(); renderSysinfo(); renderFm6(); renderSong(); }
+  if (dev) { renderSlots(); renderStepHead(); renderSamples(); renderTrackbar(); renderMixer(); renderSysinfo(); renderFm6(); }
 }
 $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; applyLang(); });
 
@@ -3785,64 +3713,14 @@ async function transportOp(n) {
 }
 $("tplay").addEventListener("click", (e) => transportOp(e.shiftKey ? 3 : 1));
 
-/* ((Skiff W3) the Song tab (INFO 57 bit 2): the pattern pool (SAVE › PATTERNS), as the device has it: read when the tab
-   opens, then as the keep-alive while it shows (with the transport; the pool each 4th time), and after each change. A
-   change acts as the device's control does (it says so on its screen); no retries */
-let poolPick = 0;
-const pat2 = (n) => String(n).padStart(2, "0");
-const SG_RC = { pool: [null, "sgNothing", "sgInUse", "sgStopClear", "sgFailed"] };
-async function readSong(d = dev, pool = true, poll = false) {
+/* ((Skiff W3) the Song tab (INFO 57 bit 2): for now only the transport as the keep-alive while it shows (a later phase
+   replaces the tab) */
+async function readSong(d = dev, poll = false) {
   if (!d || !d.info || !(d.info.skiff & 4)) return;
   const o = poll ? { quiet: true, retries: 0 } : undefined, rqs = (r) => sessionRequest(d, r, o);
   if (poll && d.info.skiff & 1) { const x = parse[CMD.TRANSPORT](await rqs(req.transport())); if (d === dev) renderTransport(x); }
-  const s = d.song = d.song || {};
-  if (pool || !s.pool) s.pool = parse[CMD.POOL](await rqs(req.pool()));
-  if (d === dev) renderSong();
-}
-/* (2.0, INFO 58 01) the device has the pool's EMPTY, CLEAR UNUSED */
-const song2 = () => !!(dev && dev.info && dev.info.song2 & 1);
-function songOp(r, kind) {
-  const d = dev;
-  op(async () => {
-    const x = parse[r[0]](await sessionRequest(d, r, { timeout: 4000, retries: 0 }));
-    await readSong(d, true);
-    const k = SG_RC[kind][x.rc];
-    if (k) sayK(k);
-  });
 }
 const transportPlaying = (s) => (s.pending ? s.pending !== 2 : s.playing || s.counting);
-/* a list redrawn keeps the focus on the same control (data-key) */
-function keepFocus(box, draw) {
-  const k = box.contains(document.activeElement) && document.activeElement.dataset.key;
-  draw();
-  const n = k && box.querySelector(`[data-key="${k}"]`);
-  if (n) n.focus();
-}
-function renderSong() {
-  const d = dev, caps = d && d.info ? d.info.skiff : 0, s = d && d.song;
-  $("sg-pool").hidden = !(caps & 4);
-  if (!s) return;
-  const sig = JSON.stringify([s.pool, poolPick, lang]);
-  if (sig === renderSong.sig) return;
-  renderSong.sig = sig;
-  const Q = s.pool, two = song2();
-  if (Q) {
-    keepFocus($("sgpool"), () => $("sgpool").replaceChildren(...Q.pats.map((p, i) => el("button", {
-      type: "button", "data-key": `p${i}`, "aria-pressed": String(poolPick === i),
-      class: [p.len ? (p.refs ? "" : "unused") : "empty", poolPick === i ? "pick" : ""].filter(Boolean).join(" ") || null,
-      "aria-label": `${pat2(i + 1)}: ${p.len ? `LEN ${p.len}` : t("sgEmptyPat")}`, onclick: () => { poolPick = i; renderSong(); },
-    }, p.len ? pat2(i + 1) : "·"))));
-    const p = Q.pats[poolPick], un = Q.pats.filter((x) => x.len && !x.refs).length;
-    $("sgpoolpick").replaceChildren(el("strong", { text: pat2(poolPick + 1) }), " ",
-      el("span", { class: "dim", text: p.len ? `LEN ${p.len} · ${p.refs ? t("sgUsedBy").replace("{n}", p.refs) : t("sgUnused")}` : t("sgEmptyPat") }), " ",
-      el("button", { type: "button", disabled: !p.len || !!p.refs,
-        onclick: () => { if (confirm(t("sgConfirmPat").replace("{n}", pat2(poolPick + 1)))) songOp(req.pool(poolPick), "pool"); } }, t("sgClear")),
-      ...(two ? [el("button", { type: "button", disabled: !p.len,   /* ((2.0) EMPTY, a used one too; CLEAR UNUSED: all at once) */
-        onclick: () => { if (confirm(t("sgConfirmEmpty").replace("{n}", pat2(poolPick + 1)))) songOp(req.pool(poolPick, 2), "pool"); } }, t("sgEmptyIt")),
-      el("button", { type: "button", disabled: !un,
-        onclick: () => { if (confirm(t("sgConfirmUnused").replace("{n}", un))) songOp(req.pool(null, 3), "pool"); } }, t("sgClearUnused").replace("{n}", un))] : []));
-  }
-}
 $("tstop").addEventListener("click", () => transportOp(2));
 $("trec").addEventListener("click", () => transportOp(4));
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); });
@@ -4741,7 +4619,8 @@ $("backup-file").addEventListener("change", () => {
     if (file.size > 600000) throw new Error("Backup file too large");
     const { readBackup, restoreBackup } = await backupModule();
     let archive = readBackup(await file.text()), say = "", only = null; assertSession(d);
-    if (d.info.song2) {                              /* ((2.0, Tier B 10) a unit of 2.0: what it can't read, converted first */
+    if ((d.info.skiff & 1) && !(d.info.skiff & 4)) {   /* ((2.0, Tier B 10; Skiff P10: 57 01 without POOL) what the unit
+                                                     can't read, converted first */
       const { loadConverter } = await import("./conv/conv.js");
       const r = (await loadConverter(new URL("conv/conv.wasm", location.href).href)).convert(archive);
       const bad = r.report.filter((x) => x.what.startsWith("refused")).map((x) => x.id);
@@ -6019,11 +5898,10 @@ async function keepAlive() {
       else if (d === dev) { d.watch = false; renderLive(); }
     } catch (e) { /* closed */ } finally { keepAlive.run = false; }
   } else if (gap > 850 && d.link.idle) {
-    if (tab === "song" && d.info.skiff & 4) {     /* ((Skiff W3) on the Song tab: it as the keep-alive, the pool each 4th) */
+    if (tab === "song" && d.info.skiff & 4) {     /* ((Skiff W3) on the Song tab: it as the keep-alive) */
       if (!keepAlive.song) {
         keepAlive.song = true;
-        keepAlive.n = (keepAlive.n | 0) + 1;
-        readSong(d, keepAlive.n % 4 === 0, true).catch(() => {}).finally(() => { keepAlive.song = false; });
+        readSong(d, true).catch(() => {}).finally(() => { keepAlive.song = false; });
       }
     } else if (d.info.skiff & 1) {                 /* ((Skiff W3) the transport's state as the keep-alive) */
       d.link.request(req.transport(), { key: "ping", quiet: true, retries: 0 })

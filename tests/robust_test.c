@@ -87,7 +87,7 @@ static int projects(void)
     p.t[1].engine = 200; p.sum = proj_sum(&p);              /* a RAM project_t (valid magic, size and sum) */
     e0 = trk[1].eng_req;
     bad += check("restoring a project with an engine past the last is refused, nothing changes",
-                 project_restore_runtime(&p) == 1 && trk[1].eng_req == e0);
+                 project_restore_runtime(&p, TS_NONE) == 1 && trk[1].eng_req == e0);
 #if FELUCCA_LEGACY
     /* a retained RAM slot holding FUN5 (its own size): bounded as one from flash (vel 200 cannot be packed) */
     reset();

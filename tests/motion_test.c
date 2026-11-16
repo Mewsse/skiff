@@ -105,14 +105,15 @@ static int compact_project(void)
         after.t[0].p[P_E0] == before.t[0].p[P_E0] && after.t[0].p[P_ED_FLT] == -50 &&
         after.t[0].p[P_FM1_LEVEL] == 127 && !after.motion.count && step_chance(&after.t[0].step[3]) == 100u);
     bad += check("migrated FUN6 can be written as fixed-size FUN7", proj_pack(&packed, &after));
-    project_save(1); motion_clear(t); t->p[P_FM1_LEVEL] = 127; step_set_chance(&t->step[3], 100);
-    project_load(1);
-    bad += check("(phase 5) a project load: its sound (operator settings); the pattern as it is (edits since: kept)",
-        t->p[P_FM1_LEVEL] == 80 && !motion_count(t) && step_chance(&t->step[3]) == 100u);
+    {
+        uint32_t mc = motion_count(t), ch = step_chance(&t->step[3]);
+        project_save(1); motion_clear(t); t->p[P_FM1_LEVEL] = 127; step_set_chance(&t->step[3], 100);
+        project_load(1);
+        bad += check("(Skiff P10) a project load: its sound (operator settings), its steps and motion as saved (its set)",
+            t->p[P_FM1_LEVEL] == 80 && motion_count(t) == mc && step_chance(&t->step[3]) == ch);
+    }
     step_set_chance(&t->step[3], 25); motion_set_event(t, 3, P_REV, 110);
     project_save(1);
-    trk_pid[0] = 0;                                      /* (T1 onto a copy: the edits its) */
-    (void)keep_all();
     motion_clear(t); t->p[P_FM1_LEVEL] = 127; step_set_chance(&t->step[3], 100);
     project_load(1);
     bad += check("actual project save/load restores motion, chance and operator settings (its pattern, as saved)",
@@ -553,8 +554,6 @@ static int lock_project(void)
     bad += check("FUN9 round trip keeps the locks (bit 7 of the id byte), their values and steps", ok &&
         (after.motion.event[1].id == P_REV && after.motion.event[1].lock) && after.motion.event[2].value == 77);
     project_save(2);
-    trk_pid[t - trk] = 0;                                /* (phase 5: the track onto a copy: the clear its) */
-    (void)keep_all();
     motion_clear(t);
     project_load(2);
     bad += check("  saved and loaded: the locks play again", motion_lock_count(t) == 2u && lock_passes(t,

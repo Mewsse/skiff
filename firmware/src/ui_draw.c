@@ -718,12 +718,7 @@ static void draw_foot(void)
             if (8 + need > foot_hint_r(ti) && sp)
                 str_cpy(ti, sp + 1, sizeof ti);
         }
-        {
-            int32_t x1 = foot_hint_r(ti), w = kh_w(kh[0].key, kh[0].act) + 8 + kh_w(kh[1].key, kh[1].act);
-            if (pg->graph == GR_BANK && 8 + w < x1)    /* ((Skiff phase 5) the pool view: side by side, the mockup's) */
-                x1 = 8 + w;
-            cv_key_row(8, x1, ly - KC_TY, kh, 2, act_ready() ? 3u : 2u, T_BG);
-        }
+        cv_key_row(8, foot_hint_r(ti), ly - KC_TY, kh, 2, act_ready() ? 3u : 2u, T_BG);
     } else if (grid_on() && !ui_hints_off) {          /* row 1: the page, and what the keys do */
         char b[16];
         uint32_t all, off = step_off(&all, 16);         /* ((2.0, #44) a chain's pages counted on: PAGE 5/8) */
@@ -961,24 +956,6 @@ static void draw_columns(void)
         }
         draw_column(2, "ACTION", val, "", tape_act_ready() ? VR_THEME : VR_DIM, -1, ICON_AUTO);
         draw_column(3, "MUTE", mute ? "ON" : "OFF", "", mute ? VR_ACCENT : VR_LIVE, -1, ICON_AUTO);
-        return;
-    }
-    if (cur_page()->graph == GR_BANK) {                  /* (Skiff phase 5) the pool view: PATTERN, its LEN, how many
-                                                         * use it, ((2.0) ACTION; was CLEAR) (bank.c pool_refs) */
-        uint32_t id = ui.bslot % NPAT, len = pool_len(id), n = len ? pool_refs(id) : 0u;
-        pat_num(val, id);
-        draw_column(0, "PATTERN", val, "", VR_LIVE, (int32_t)((id + 1u) * 1000u / NPAT), ICON_AUTO);
-        if (len) {
-            fmt_int(val, (int32_t)len);
-            draw_column(1, "LENGTH", val, "", VR_MID, -1, ICON_AUTO);   /* ((Skiff U4, V3) read, not turned: no gauge, MID) */
-            fmt_int(val, (int32_t)n);
-            draw_column(2, "USED", val, "x", VR_MID, -1, ICON_AUTO);
-        } else {
-            draw_column(1, "LENGTH", "--", "", VR_DIM, -1, ICON_AUTO);
-            draw_column(2, "USED", "--", "", VR_DIM, -1, ICON_AUTO);
-        }
-        draw_column(3, "ACTION", BA_NAME[ui.bact % BA_N], "", act_ready() ? VR_THEME : VR_DIM, -1, ICON_AUTO);   /* ((2.0,
-                                                         * #46) KNOB 4 the action, OCT+ does it: the footer) */
         return;
     }
     if (cur_page()->graph == GR_USER) {                  /* SLOT, then three GO buttons */
@@ -1362,24 +1339,6 @@ static void confirm_text(char *a, char *b)
         str_cpy(a + str_len(a), "?", 2);
         up_name(k, b);
         break;
-    case CF_ERASE_BANK:                                 /* (Skiff phase 5) the pool view: "CLEAR PATTERN 23?" */
-        str_cpy(a, "CLEAR PATTERN ", 24);
-        pat_num(a + 14, k);
-        str_cpy(a + 16, "?", 8);
-        str_cpy(b, "no entry uses it", 24);
-        break;
-    case CF_EMPTY_BANK: {                               /* ((2.0, #46) "EMPTY PATTERN 21?", the entries it empties */
-        uint32_t n = pool_refs(k);
-        str_cpy(a, "EMPTY PATTERN ", 24);
-        pat_num(a + 14, k);
-        str_cpy(a + 16, "?", 8);
-        if (n) {                                        /* "2 entries go quiet" */
-            fmt_int(b, (int32_t)n);
-            str_cpy(b + str_len(b), n == 1u ? " entry goes quiet" : " entries go quiet", 40 - str_len(b));
-        } else
-            str_cpy(b, "no entry uses it", 40);
-        break;
-    }
     case CF_TAPE_CLEAR:                                 /* SEQ > TAPE: "CLEAR TAPE TRACK 2?", its notes */
         str_cpy(a, "CLEAR TAPE TRACK 1?", 24);
         a[17] = (char)('1' + (k & 3u));
@@ -1392,12 +1351,6 @@ static void confirm_text(char *a, char *b)
         a[19] = (char)('1' + (k & 3u));
         fmt_int(b, (int32_t)tp_trk[(k >> 4) & 3u].count);
         str_cpy(b + str_len(b), tp_trk[(k >> 4) & 3u].count == 1u ? " note moves" : " notes move", 40 - str_len(b));
-        break;
-    case CF_CLEAR_UNUSED:                               /* ((2.0, #46) "CLEAR 3 UNUSED?" */
-        str_cpy(a, "CLEAR ", 24);
-        fmt_int(a + 6, (int32_t)k);
-        str_cpy(a + str_len(a), " UNUSED?", 24 - str_len(a));
-        str_cpy(b, "patterns no entry uses", 40);
         break;
     default:
         str_cpy(a, "CLEAR T1 SEQUENCE?", 24);     /* the header (T1..T4) is hidden */

@@ -46,22 +46,17 @@ static void tl_undo_take(track_t *t, const char *name)
     memcpy(undo.step, t->step, sizeof undo.step);
     memcpy(undo.fm6, fm6_patch[i], FP_SIZE);
     undo.fm6_slot = fm6_slot[i];
-    undo.pid = trk_pid[i];
     motion_snapshot_track(t, &undo.motion_backup);
 }
 
 /* the layer's OCT- (SEQ TOOLS, REC): t's steps and automation as the undo copy of its first change holds them (the track
  * as the layer opened; (2.0) no copy of its own: ui.c upin keeps that one in the ring), after a copy of now (PUT BACK:
- * SAVE held, the tools again). 0: nothing (undone already); not into another pattern (as an undo: its message) */
+ * SAVE held, the tools again). 0: nothing (undone already) */
 static int tl_put_back(track_t *t)
 {
     int32_t s = undo_find(upin.pin);
     if (s < 0)
         return 0;
-    if (undo_ring[s].pid != trk_pid[trk_index(t)]) {
-        undo_other_pattern(undo_ring[s].pid);
-        return 0;
-    }
     tl_undo_take(t, "PUT BACK");
     s = undo_find(upin.pin);                            /* (it may have moved on in the ring) */
     memcpy(t->step, undo_ring[s].step, sizeof t->step);

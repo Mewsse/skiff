@@ -52,8 +52,8 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 static void panel_setup(void) {}
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
-#define BK_RAM 1                                  /* (Skiff W3: the pattern bank's sectors in RAM, as ui_test's) */
-#include "../firmware/src/bank.c"
+#define TS_RAM 1                                  /* ((Skiff P10) the tape store's sectors in RAM, as ui_test's) */
+#include "../firmware/src/tape_store.c"
 
 static uint32_t flash_ok = 1;
 static void audio_silence(void) {}
@@ -96,6 +96,7 @@ static void reset(void)
         track_defaults(&trk[t]); set_engine_of(&trk[t], 0); apply_preset_to(&trk[t], 0);
         trk[t].engine = trk[t].eng_req; track_defaults_steps(&trk[t]);
     }
+    memset(ts_ram, 0xFF, sizeof ts_ram); tape_init(); ts_boot();   /* ((Skiff P10) the tape store erased, an empty tape) */
 }
 static uint32_t request(uint32_t cmd, const uint8_t *a, uint32_t n)
 {
@@ -190,10 +191,7 @@ static int preferences(void)
     uint8_t a[4] = {0, 3, 0, 0};                          /* (THEME: 3, CRYPT) */
     reset();
     uint32_t n = request(ED_INFO, a, 0);
-    bad += check("INFO (2.0) the pool's tag last: 58 01 01 (EMPTY, CLEAR UNUSED)",
-        host_wire[n - 4] == 0x58 && host_wire[n - 3] == 1 && host_wire[n - 2] == ED_SONG2);
-    n -= 3u;                                              /* (the tags before it, as they were) */
-    bad += check("INFO (1.3) wide ids next: 49 01, P_COUNT and P_E0 in two 7-bit bytes each; the plain bytes at most 127",
+    bad += check("INFO (1.3) wide ids last ((Skiff P10) the pool's 58 01 gone with it): 49 01, P_COUNT and P_E0 in two 7-bit bytes each; the plain bytes at most 127",
         host_wire[n - 7] == 0x49 && host_wire[n - 6] == 1 && host_wire[n - 5] == (P_COUNT & 127u) &&
         host_wire[n - 4] == P_COUNT >> 7 && host_wire[n - 3] == (P_E0 & 127u) && host_wire[n - 2] == P_E0 >> 7 &&
         P_COUNT > 127u);
@@ -216,7 +214,7 @@ static int preferences(void)
         host_wire[n - 9 - 4] == 0 && host_wire[n - 9 - 3] == 6 && host_wire[n - 9 - 2] == 0 &&         /* light: no GRAIN, PHYS */
         host_wire[n - 10] == 0x43 && host_wire[n - 9] == 1 && host_wire[n - 8] == TC_COUNT &&
         host_wire[n - 7] == 0x4B && host_wire[n - 6] == 1 && host_wire[n - 5] == 8 &&    /* (Skiff W3) the kit, */
-        host_wire[n - 4] == 0x57 && host_wire[n - 3] == 1 && host_wire[n - 2] == 103);   /* TRANSPORT PROJ_NAME POOL, (#21) SMP_MIX, (2.0) ties */   /* (Skiff W1) the step's FLAM
+        host_wire[n - 4] == 0x57 && host_wire[n - 3] == 1 && host_wire[n - 2] == 99);   /* TRANSPORT PROJ_NAME, (#21) SMP_MIX, (2.0) ties ((P10) no POOL) */   /* (Skiff W1) the step's FLAM
                                                                                           * COND NUDGE */
     request(ED_UI_SET, a, 2);
     bad += check("UI_SET updates the actual palette and reports RAM-only saving",
@@ -1150,7 +1148,7 @@ static int drum_kit_retired(void)
         project_capture(&p);
         for (r = 0; r < NTRK; r++) p.t[r].p[P_E0] = (int16_t)r;
         p.sum = proj_sum(&p);
-        ok = !project_restore_runtime(&p);
+        ok = !project_restore_runtime(&p, TS_NONE);
         for (r = 0; r < NTRK; r++) ok &= trk[r].p[P_E0] == (r < 4u ? MAP[r] : r);   /* (4..: kits as they are) */
         for (r = 0; r < NTRK; r++) p.t[r].p[P_E0] = (int16_t)r;
         proj_bound(&p);
@@ -1296,65 +1294,13 @@ static int transport_names(void)
     return bad;
 }
 
-/* (Skiff W3) POOL as the device's controls: the pool's LENs and uses (a track on it), CLEAR (only unused, stopped),
- * (2.0) EMPTY (in use too), CLEAR UNUSED; bad requests unanswered; LIST, PERFORM, LIST2 (79, 80, 82) gone */
-static void ed_fresh(uint32_t k, uint8_t note)       /* (ui_test's fresh_pattern) */
-{
-    track_defaults_steps(&trk[k]);
-    trk_pid[k] = 0;
-    trk[k].step[0] = (step_t){{note}, 1, ST_NOTE, 0, 90};
-}
-static uint32_t ed_keep_new(uint32_t k)             /* track k's steps as a new pattern, the track on it */
-{
-    trk_pid[k] = 0;
-    (void)keep_all();
-    return trk_pid[k] ? trk_pid[k] - 1u : NPAT;
-}
+/* (Skiff W3) POOL, LIST, PERFORM, LIST2 (78, 79, 80, 82): gone ((Skiff P10) POOL with the pattern pool) */
 static int pool_cmds(void)
 {
-    uint8_t a[4];
-    int bad = 0, ok;
-    uint32_t n, p1, p2, p3;
-    step_t s;
+    int bad = 0;
     reset();
-    memset(bk_ram, 0xFF, sizeof bk_ram);
-    bank_boot();
-    memset(trk_pid, 0, sizeof trk_pid);
-    ed_fresh(0, 50); p1 = ed_keep_new(0);            /* T1: 01, 02, the track on 02 */
-    ed_fresh(0, 60); p2 = ed_keep_new(0);
-    n = request(ED_POOL, 0, 0);
-    ok = p1 == 0u && p2 == 1u && n == 136u && host_wire[7 + 2 * p1] == trk[0].p[P_SLEN] && !host_wire[8 + 2 * p1] &&
-         host_wire[8 + 2 * p2] == 1 && !host_wire[7 + 2 * 63];
-    bad += check("POOL: each pattern's LEN and uses (the track on 02)", ok);
-    a[0] = 1; a[1] = (uint8_t)p2;
-    ok = request(ED_POOL, a, 2) && host_wire[6] == 2;                                       /* in use */
-    song.playing = 1; a[1] = (uint8_t)p1;
-    ok &= request(ED_POOL, a, 2) && host_wire[6] == 3 && pool_used(p1);                     /* playing */
-    song.playing = 0;
-    ok &= request(ED_POOL, a, 2) && !host_wire[6] && !pool_used(p1) && !host_wire[7 + 2 * p1];
-    ok &= request(ED_POOL, a, 2) && host_wire[6] == 1;                                       /* nothing to clear */
-    a[1] = 64;
-    ok &= !request(ED_POOL, a, 2);
-    a[0] = 4; a[1] = 0;
-    ok &= !request(ED_POOL, a, 2);
-    bad += check("POOL: CLEAR only an unused pattern, stopped; nothing to clear said; bad ids, ops unanswered", ok);
-    ed_fresh(0, 70); p3 = ed_keep_new(0);            /* (02 unused now, 03 the track's) */
-    a[0] = 2; a[1] = (uint8_t)p3;
-    ok = request(ED_POOL, a, 2) && !host_wire[6] && pool_used(p3) && !pat_read(p3, bk_rec) &&
-         step_get9(&s, bk_rec + BK_STEPS) && !s.n && trk_pid[0] == p3 + 1u;                  /* EMPTY 03: in use */
-    a[0] = 3;
-    ok &= request(ED_POOL, a, 1) && !host_wire[6] && !pool_used(p2) && request(ED_POOL, a, 1) && host_wire[6] == 1;
-    song.playing = 1;
-    a[0] = 2; a[1] = (uint8_t)p3;
-    ok &= request(ED_POOL, a, 2) && host_wire[6] == 3;                                       /* playing */
-    song.playing = 0;
-    a[0] = 3;
-    ok &= !request(ED_POOL, a, 2);
-    a[0] = 2;
-    ok &= !request(ED_POOL, a, 1);
-    bad += check("(2.0) POOL EMPTY (in use too), CLEAR UNUSED (then nothing unused), playing refused; bad unanswered", ok);
-    ok = !request(79, 0, 0) && !request(80, 0, 0) && !request(82, 0, 0);
-    bad += check("LIST, PERFORM, LIST2 (79, 80, 82): gone, unanswered", ok);
+    bad += check("POOL, LIST, PERFORM, LIST2 (78, 79, 80, 82): gone, unanswered",
+                 !request(78, 0, 0) && !request(79, 0, 0) && !request(80, 0, 0) && !request(82, 0, 0));
     return bad;
 }
 

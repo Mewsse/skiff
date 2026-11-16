@@ -140,8 +140,8 @@ static struct { uint32_t stage; } felucca_dbg;
 #include "../firmware/src/ui_layer.c"
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
-#define BK_RAM 1                                  /* (Skiff: the pattern bank's sectors in RAM: no flash here) */
-#include "../firmware/src/bank.c"
+#define TS_RAM 1                                  /* ((Skiff P10) the tape store's sectors in RAM: no flash here) */
+#include "../firmware/src/tape_store.c"
 #include "../firmware/src/smk_ui.c"
 #include "phrases.h"                              /* (test material: the phrases the firmware no longer ships) */
 
@@ -165,8 +165,7 @@ static void ui_power_on(void)
     memset(&favorites, 0, sizeof favorites);
     memset(undo_ring, 0, sizeof undo_ring);   /* (Skiff: the undo ring, ui.c) */
     memcpy(dx_kit, DX_KIT_DEF, sizeof dx_kit);   /* ((Skiff phase 9) the factory kit: a DRUM-X preset loads others) */
-    memset(bk_ram, 0xFF, sizeof bk_ram);         /* (Skiff: the pattern bank erased, as from a new unit) */
-    bank_boot();
+    memset(ts_ram, 0xFF, sizeof ts_ram);         /* ((Skiff P10) the tape store erased, as on a new unit) */
     (void)arm_cancel();                           /* (.. nothing armed: launch.c) */
     seq_run = (uint8_t)((1u << NTRK) - 1u);
     memset(thr, 0, sizeof thr);
@@ -175,8 +174,8 @@ static void ui_power_on(void)
     memset(&sp, 0, sizeof sp);                    /* (SLICES: the marker, ui_slice.c) */
 #endif
     undo_clear();
-    memset(trk_pid, 0, sizeof trk_pid);           /* (Skiff phase 5: no patterns on the tracks) */
     tape_init();                                  /* (main.c: the note tape's lists, before the audio runs) */
+    ts_boot();
     motion_lost = 0;
     memset(proj_slot, 0, sizeof proj_slot);
     memset(up_bank, 0, sizeof up_bank);

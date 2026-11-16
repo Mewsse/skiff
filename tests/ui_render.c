@@ -709,24 +709,6 @@ static void drum(uint32_t kit)
     trk[3].p[P_SLEN] = 32;
 }
 static void eng(uint32_t e) { set_engine_of(TSEL, e); }
-/* (Skiff phase 5) the pool mockup's (design/mock_p5.py pool) patterns kept (LEN 16), the six tracks on six of them
- * (the others: nothing uses them), 23 picked (nothing uses it) */
-static void pool_lists(void)
-{
-    static const uint8_t U[] = {1, 2, 3, 5, 6, 7, 9, 10, 13, 14, 15, 16, 17, 21, 22, 23, 24, 31, 33};
-    static const uint8_t ON[NTRK] = {1, 5, 6, 14, 21, 22};
-    static uint8_t r[BK_REC];
-    uint32_t i;
-    song.playing = 0;
-    memset(trk_pid, 0, sizeof trk_pid);
-    TSEL->p[P_SLEN] = 16;
-    for (i = 0; i < sizeof U; i++)
-        if (bk_pack(r, TSEL))
-            pool_put(U[i] - 1u, r);
-    for (i = 0; i < NTRK; i++)
-        trk_pid[i] = ON[i];
-    ui.bslot = 22;
-}
 /* the FM engine of the FM screens: DIGITAL with FELUCCA_FM4, else FM6 (DIGITAL retired: its own screens, the OP ENV /
  * OP LEVEL pages and the algorithm charts, exist only there: fm4_screen) */
 #define E_FM (FELUCCA_FM4 ? ENGI_DIGITAL : ENGI_FM6)
@@ -750,7 +732,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_COUNTIN, S_COUNTIN2, S_MENU_AUDIO, S_HEAD_PLAY_REC, S_HEAD_REC_OTHER, S_HEAD_BPM_TURN, S_HEAD_BPM_LOCK,
        S_HEAD_BPM_LOCKED, S_HEAD_GLO_TURN, S_HEAD_DOWNBEAT, S_HEAD_BEAT_2, S_HEAD_PROJECT,
        S_TAKE_BOX, S_TAKE_PARTIAL, S_CONFIRM_INIT, S_UNDO_BOX, S_CHANCE_FLAM,
-       S_PLAY_DIR, S_POOL, S_CONFIRM_POOL, S_PERF_LAYER, S_DUCK, S_DUCK_OFF, S_PLAY_GATE, S_TILES, S_TILES_BAR2, S_TILES_DRUM,
+       S_PLAY_DIR, S_PERF_LAYER, S_DUCK, S_DUCK_OFF, S_PLAY_GATE, S_TILES, S_TILES_BAR2, S_TILES_DRUM,
        S_STEP_MARK,
        S_DX_SOUND, S_DX_SOUND2, S_DX_SOUND3, S_CONFIRM_INIT_DX,   /* (Skiff;
                                                                                               * before the mock scenes: setup) */
@@ -764,7 +746,6 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_CHORUS_FLANGER, S_CHORUS_PHASER, S_PRESETS_BASS,                                     /* (Skiff phase 9) */
        /* (#28) */
        S_NOTES_RANGE, S_NOTES_PICK, S_FEEL_RANGE, S_NOTES_OVERLAP, S_MOMENTARY,               /* (Skiff 2.0, D; #25) */
-       S_POOL_EMPTY, S_POOL_UNUSED, S_CONFIRM_EMPTY, /* (2.0, #46, #47) */
        /* (2.0, #32, #33) */
        /* (2.0, #44) */
        S_LANE_MIX, S_LANE_MIX_DX, /* (2.0, #36, #30) */
@@ -795,8 +776,8 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "roll_locks", "roll_lock_held", "drum_locks", "drum_lock_held", "motion_locks", "auto_list", "auto_list_add", "auto_list_drum", "auto_list_delete", "layer_rec", "layer_rec_set",
     "countin", "countin_2bars", "menu_audio", "head_play_rec", "head_rec_other", "head_bpm_turn", "head_bpm_lock",
     "head_bpm_locked", "head_glo_turn", "head_downbeat", "head_beat_2", "head_project",
-    "take_box", "take_partial", "confirm_init", "undo_box", "chance_flam", "play_dir", "pool",
-    "confirm_pool", "layer_perform", "fx_duck", "fx_duck_off", "play_gate", 
+    "take_box", "take_partial", "confirm_init", "undo_box", "chance_flam", "play_dir",
+    "layer_perform", "fx_duck", "fx_duck_off", "play_gate", 
     "step_tiles", "step_tiles_bar2", "step_tiles_drum",
     "step_mark",
     "dx_sound", "dx_sound_2", "dx_sound_3", "confirm_init_dx",
@@ -807,7 +788,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "drive_soft", "drive_hard", "drive_fold", "drive_crush", "drive_fuzz", "insert_fuzz", "insert_crush", "insert_flanger",
     "menu_midi", "menu_midi_scroll", "learn", "learn_cc", "lfo_2", "env_2", "lanes_tune", "reverb_hall", "chorus_feedback",
     "chorus_flanger", "chorus_phaser", "presets_bass", 
-    "notes_range", "notes_pick", "feel_range", "notes_overlap", "momentary", "pool_empty", "pool_unused", "confirm_empty",
+    "notes_range", "notes_pick", "feel_range", "notes_overlap", "momentary",
     "lane_mix", "lane_mix_dx",
     "drum_kit_usr", "lanes_usr",
     "follow", "follow_scale", "follow_fit", "follow_off", "follow_wait", "free_take", "free_take_turned", "dly_mono", "dly_ping", "fx_delay", "fx_reverb", "fx_sends", "pattern_64", "project_new",
@@ -1254,19 +1235,6 @@ static void setup(int s)
         undo_n = 8; undo_back = 2;
         break;
     case S_CHANCE_FLAM: go_page(GR_FEEL); my_steps(TSEL); step_set_rflam(&TSEL->step[0], 5); nsel.view = 1; ui.hot_col = 1; ui.hot_t = 30; break;
-    case S_POOL:                                    /* (Skiff phase 5) SAVE > PATTERNS, the pool view, as the mockup:
-                                                     * 23 picked (nothing uses it), CLEAR just turned; its dialog */
-    case S_CONFIRM_POOL:
-    case S_POOL_EMPTY: case S_POOL_UNUSED: case S_CONFIRM_EMPTY:   /* ((2.0, #46) KNOB 4's ACTION: EMPTY on 21 (four
-                                                     * entries use it), CLEAR UNUSED (17 23 33); EMPTY's dialog */
-        pool_lists();
-        go_page(GR_BANK);
-        if (s == S_POOL_EMPTY || s == S_CONFIRM_EMPTY) { ui.bslot = 20; ui.bact = BA_EMPTY; }
-        if (s == S_POOL_UNUSED) ui.bact = BA_UNUSED;
-        if (s == S_POOL || s == S_POOL_EMPTY || s == S_POOL_UNUSED) { ui.hot_col = 3; ui.hot_t = 30; }
-        else if (s == S_CONFIRM_EMPTY) { ui.confirm = CF_EMPTY_BANK; ui.confirm_trk = ui.bslot; }
-        else { ui.confirm = CF_ERASE_BANK; ui.confirm_trk = ui.bslot; }
-        break;
     case S_DUCK:                                    /* (Skiff) FX > DUCK: T1 under T4's kicks (four a bar: drum()), */
     case S_DUCK_OFF:                                /* DEPTH and REL their defaults (76 %, 199 ms); OFF: the empty box */
         drum(0);
@@ -1372,14 +1340,11 @@ static void setup(int s)
         }
         break;
     }
-    case S_STEP_MARK: {                             /* ((2.0) FEEL) the header says which pattern (T2 on 06) */
+    case S_STEP_MARK: {                             /* ((2.0) FEEL) T2's steps ((Skiff P10) no pattern number since the
+                                                     * pool went) */
         static const uint8_t NT[16] = {36, 0, 36, 0, 39, 31, 0, 0, 36, 0, 34, 0, 0, 48, 0, 43};
-        static uint8_t r[BK_REC];
         song.playing = 0;
         sel_set(1);
-        if (bk_pack(r, TSEL))
-            pool_put(5u, r);
-        trk_pid[1] = 6;
         for (uint32_t k = 0; k < 16u; k++)
             TSEL->step[k] = NT[k] ? (step_t){{NT[k]}, 1, ST_NOTE, 0, 96} : (step_t){{0}, 0, ST_REST, 0, 96};
         step_set_chance(&TSEL->step[4], 75);

@@ -3,14 +3,15 @@
 /* (Skiff 2.0, Tier B: design/TIER_B.md 10) The converter: an archive of before (web/fm1backup.js) into what 2.0
  * reads, in the browser. The firmware's own code does it, as a unit would, over a simulated flash:
  *   1. each object restored through the editor's backup path (editor_backup.c ed_bk_commit), in the restore's order:
- *      an old project is stored as SKF1, then at the music's commit (id 0, last) its steps, timing and automation
- *      become patterns in the pool and it becomes SKF4 (bank.c proj_migrate); the settings SKS1; 1.0-1.0.2's FM6 bank
- *      its patches into the user presets' (up_fm6.c upf_migrate);
- *   2. what 2.0 still can't read rewritten (conv_fix): an SKF2 project SKF4, a user preset of versions 1-3 or a
- *      DIGITAL sound version 6 (DIGITAL: FM6 with a patch of its own, fm4_convert.c);
+ *      an old project is stored as SKF1, then at the music's commit (id 0, last) (Skiff P10) its steps become its
+ *      slot's set in the tape store and it becomes SKF5 (tape_store.c proj_migrate); the settings SKS1; 1.0-1.0.2's FM6
+ *      bank its patches into the user presets' (up_fm6.c upf_migrate). SKF2 .. SKF4 (their steps were the pattern
+ *      pool's, gone) are kept as they are: OLD FORMAT on a unit;
+ *   2. what the unit still can't read rewritten (conv_fix): a user preset of versions 1-3 or a DIGITAL sound version 6
+ *      (DIGITAL: FM6 with a patch of its own, fm4_convert.c);
  *   3. the objects taken back as a backup takes them (LIST, then GET).
  * conv_needs says which objects of an archive 2.0 can't read as they are: the page writes back only those (with
- * the pattern chunks and the user presets' patches the conversion changed) and reports the rest as kept.
+ * the tape store's chunks and the user presets' patches the conversion changed) and reports the rest as kept.
  * What no Skiff reads, Felucca 1.2+'s FUNA projects and its user presets by parameter name, is felucca.c's.
  * Built with the old readers whatever the firmware is built with. The exports: conv_buf (an object's bytes both
  * ways), conv_reset, conv_source (felucca.c), conv_put, conv_fix, conv_get, conv_needs, conv_note (felucca.c).
@@ -70,7 +71,7 @@ static void fl_plain_window_init(void) {}
 #include "../../firmware/src/storage.c"
 #include "../../firmware/src/upreset.c"
 #include "../../firmware/src/project.c"
-#include "../../firmware/src/bank.c"
+#include "../../firmware/src/tape_store.c"
 
 enum { ED_BACKUP_LIST = 65, ED_BACKUP_GET, ED_BACKUP_PUT };
 static uint8_t rep[4096];                          /* the editor's reply (its 7-bit bytes) */
@@ -130,8 +131,8 @@ EXPORT void conv_reset(void)
     transport_req = 0;
     usb.resets = 0;
     ed_bk_valid = ed_bk_put = 0;
-    bank_boot();
-    memset(trk_pid, 0, sizeof trk_pid);
+    tape_init();
+    ts_boot();
     motion_lost = 0;
     fel_reset();
 }
@@ -171,18 +172,12 @@ EXPORT uint32_t conv_put(uint32_t id, uint32_t len)
     return rep[2];
 }
 
-/* after every object: what 2.0 still can't read, rewritten. An SKF2 project (four tracks) becomes SKF4; a user
- * preset of versions 1-3 version 6, a DIGITAL sound FM6 with its own patch (fm4_apply on a track, then its patch the
+/* after every object: what the unit still can't read, rewritten. A user preset of versions 1-3 version 6, a DIGITAL sound FM6 with its own patch (fm4_apply on a track, then its patch the
  * slot's, as SAVE > USER keeps one), one Felucca 1.2+ wrote version 6 by name (felucca.c fel_up). Each saved as a unit
  * saves it. Then the FUNAs' songs (fel_songs) */
 EXPORT void conv_fix(void)
 {
-    uint32_t s, k;
-    for (s = 0; s < 4u; s++)
-        if (proj_fmt_of(&proj_slot[s], sizeof proj_slot[s]) == &PROJ_SKF2 &&
-            proj_import(&proj_scratch, &proj_slot[s], sizeof proj_slot[s]) &&
-            proj_pack2(&proj_wire, &proj_scratch, PROJ_SKF) && !st_save(OBJ_PROJECT0 + s, &proj_wire, PROJ_SKF->size))
-            memcpy(&proj_slot[s], &proj_wire, sizeof proj_wire);
+    uint32_t k;
     for (k = 0; k < UP_SLOTS; k++) {
         up_rec_t *r = up_rec(k), n;
         int16_t v[P_COUNT];
@@ -236,8 +231,8 @@ EXPORT uint32_t conv_get(uint32_t id)
     return len;
 }
 
-/* 1 when 2.0 can't read object id (len bytes in conv_buf) as it is, so it must be converted: a project of a format
- * before SKF3 (a FUNA too), a user preset bank holding a record of versions 1-3, a DIGITAL sound or one Felucca 1.2+
+/* 1 when the unit can't read object id (len bytes in conv_buf) as it is and the converter can: a project of a format
+ * holding its steps (FUN1..FUN9, SKF1, a FUNA; (Skiff P10) not SKF2 .. SKF4: kept, OLD FORMAT), a user preset bank holding a record of versions 1-3, a DIGITAL sound or one Felucca 1.2+
  * wrote (felucca.c fel_up), 1.0-1.0.2's FM6 bank. 0: as it
  * is (2.0 reads it), empty, or nothing any firmware reads (the unit ignores it as before). Settings never: an archive's
  * are PER4 (every firmware with complete backups, 1.0.3 on) or SKS1, and 2.0 reads both */
@@ -247,8 +242,7 @@ EXPORT uint32_t conv_needs(uint32_t id, uint32_t len)
     if (!len)
         return 0;
     if (id == 0u || (id >= 2u && id <= 5u)) {
-        const proj_fmt_t *f = proj_fmt_of(conv_bytes, (int)len);
-        return f != &PROJ_SKF3 && f != &PROJ_SKF4;
+        return !proj_fmt_of(conv_bytes, (int)len);
     }
     if (id == 6u || id == 7u) {
         const up_bank_t *b = (const up_bank_t *)conv_bytes;

@@ -41,19 +41,23 @@ static int st_read(uint32_t off, void *dst, uint32_t n);
 static int st_erase(uint32_t off);
 static int st_prog(uint32_t off, const void *src, uint32_t n);
 
-static uint32_t st_crc32(const void *p, uint32_t n)   /* zlib CRC-32, 4 bits per step */
+/* zlib CRC-32, 4 bits per step, carried on from c (0xFFFFFFFF first; the CRC is ~ the last c): one read at a time */
+static uint32_t st_crc32_on(uint32_t c, const void *p, uint32_t n)
 {
     static const uint32_t T[16] = {
         0x00000000u, 0x1DB71064u, 0x3B6E20C8u, 0x26D930ACu, 0x76DC4190u, 0x6B6B51F4u, 0x4DB26158u, 0x5005713Cu,
         0xEDB88320u, 0xF00F9344u, 0xD6D6A3E8u, 0xCB61B38Cu, 0x9B64C2B0u, 0x86D3D2D4u, 0xA00AE278u, 0xBDBDF21Cu};
     const uint8_t *b = p;
-    uint32_t c = 0xFFFFFFFFu;
     while (n--) {
         c ^= *b++;
         c = (c >> 4) ^ T[c & 15u];
         c = (c >> 4) ^ T[c & 15u];
     }
-    return ~c;
+    return c;
+}
+static uint32_t st_crc32(const void *p, uint32_t n)   /* zlib CRC-32 */
+{
+    return ~st_crc32_on(0xFFFFFFFFu, p, n);
 }
 
 #if BOARD_SMK37
@@ -61,7 +65,7 @@ static uint32_t st_crc32(const void *p, uint32_t n)   /* zlib CRC-32, 4 bits per
  * (the stock VM), in this order: projects 0x9D000..0xA4FFF, user preset banks 0xA5000..0xA8FFF, the autosave 0xA9000 /
  * 0xAA000, the user presets' FM6 patches (OBJ_UPFM6, the pair of the retired OBJ_FM6BANK) 0xAB000 / 0xAC000, settings
  * 0xAD000 / 0xAE000; the owner tag 0xAF000 (st_owner_check); 0xB0000..0xBAFFF spare (eleven sectors). The pattern
- * pool (bank.c) and the user sample slot (eng_sample.c) are in USRFLASH (FL_SMP): twenty sectors each. */
+ * store (tape_store.c) and the user sample slot (eng_sample.c) are in USRFLASH (FL_SMP): twenty sectors each. */
 #define ST_SMK_BASE FL_DATA_LO
 #define ST_SMK_PAIRS 9u
 #define ST_SMK_SECTORS (2u * ST_SMK_PAIRS)
@@ -196,11 +200,11 @@ static int st_save(uint32_t obj, const void *src, uint32_t len) { return st_save
 /* (SMK-37 Pro, after genkigenki's SMK-37 layer) The store's owner. The store window is the stock firmware's VM, so
  * after an install it may hold the stock firmware's (or another port's) data, which Skiff must never parse as its own.
  * The sector after the objects (ST_OWNER_OFF) holds the tag "SMK37DATA" + the data family (SMK_DATA_FAMILY, zero
- * padded to 16 B). Tagged: load as ever. Anything else (another family, or none): erase the nine pairs and the pattern
- * pool's sectors that hold one of its chunks (an "SKB1" record, bank.c BK_MAGIC: a stale chunk would come back as the
- * pool's newest copy), then write the tag. Sectors of the pool with anything else in them (the stock mapping, another
- * firmware's sample) are left for the pool's own erase before its first write, so an intact stock mapping stays until
- * then. The user sample (FL_SLOT) checks itself (eng_sample.c). Calibration, pairing and key_mac lie outside every
+ * padded to 16 B). Tagged: load as ever. Anything else (another family, or none): erase the nine pairs and the tape
+ * store's sectors that hold one of its chunks (an "SKT1" record, tape_store.c TS_MAGIC, or the pattern pool's "SKB1" of
+ * before: a stale chunk would come back as a slot's newest set), then write the tag. Sectors of the store with anything
+ * else in them (the stock mapping, another firmware's sample) are left for the store's own erase before its first
+ * write, so an intact stock mapping stays until then. The user sample (FL_SLOT) checks itself (eng_sample.c). Calibration, pairing and key_mac lie outside every
  * window: never touched. FELUCCA_DATA_UNTAGGED_OK 1 would keep a store with an erased tag (0: the SMK build never
  * wrote untagged data). Called first in persist_boot (project.c), before any store read. */
 #ifndef SMK_DATA_FAMILY
@@ -279,8 +283,10 @@ static void st_owner_check(void)
         for (s = 0; s < ST_SMK_SECTORS; s++)
             st_erase(ST_SMK_BASE + s * ST_SECTOR);
         for (s = FL_BANK_LO; s < FL_BANK_HI; s += ST_SECTOR)
-            if (!st_read(s, m, 4) && (m[0] | m[1] << 8 | m[2] << 16 | (uint32_t)m[3] << 24) == 0x31424B53u)
-                st_erase(s);                    /* ("SKB1": a pattern pool chunk, bank.c BK_MAGIC) */
+            if (!st_read(s, m, 4) && ((m[0] | m[1] << 8 | m[2] << 16 | (uint32_t)m[3] << 24) == 0x31424B53u ||
+                                      (m[0] | m[1] << 8 | m[2] << 16 | (uint32_t)m[3] << 24) == 0x31544B53u))
+                st_erase(s);                    /* ("SKB1": a pattern pool chunk of before; "SKT1": a tape store
+                                                 * chunk, tape_store.c TS_MAGIC) */
         st_owner_cleared = 1;
     }
     st_erase(ST_OWNER_OFF);

@@ -3,9 +3,9 @@
 /* The SMK-37 Pro flash map (build with -DBOARD_SMK37=1): every 4 KiB sector of the 1 MiB part through the app's
  * allow-list (FL_RANGE_OK / FL_GUARD, fm1_flash_map.h), the update loader's (loader.c) and the RAM driver's own net:
  * none may ever reach the head 0x0-0x3FFF, BTIF / USRTRIM 0xC0000-0xC1FFF, USR 0xF4000-0xFDFFF or key_mac 0xFF000-.
- * Every stored object by its OBJ_* (storage.c, A and B), the owner tag, the pattern pool (bank.c) and the user sample
+ * Every stored object by its OBJ_* (storage.c, A and B), the owner tag, the tape store (tape_store.c) and the user sample
  * slot (eng_sample.c) inside the allowed windows, none sharing a sector (but the FM6 pair, by design); ranges that wrap
- * or straddle a boundary are refused. bank_test runs the pool itself on this layout (-DBOARD_SMK37=1). */
+ * or straddle a boundary are refused. tape_store_test runs the store itself on this layout (-DBOARD_SMK37=1). */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -31,7 +31,7 @@ static int protected_sector(uint32_t s)
 
 int main(void)
 {
-    static uint8_t owner[256];                      /* each sector's owner: 0 none, 1 + OBJ_*, 100 tag, 101 pool, 102 slot */
+    static uint8_t owner[256];                      /* each sector's owner: 0 none, 1 + OBJ_*, 100 tag, 101 tape store, 102 slot */
     uint32_t s, o, c, leak_app = 0, leak_ldr = 0, leak_guard = 0, allowed = 0, ok;
     for (s = 0; s < 0x100000u; s += 0x1000u) {
         if (!protected_sector(s))
@@ -62,7 +62,7 @@ int main(void)
           LDR_RANGE_OK(0x4000u, 0x1000u) && LDR_RANGE_OK(0x9C000u, 0x1000u) && LDR_RANGE_OK(0xBF000u, 0x1000u) &&
           !LDR_RANGE_OK(0xC0000u, 0x1000u) && !LDR_RANGE_OK(0xC2000u, 0x1000u) && FL_REC_HI == 0xC0000u);
 
-    /* every object's sectors, then the tag, the pool and the slot: in their window, each sector one owner */
+    /* every object's sectors, then the tag, the tape store and the slot: in their window, each sector one owner */
     ok = 1;
     for (o = 0; o < OBJ_COUNT; o++)
         for (c = 0; c < 2u; c++) {
@@ -81,7 +81,7 @@ int main(void)
         ok &= !owner[s >> 12] && FL_GUARD(s, 0x1000u) && FL_IN(s, 0x1000u, FL_SMP_LO, FL_SMP_HI);
         owner[s >> 12] = 101;
     }
-    check("the pattern pool: 20 sectors 0xD6000-0xE9FFF in USRFLASH, nobody else's",
+    check("the tape store: 20 sectors 0xD6000-0xE9FFF in USRFLASH, nobody else's",
           ok && FL_BANK_LO == 0xD6000u && FL_BANK_HI - FL_BANK_LO == 20u * 0x1000u);
     for (ok = 1, s = FL_SLOT_LO; s < FL_SLOT_HI; s += 0x1000u) {
         ok &= !owner[s >> 12] && FL_GUARD(s, 0x1000u) && FL_IN(s, 0x1000u, FL_SMP_LO, FL_SMP_HI);

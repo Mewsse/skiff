@@ -13,17 +13,12 @@
 #define HB_POS_X 22                                   /* bar.beat's pen */
 #define HB_BPM_X 52                                   /* the BPM's pen */
 #define HB_MSG_X 106                                  /* a message from here: 130 px to the edge */
-/* (Skiff phase 5) before the title, in the selected track's colour: on a SEQ page that edits the pattern, its number
- * ("06"; b: 16 bytes). 0: nothing to say */
+/* (Skiff phase 5) before the title, in the selected track's colour: on a SEQ page, the pattern's number ("06"; b: 16
+ * bytes). (Skiff P10) No pattern numbers since the pool went: nothing to say (0) */
 static int head_mark(char *b)
 {
-    const page_t *pg = cur_page();
-    uint32_t id = trk_pat(song.sel % NTRK);
     b[0] = 0;
-    if (ui.home || pg->fam != FAM_SEQ || id == PAT_NONE)
-        return 0;
-    pat_num(b, id);
-    return 1;
+    return 0;
 }
 /* (2.2, YouTube) a mark that does not fit, shorter: its count goes ("B \xB7 02 \xB7 2x" -> "B \xB7 02"), then its
  * entry ("02"); 0 when nothing is left to take (it went before: some marks said nothing where they were long) */
@@ -332,8 +327,8 @@ static void draw_confirm_blocks(void)
         [CF_CLEAR_SEQ] = "CLEAR", [CF_OVR_PROJ] = "OVERWRITE", [CF_OVR_USER] = "OVERWRITE",
         [CF_INIT_SOUND] = "INITIALIZE",
         [CF_CLEAR_MOTION] = "CLEAR", [CF_ERASE_USER] = "ERASE",
-        [CF_ERASE_BANK] = "CLEAR", [CF_LOAD_PROJ] = "LOAD", [CF_RESET_SET] = "RESET",
-        [CF_ERASE_PROJ] = "DELETE", [CF_NEW_PROJ] = "NEW", [CF_EMPTY_BANK] = "EMPTY", [CF_CLEAR_UNUSED] = "CLEAR",
+        [CF_LOAD_PROJ] = "LOAD", [CF_RESET_SET] = "RESET",
+        [CF_ERASE_PROJ] = "DELETE", [CF_NEW_PROJ] = "NEW",
         [CF_CLEAR_TRKS] = "CLEAR", [CF_TAPE_CLEAR] = "CLEAR", [CF_TAPE_MERGE] = "MERGE"};                   /* ((2.5, 3A) SAVE > PROJECT's KNOB 3) */
     static const uint8_t KEY[2] = {KC_OCTDN, KC_OCTUP};
     char a[24], b[40];

@@ -991,7 +991,7 @@ int main(void)
         memcpy(a.name, "SKF4 TEST", 9);
         a.fm6[k][5] = 77;
         memcpy(a.dx, DX_KIT_DEF, sizeof a.dx); a.dx[DV_SNARE].b[DXP_COLOR] = 9; a.dx_on = 1;
-        ok = proj_pack2(&st, &a, PROJ_SKF) && proj_import(&c, &st, (int)PROJ_STORE4);
+        ok = proj_pack2(&st, &a, &PROJ_SKF4) && proj_import(&c, &st, (int)PROJ_STORE4);
         for (t = 0; t < NTRK; t++)
             ok &= c.t[t].engine == a.t[t].engine && c.t[t].preset == a.t[t].preset &&
                   !memcmp(c.t[t].p, a.t[t].p, sizeof a.t[t].p) && !c.t[t].step[0].n;
@@ -1012,11 +1012,11 @@ int main(void)
         bad += check("  2560 bytes: layout 1, the lists at 10 (4 bytes an entry), globals and tracks by count, name at "
                      "2544", ok);
         bad += check("  read from a retained 3840-byte slot too; loaded and saved again: byte for byte",
-                     proj_import(&c, &st, (int)sizeof st) && proj_pack2(&st2, &c, PROJ_SKF) && !memcmp(&st, &st2, sizeof st));
-        ok = proj_pack2(&st2, &a, &PROJ_SKF3) && proj_import(&c, &st2, (int)PROJ_STORE3) && proj_pack2(&st, &c, PROJ_SKF) &&
+                     proj_import(&c, &st, (int)sizeof st) && proj_pack2(&st2, &c, &PROJ_SKF4) && !memcmp(&st, &st2, sizeof st));
+        ok = proj_pack2(&st2, &a, &PROJ_SKF3) && proj_import(&c, &st2, (int)PROJ_STORE3) && proj_pack2(&st, &c, &PROJ_SKF4) &&
              proj_import(&d, &st, (int)PROJ_STORE4) && !memcmp(&c, &d, sizeof c);
         bad += check("  an SKF3 project saved as SKF4: the same project", ok);
-        (void)proj_pack2(&st, &a, PROJ_SKF);
+        (void)proj_pack2(&st, &a, &PROJ_SKF4);
         (void)proj_import(&d, &st, (int)PROJ_STORE4);
         skf4_edit(&st2, &st, p0 + 1u + SID_COUNT, 5, p0, 5);                 /* (a newer firmware's: 5 more on T1, */
         skf4_edit(&st2, &st2, g0 + 1u + 2u * G_COUNT, 4, g0, 2);             /* 2 more globals) */
@@ -1045,11 +1045,70 @@ int main(void)
 #undef SKF4_BAD
         bad += check("  refused: a changed byte, another layout, a value past 127, an engine past the last, SONG 3, "
                      "an id past REST, REPS past CHAIN (flags: read)", ok);
-        memset(proj_slot, 0, sizeof proj_slot);
-        ok = proj_pack2(&proj_slot[1], &a, PROJ_SKF) && proj_slot_refs(63u) == 1u && !proj_slot_refs(62u);
-        ok &= proj_pack2(&proj_slot[3], &a, &PROJ_SKF3) && proj_slot_refs(63u) == 2u;
-        memset(proj_slot, 0, sizeof proj_slot);
-        bad += check("  pattern references: an SKF4 slot's entries counted, beside an SKF3 one's", ok);
+    }
+    {   /* (Skiff P10) SKF5: 2560 bytes, SKF4 without the lists and scenes, with the motion store and SEQ RUN */
+        static project_t a, c, d;
+        static project_store_t st, st2;
+        uint32_t sum, k = NTRK - 1u, m0, g0, p0, used;
+        memset(&a, 0, sizeof a);
+        for (t = 0; t < NTRK; t++) {
+            a.t[t].engine = (uint8_t)(t == 3u || t == 5u ? ENGI_DRUM : t == 4u ? ENGI_FM6 : 0u);
+            a.t[t].preset = (uint8_t)t;
+            a.t[t].user = (uint8_t)(t == 2u ? 3u : 0u);
+            for (i = 0; i < P_COUNT; i++)
+                a.t[t].p[i] = (int16_t)clamp(param_desc_of(a.t[t].engine, i)->def + (int32_t)t, -64, 127);
+        }
+        for (i = 20u; i < G_COUNT; i++)
+            a.g[i] = (int16_t)(GP[i].def + 1);
+        a.parts = PROJ_PARTS; a.phys = PROJ_PHYS; a.sel = (uint8_t)k; a.g[G_BPM] = 97;
+        a.run = 0x2Du;
+        memcpy(a.name, "SKF5 TEST", 9);
+        a.fm6[k][5] = 77;
+        memcpy(a.dx, DX_KIT_DEF, sizeof a.dx); a.dx[DV_SNARE].b[DXP_COLOR] = 9; a.dx_on = 1;
+        a.motion.count = 3; a.motion.on = 0x21u;
+        a.motion.event[0] = (motion_event_t){(uint16_t)(5u << 6 | 63u), 0, P_REV, 100};
+        a.motion.event[1] = (motion_event_t){(uint16_t)(1u << 6 | 2u), 1, P_E0 + 3u, -64};   /* (a lock, an engine id) */
+        a.motion.event[2] = (motion_event_t){(uint16_t)(4u << 6 | 9u), 0, P_E0 + 7u, 7};   /* (an id past 127) */
+        a.sum = proj_sum(&a);
+        ok = proj_pack2(&st, &a, PROJ_SKF) && PROJ_SKF == &PROJ_SKF5 && proj_import(&c, &st, (int)PROJ_STORE5);
+        for (t = 0; t < NTRK; t++)
+            ok &= c.t[t].engine == a.t[t].engine && c.t[t].preset == a.t[t].preset && c.t[t].user == a.t[t].user &&
+                  !memcmp(c.t[t].p, a.t[t].p, sizeof a.t[t].p) && !c.t[t].step[0].n;
+        bad += check("(Skiff P10) SKF5: sounds, globals, kit, FM6, name, SEQ RUN, the motion (locks, wide ids) round "
+                     "trip", ok && !memcmp(c.g, a.g, sizeof a.g) && c.sel == k && c.run == 0x2Du &&
+                     !memcmp(c.name, a.name, sizeof a.name) && c.dx_on && !memcmp(c.dx, a.dx, sizeof a.dx) &&
+                     c.fm6[k][5] == 77u && !memcmp(&c.motion, &a.motion, sizeof a.motion) && motion_valid(&c.motion));
+        m0 = PROJ_HEAD5 + 1u + DV_NLANE * 11u + NTRK * FM6_PACKED;
+        g0 = m0 + PROJ_MOT5;
+        p0 = g0 + 1u + 2u * G_COUNT + 3u;
+        used = PROJ_USED5;
+        ok = ((const uint32_t *)st.raw)[0] == PROJ_MAGIC5 && ((const uint32_t *)st.raw)[1] == 2560u && st.raw[8] == 1u &&
+             st.raw[10] == k && st.raw[11] == 0x2Du && st.raw[12] == PROJ_DX_MARK && st.raw[m0] == 3u &&
+             st.raw[m0 + 1u] == 0x21u && st.raw[m0 + 4u] == 127u && st.raw[m0 + 5u] == 1u &&
+             st.raw[m0 + 6u] == p_sid(P_REV) && st.raw[m0 + 9u] == 2u && st.raw[m0 + 10u] == p_sid(P_E0 + 3u) &&
+             st.raw[g0] == G_COUNT && st.raw[p0] == SID_COUNT && !memcmp(st.raw + 2544u, "SKF5 TEST", 9) &&
+             used <= PROJ_STORE5;
+        printf("project: SKF5 uses %u of its %u bytes: %u free\n", (unsigned)used, (unsigned)PROJ_STORE5,
+               (unsigned)(PROJ_STORE5 - used));
+        bad += check("  2560 bytes: layout 1, sel 10, SEQ RUN 11, the kit at 12, the motion by SID, name at 2544", ok);
+        bad += check("  loaded and saved again: byte for byte",
+                     proj_import(&c, &st, (int)sizeof st) && proj_pack2(&st2, &c, PROJ_SKF) && !memcmp(&st, &st2, sizeof st));
+        ok = proj_pack2(&st2, &a, &PROJ_SKF4) && proj_import(&d, &st2, (int)PROJ_STORE4) && d.run == (1u << NTRK) - 1u &&
+             !d.motion.count;
+        bad += check("  an SKF4 (the converter's reader): every sequencer runs, no motion (the pattern pool held it)", ok);
+#define SKF5_BAD(off, v) (st2 = st, st2.raw[(off)] = (v), sum = proj_hash(st2.raw, PROJ_STORE5 - 4u), \
+                          memcpy(st2.raw + PROJ_STORE5 - 4u, &sum, 4), !proj_import(&c, &st2, (int)PROJ_STORE5))
+        st2 = st; st2.raw[p0 + 1u] ^= 1u;
+        ok = !proj_import(&c, &st2, (int)PROJ_STORE5) && SKF5_BAD(8u, 2u) && SKF5_BAD(11u, 0x40u) &&
+             SKF5_BAD(p0 + 1u, 192u) && SKF5_BAD(p0 - 3u, NENGINES) && SKF5_BAD(m0, MOTION_MAX + 1u) &&
+             SKF5_BAD(m0 + 1u, 0x40u) && SKF5_BAD(m0 + 5u, 4u) && SKF5_BAD(m0 + 7u, (uint8_t)-65) && !SKF5_BAD(9u, 1u);
+        bad += check("  refused: a changed byte, another layout, SEQ RUN or motion past the tracks, a value past 127, "
+                     "an engine past the last, a motion record no firmware wrote (flags: read)", ok);
+        st2 = st; st2.raw[m0 + 6u] = 254u;               /* (a newer firmware's parameter) */
+        sum = proj_hash(st2.raw, PROJ_STORE5 - 4u); memcpy(st2.raw + PROJ_STORE5 - 4u, &sum, 4);
+        ok = proj_import(&c, &st2, (int)PROJ_STORE5) && c.motion.count == 2u &&
+             !memcmp(&c.motion.event[0], &a.motion.event[1], 2u * sizeof c.motion.event[0]);
+        bad += check("  a motion record of a parameter this firmware has not: passed over, the rest kept", ok);
     }
     {   /* (phase 6) a light track holding PHYS (no firmware writes one: a crafted record) loads as at power-on, its list
          * kept; with four tracks the last plays every engine: as it is */

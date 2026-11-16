@@ -8,6 +8,9 @@
  * (Skiff 2.0, Tier B: design/TIER_B.md 10) This firmware reads SKF3 and SKF4 (below) only. The formats before them
  * (FUN1..FUN9, SKF1, SKF2) and the conversions of their sounds are built with FELUCCA_LEGACY alone: the converter
  * (web/conv), which makes SKF4 and patterns of them. A slot holding one keeps its bytes and shows OLD FORMAT (proj_old).
+ * (Skiff P10) This firmware reads SKF5 only: SKF3 and SKF4 named the pattern pool's patterns, gone with it, and are
+ * OLD FORMAT too (no migration); the converter makes SKF5 and a slot's set (tape_store.c) of the formats holding their
+ * steps (FUN1..FUN9, SKF1).
  *
  * Format 7 ("FUN7", written) stores P_COUNT (byte 66) and maps an older count as user presets do: FUN7 of
  * 89 parameters (before the chord keys P_CHRD / P_VOIC) loads its engine values at today's P_E0..P_E7,
@@ -126,8 +129,9 @@ typedef struct {
     proj_trk_t t[NTRK];
 #if FELUCCA_LEGACY
     chain_config_t chain;                      /* (FUN6 .. SKF1's) */
-    motion_store_t motion;
 #endif
+    motion_store_t motion;                     /* (FUN7 .. SKF1's; (Skiff P10) SKF5's: the automation and locks) */
+    uint8_t run;                               /* ((Skiff P10) SKF5) each track's SEQ RUN, a bit a track (launch.c) */
     uint8_t fm6[NTRK][FM6_PACKED];             /* each track's FM6 patch, packed (eng_fm6.c) */
     char name[PROJ_NAME_LEN];                  /* the project's name: upper-case ASCII 32..126, 0-padded; "" = none */
     uint8_t ent[NTRK][NENT][2];                /* (SKF2) each track's list: pattern id + 1 (0: none), repeats - 1 */
@@ -207,7 +211,23 @@ static const proj_fmt_t PROJ_SKF3 = {PROJ_MAGIC3, PROJ_STORE3, 6u, PROJ_SCENES, 
 static const proj_fmt_t PROJ_SKF4 = {PROJ_MAGIC4, PROJ_STORE4, 6u, PROJ_SCENES, 1u};
 _Static_assert(PROJ_ENT4 + NTRK * (NENT * 4u + 1u) + PROJ_SCENES + 2u + 1u + DV_NLANE * 11u + NTRK * FM6_PACKED +
                1u + 2u * GSID_COUNT + NTRK * (4u + SID_COUNT) + PROJ_NAME_LEN + 4u <= PROJ_STORE4, "SKF4 holds it all");
-#define PROJ_SKF (&PROJ_SKF4)                  /* the format a save writes */
+/* (Skiff P10) "SKF5": 2560 bytes, SKF4 without the song layer (the lists, their sounds, the entry each track is on, the
+ * scenes, SONG) and with what the patterns held besides the steps: the automation and locks, each track's SEQ RUN. The
+ * steps and the tape are the slot's set in the tape store (tape_store.c), written before this record. 8 the layout
+ * (PROJ_LAYOUT5), 9 flags (0), 10 sel, 11 SEQ RUN, 12 the DRUM-X kit (PROJ_DX_MARK and its lanes; 0: the factory's),
+ * the FM6 patches, the motion (its count, the on mask, 2 reserved (0), then each record in 4 bytes: the place's low 8
+ * bits; its bit 8 | the lock << 1; the parameter's SID, core.h; the value), the globals by GSID, each track's engine,
+ * preset, user slot + 1 and parameters by SID; the name, the hash last */
+#define PROJ_MAGIC5 0x534B4635u
+#define PROJ_STORE5 2560u
+#define PROJ_LAYOUT5 1u
+#define PROJ_HEAD5 12u
+#define PROJ_MOT5 (4u + MOTION_MAX * 4u)
+#define PROJ_USED5 (PROJ_HEAD5 + 1u + DV_NLANE * 11u + NTRK * FM6_PACKED + PROJ_MOT5 + 1u + 2u * GSID_COUNT + \
+                    NTRK * (4u + SID_COUNT) + PROJ_NAME_LEN + 4u)
+static const proj_fmt_t PROJ_SKF5 = {PROJ_MAGIC5, PROJ_STORE5, 6u, 0u, 1u};
+_Static_assert(PROJ_USED5 <= PROJ_STORE5, "SKF5 holds it all");
+#define PROJ_SKF (&PROJ_SKF5)                  /* the format a save writes */
 #define PROJ_NAME_AT(f) ((f)->size - 4u - PROJ_NAME_LEN)
 #define PROJ_FM6_AT(f) (PROJ_NAME_AT(f) - (f)->nt * FM6_PACKED)
 #define PROJ_DX_MARK 0x58u                    /* ('X') the kit follows */
@@ -626,10 +646,15 @@ static int proj_engines_ok(const project_t *q)
 static int proj_import(project_t *q, const void *b, int n)
 {
     uint32_t k;
+    const proj_fmt_t *f = proj_fmt_of(b, n);
     if (!proj_import_any(q, b, n) || !proj_engines_ok(q))
         return 0;
+    if (f != &PROJ_SKF5) {                          /* ((Skiff P10) a format without SEQ RUN: every sequencer runs) */
+        q->run = (uint8_t)((1u << NTRK) - 1u);
+        q->sum = proj_sum(q);
+    }
 #if FELUCCA_LEGACY
-    if (proj_fmt_of(b, n) != &PROJ_SKF3 && proj_fmt_of(b, n) != &PROJ_SKF4 &&   /* (Skiff phase 9) the CHORUS MODE */
+    if (f != &PROJ_SKF3 && f != &PROJ_SKF4 && f != &PROJ_SKF5 &&   /* (Skiff phase 9) the CHORUS MODE */
         (q->g[G_CMODE] || q->g[G_CFDBK])) {
         q->g[G_CMODE] = q->g[G_CFDBK] = 0;          /* and FEEDBACK: in an older format the old GM drum part's level */
         q->sum = proj_sum(q);                       /* and reverb send, read above: as at power-on) */
@@ -648,18 +673,23 @@ static int proj_unpack2(project_t *q, const uint8_t *b, const proj_fmt_t *f);
 #if FELUCCA_LEGACY
 static void proj_ent_none(project_t *q);
 #endif
-/* (Skiff phase 6) the format of a record of n bytes if SKF2 (FELUCCA_LEGACY only), SKF3 or (2.0) SKF4 (a retained slot
- * too: its size in it); 0 not */
+/* (Skiff phase 6) the format of a record of n bytes if SKF2, SKF3, (2.0) SKF4 (FELUCCA_LEGACY only: (P10) the pool's)
+ * or (Skiff P10) SKF5 (a retained slot too: its size in it); 0 not */
 static const proj_fmt_t *proj_fmt_of(const void *b, int n)
 {
     const uint32_t *w = (const uint32_t *)b;
-    const proj_fmt_t *f = n < 8 ? 0 : w[0] == PROJ_MAGIC4 ? &PROJ_SKF4 : w[0] == PROJ_MAGIC3 ? &PROJ_SKF3 :
-                          FELUCCA_LEGACY && w[0] == PROJ_MAGIC2 ? &PROJ_SKF2 : 0;
+    const proj_fmt_t *f = n < 8 ? 0 : w[0] == PROJ_MAGIC5 ? &PROJ_SKF5 : !FELUCCA_LEGACY ? 0 :
+                          w[0] == PROJ_MAGIC4 ? &PROJ_SKF4 : w[0] == PROJ_MAGIC3 ? &PROJ_SKF3 :
+                          w[0] == PROJ_MAGIC2 ? &PROJ_SKF2 : 0;
     return f && n >= (int)f->size && w[1] == f->size ? f : 0;
 }
-/* (2.0, D3) a record of a format of before by its magic: FUN1..FUN9, Felucca's FUNA, SKF1, SKF2. 2.0 keeps its bytes
- * (OLD FORMAT); the converter reads it (web/conv) */
-static int proj_old_magic(uint32_t m) { return (m >= 0x46554E31u && m <= 0x46554E41u) || m == PROJ_MAGIC || m == PROJ_MAGIC2; }
+/* (2.0, D3) a record of a format of before by its magic: FUN1..FUN9, Felucca's FUNA, SKF1, SKF2, ((Skiff P10) SKF3,
+ * SKF4: the pattern pool's). Kept as its bytes (OLD FORMAT); the converter reads it (web/conv) */
+static int proj_old_magic(uint32_t m)
+{
+    return (m >= 0x46554E31u && m <= 0x46554E41u) || m == PROJ_MAGIC || m == PROJ_MAGIC2 || m == PROJ_MAGIC3 ||
+           m == PROJ_MAGIC4;
+}
 /* .. n bytes holding one whole (its own size, at most n; its hash, as every format of before has it last): that size,
  * 0 not (editor_backup.c keeps such a slot as it is) */
 static uint32_t proj_old_whole(const void *b, uint32_t n)
@@ -1097,6 +1127,130 @@ static int proj_unpack4(project_t *q, const uint8_t *b)
     q->sum = proj_sum(q);
     return 1;
 }
+/* (Skiff P10) the motion store as SKF5 holds it (see PROJ_MAGIC5): PROJ_MOT5 bytes */
+static void proj_mot5_put(uint8_t *b, const motion_store_t *m)
+{
+    uint32_t i;
+    memset(b, 0, PROJ_MOT5);
+    b[0] = (uint8_t)(m->count < MOTION_MAX ? m->count : MOTION_MAX);
+    b[1] = (uint8_t)(m->on & ((1u << NTRK) - 1u));
+    for (i = 0; i < b[0]; i++) {
+        const motion_event_t *e = &m->event[i];
+        uint8_t *r = b + 4u + 4u * i;
+        r[0] = (uint8_t)e->place;
+        r[1] = (uint8_t)((e->place >> 8) | (e->lock ? 2u : 0u));
+        r[2] = (uint8_t)p_sid(MOTION_ID(e));
+        r[3] = (uint8_t)e->value;
+    }
+}
+/* .. back: a record naming a parameter this firmware has not (a newer one's) passed over; 0 for a store no firmware
+ * wrote (motion_valid) */
+static int proj_mot5_get(motion_store_t *m, const uint8_t *b)
+{
+    uint32_t i, n = 0;
+    memset(m, 0, sizeof *m);
+    if (b[0] > MOTION_MAX || b[1] >> NTRK)
+        return 0;
+    m->on = b[1];
+    for (i = 0; i < b[0]; i++) {
+        const uint8_t *r = b + 4u + 4u * i;
+        uint32_t id = sid_p(r[2]), place = r[0] | (uint32_t)(r[1] & 1u) << 8;
+        if (r[1] > 3u)
+            return 0;
+        if (id >= P_COUNT || (place >> 6) >= NTRK)
+            continue;
+        m->event[n].place = (uint16_t)place;
+        m->event[n].lock = r[1] >> 1;
+        m->event[n].id = (uint8_t)id;
+        m->event[n].value = (int8_t)r[3];
+        n++;
+    }
+    m->count = (uint8_t)n;
+    return motion_valid(m);
+}
+/* (Skiff P10) q -> an SKF5 record (see PROJ_MAGIC5; no steps, no tape: the slot's set holds them); 0 for a value it
+ * can't hold */
+static int proj_pack5(project_store_t *out, const project_t *q)
+{
+    uint8_t *b = out->raw;
+    uint32_t pos = PROJ_HEAD5, t, e, n, sum;
+    for (t = 0; t < NTRK; t++)
+        for (e = 0; e < FM6_PACKED; e++)
+            if (q->fm6[t][e] > 127u) return 0;
+    if (q->motion.count > MOTION_MAX || !motion_valid(&q->motion)) return 0;
+    memset(out, 0, sizeof *out); memcpy(b, &PROJ_SKF5.magic, 4); memcpy(b + 4, &PROJ_SKF5.size, 4);
+    b[8] = PROJ_LAYOUT5;
+    b[10] = q->sel;
+    b[11] = (uint8_t)(q->run & ((1u << NTRK) - 1u));
+    if (q->dx_on && dx_kit_ok(q->dx)) {
+        b[pos] = PROJ_DX_MARK;
+        memcpy(b + pos + 1u, q->dx, sizeof q->dx);
+    }
+    pos += 1u + sizeof q->dx;
+    memcpy(b + pos, q->fm6, sizeof q->fm6); pos += sizeof q->fm6;
+    proj_mot5_put(b + pos, &q->motion); pos += PROJ_MOT5;
+    pos += gsid_put(b + pos, q->g);
+    for (t = 0; t < NTRK; t++) {
+        b[pos] = q->t[t].engine; b[pos + 1u] = q->t[t].preset; b[pos + 2u] = q->t[t].user; pos += 3u;
+        if (!(n = sid_put(b + pos, q->t[t].p))) return 0;
+        pos += n;
+    }
+    {
+        char nm[PROJ_NAME_LEN + 1u];
+        memcpy(b + PROJ_NAME_AT(&PROJ_SKF5), nm, proj_name_get(nm, (const uint8_t *)q->name));
+    }
+    sum = proj_hash(b, PROJ_STORE5 - 4u); memcpy(b + PROJ_STORE5 - 4u, &sum, 4);
+    return 1;
+}
+/* (Skiff P10) an SKF5 record (its magic and size checked: proj_fmt_of) -> q; 0 if it is not one this firmware reads */
+static int proj_unpack5(project_t *q, const uint8_t *b)
+{
+    uint32_t pos = PROJ_HEAD5, end = PROJ_NAME_AT(&PROJ_SKF5), t, e, n, sum;
+    memcpy(&sum, b + PROJ_STORE5 - 4u, 4);
+    if (b[8] != PROJ_LAYOUT5 || sum != proj_hash(b, PROJ_STORE5 - 4u) || b[11] >> NTRK) return 0;
+    memset(q, 0, sizeof *q); q->magic = PROJ_MAGIC; q->size = sizeof *q;
+    q->parts = PROJ_PARTS; q->phys = PROJ_PHYS;
+    q->sel = b[10];
+    q->run = b[11];
+    if (b[pos] == PROJ_DX_MARK && dx_kit_ok((const dx_lane_t *)(b + pos + 1u))) {
+        memcpy(q->dx, b + pos + 1u, sizeof q->dx);
+        q->dx_on = 1;
+    }
+    pos += 1u + sizeof q->dx;
+    for (t = 0; t < NTRK; t++)
+        for (e = 0; e < FM6_PACKED; e++)
+            q->fm6[t][e] = b[pos++] & 0x7Fu;
+    if (!proj_mot5_get(&q->motion, b + pos)) return 0;
+    pos += PROJ_MOT5;
+    for (e = 0; e < G_COUNT; e++)
+        q->g[e] = GP[e].def;
+    if (!(n = gsid_get(q->g, b + pos, end - pos))) return 0;
+    pos += n;
+    for (t = 0; t < NTRK; t++) {
+        if (end - pos < 3u) return 0;
+        q->t[t].engine = b[pos]; q->t[t].preset = b[pos + 1u];
+        q->t[t].user = b[pos + 2u] <= UP_SLOTS ? b[pos + 2u] : 0u;
+        pos += 3u;
+        if (q->t[t].engine >= NENGINES) return 0;
+        for (e = 0; e < P_COUNT; e++)
+            q->t[t].p[e] = param_desc_of(q->t[t].engine, e)->def;
+        if (!(n = sid_get(q->t[t].p, b + pos, end - pos))) return 0;
+        pos += n;
+#if FELUCCA_LEGACY
+        for (e = 0; e < NSTEP; e++)
+            q->t[t].step[e].time = ST_REST;               /* (empty: the slot's set holds the steps) */
+#endif
+    }
+#if FELUCCA_LEGACY
+    chain_defaults(&q->chain);
+#endif
+    {
+        char nm[PROJ_NAME_LEN + 1u];
+        memcpy(q->name, nm, proj_name_get(nm, b + end));
+    }
+    q->sum = proj_sum(q);
+    return 1;
+}
 /* q -> an SKF2 or (Skiff phase 6) SKF3 record, format f (its steps and motion not: they are the patterns'): 0 for a
  * value no format can hold, or a format of more tracks than this firmware has. Its first f->nt tracks, the first f->sc
  * scene bytes: SKF2 holds four tracks, their scenes. (2.0) SKF4: proj_pack4 */
@@ -1104,6 +1258,7 @@ static int proj_pack2(project_store_t *out, const project_t *q, const proj_fmt_t
 {
     uint8_t *b = out->raw;
     uint32_t pos = 68u, t, i, sum;
+    if (f == &PROJ_SKF5) return proj_pack5(out, q);
     if (f == &PROJ_SKF4) return proj_pack4(out, q);
     if (f->nt > NTRK || f->sc > PROJ_SCENES) return 0;
     for (t = 0; t < f->nt; t++)
@@ -1151,30 +1306,12 @@ static int proj_pack2(project_store_t *out, const project_t *q, const proj_fmt_t
     sum = proj_hash(b, f->size - 4u); memcpy(b + f->size - 4u, &sum, 4);
     return 1;
 }
-/* how many entries of the saved projects (the SKF2, SKF3 and SKF4 slots) name pattern id (bank.c pat_refs) */
-static uint32_t proj_slot_refs(uint32_t id)
-{
-    uint32_t sl, i, n = 0, np, off, w;
-    for (sl = 0; sl < 4u; sl++) {
-        const uint8_t *b = proj_slot[sl].raw;
-        const proj_fmt_t *f = proj_fmt_of(b, sizeof proj_slot[sl]);
-        np = b[66];
-        if (f == &PROJ_SKF4)
-            off = PROJ_ENT4, w = 4u;
-        else if (!f || np < 8u || np > P_COUNT)
-            continue;
-        else
-            off = 68u + f->nt * (np + 2u), w = 2u;
-        for (i = 0; i < f->nt * NENT; i++)
-            n += b[off + w * i] == id + 1u;
-    }
-    return n;
-}
 /* an SKF2 or SKF3 record (format f) -> q (no steps, no motion: the patterns hold them); f->nt tracks, the rest as at
  * power-on (an SKF2's scenes leave T5, T6 as they are: bank.c scene_trk). (2.0) SKF4: proj_unpack4 */
 static int proj_unpack2(project_t *q, const uint8_t *b, const proj_fmt_t *f)
 {
     uint32_t pos = 68u, t, i, magic, size, sum, np = b[66];
+    if (f == &PROJ_SKF5) return proj_unpack5(q, b);
     if (f == &PROJ_SKF4) return proj_unpack4(q, b);
     memcpy(&magic, b, 4); memcpy(&size, b + 4, 4); memcpy(&sum, b + f->size - 4u, 4);
     if (f->nt > NTRK || f->sc > PROJ_SCENES || magic != f->magic || size != f->size ||
@@ -1259,6 +1396,21 @@ static void proj_legacy_drums(track_t *t)
 }
 #endif
 
+/* (Skiff P10) the tape store (tape_store.c, after this file): each slot's set, the music now's (TS_MUSIC) */
+#define TS_SLOTS 5u
+#define TS_MUSIC 4u
+#define TS_NONE 0xFFu
+static int ts_on(void);
+static int ts_save(uint32_t slot);
+static int ts_load(uint32_t slot, int steps);
+static int ts_erase_slot(uint32_t slot);
+static int ts_music_lost(void);
+/* the set a record's tape and steps are in: SKF5's, set; (FELUCCA_LEGACY) a format of before holds its own: none */
+static uint32_t proj_set_of(const void *b, int n, uint32_t set)
+{
+    return proj_fmt_of(b, n) == &PROJ_SKF5 ? set : TS_NONE;
+}
+
 static project_t proj_scratch;              /* decoded main-loop work, never audio ISR */
 static char proj_name[PROJ_NAME_LEN + 1u]    /* the name of the music as it is now (loaded, saved, the editor's */
     __attribute__((section(".pool")));       /* runtime restore); "" = none. A save takes it unless one is given */
@@ -1267,7 +1419,8 @@ static uint8_t proj_cur = PROJ_NO_SLOT;      /* the slot the music was loaded fr
                                               * renames the music too); PROJ_NO_SLOT none (the editor's restore) */
 static union {                               /* serialized main-loop work; no retained expansion */
     project_store_t s;
-    uint8_t raw[3840];                         /* (the staging of a backup object, up to a storage object: editor_backup.c) */
+    uint8_t raw[3856];                         /* (the staging of a backup object, up to a storage object or a tape store
+                                                * chunk with its meta: editor_backup.c) */
 } proj_wire_u;
 #define proj_wire (proj_wire_u.s)
 static uint8_t proj_wire_gen;                /* +1 whenever proj_wire is rewritten (a backup's runtime copy lives there) */
@@ -1364,13 +1517,10 @@ static void project_capture(project_t *p)
 #endif
         fm6_pack(fm6_patch[i], p->fm6[i]);
     }
-#if FELUCCA_LEGACY
     p->motion = motion;
-#endif
     motion_unguard(f);
+    p->run = seq_run;
     memcpy(p->name, proj_name, str_len(proj_name));
-    for (i = 0; i < NTRK; i++)                     /* (the song layer gone: each track's pattern its entry A, on it) */
-        p->ent[i][0][0] = trk_pid[i];
     if (memcmp(dx_kit, DX_KIT_DEF, sizeof dx_kit)) {   /* (phase 7) the DRUM-X kit, when not the factory's (none: */
         p->dx_on = 1;                              /* the factory's when loaded; a project of before as it was) */
         memcpy(p->dx, dx_kit, sizeof p->dx);
@@ -1378,8 +1528,9 @@ static void project_capture(project_t *p)
     p->sum = proj_sum(p);
 }
 
-/* the music as it is now -> slot, named `name` (0: the current name; "" none); 0 saved, nonzero refused or failed.
- * The current name becomes the saved one */
+/* the music as it is now -> slot, named `name` (0: the current name; "" none): (Skiff P10) its tape and steps the
+ * slot's set (tape_store.c), then the SKF5 record; 0 saved, nonzero refused or failed. The current name becomes the
+ * saved one */
 static void project_clean(void);
 static int project_save_as(uint32_t slot, const char *name)
 {
@@ -1389,9 +1540,9 @@ static int project_save_as(uint32_t slot, const char *name)
         ui_message("STOP TO SAVE");                     /* sequencer (storage_hw.c): only while stopped */
         return 1;
     }
-    if ((kr = keep_all()) != 0) {                      /* (phase 5) the tracks' patterns first: a project names them */
-        ui_way(kr == 1 ? "PATTERNS FULL" : "SAVE ERROR", kr == 1 ? WAY_PATTERNS : "");
-        return kr;
+    if (ts_on() && (kr = ts_save(slot & 3u)) != 0) {   /* ((Skiff P10) the slot's set first: the tape, the steps) */
+        ui_message(kr == 1 ? "SAVE FORMAT ERROR" : "SAVE ERROR");
+        return 2;
     }
     project_capture(p);
     if (name) {
@@ -1484,7 +1635,9 @@ static int project_rename(uint32_t slot, const char *name)
     return 0;
 }
 
-static int project_restore_runtime(const project_t *input)
+/* project input becomes the music; set: the tape store's set its tape and steps come from (a slot, TS_MUSIC; TS_NONE
+ * none: an empty tape, (FELUCCA_LEGACY) the record's own steps) */
+static int project_restore_runtime(const project_t *input, uint32_t set)
 {
     project_t *p = &proj_scratch;
     uint32_t i, k;
@@ -1502,15 +1655,11 @@ static int project_restore_runtime(const project_t *input)
     seq_stop();
     (void)arm_cancel();                                 /* (Skiff) nothing armed comes in over it (launch.c) */
     transport_req = 0;
-#if FELUCCA_LEGACY
-    motion = p->motion;
-#else
-    memset(&motion, 0, sizeof motion);                  /* ((2.0) the patterns hold it: each track's, as it loads) */
-#endif
+    motion = p->motion;                                 /* ((Skiff P10) SKF5's) */
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;
-    memset(trk_pid, 0, sizeof trk_pid);
     motion_lost = 0;
+    seq_run = (uint8_t)(p->run & ((1u << NTRK) - 1u));
     for (i = 0; i < G_COUNT; i++)                       /* ((Skiff U3, R8) not the unit's CLOCK MIDI IN TUNE: ui.c) */
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE && (unit_g_adopt || !unit_g_id(i)))
             song.g[i] = (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
@@ -1530,10 +1679,6 @@ static int project_restore_runtime(const project_t *input)
 #if FELUCCA_LEGACY
         memcpy(t->step, s->step, sizeof t->step);
         proj_steps(t->step);
-#else
-        memset(t->step, 0, sizeof t->step);             /* ((2.0) none until its pattern loads, below) */
-        for (i = 0; i < NSTEP; i++)
-            t->step[i].time = ST_REST;
 #endif
         {   /* the project's own FM6 patch, never reloaded from SLOT: F n if it is that factory patch, else OWN */
             uint8_t v[FP_SIZE + 1u];
@@ -1548,6 +1693,7 @@ static int project_restore_runtime(const project_t *input)
     proj_name_get(proj_name, (const uint8_t *)p->name);
     proj_cur = PROJ_NO_SLOT;                            /* (project_load: its slot) */
     undo_clear();                                       /* (ui.c) the undo copies belong to the old project */
+    (void)ts_load(set, !FELUCCA_LEGACY || set < TS_SLOTS);   /* ((Skiff P10) its set: the tape, the steps) */
     undo_depth++;                                       /* and these loads take none */
     for (k = 0; k < NTRK; k++) {                        /* the power-on sounds: format 1 (tracks 2..4), old drums */
         track_t *t = &trk[k];
@@ -1567,11 +1713,6 @@ static int project_restore_runtime(const project_t *input)
             fm1_irq_on();
         }
 #endif
-        {   /* (phase 5) the pattern of the entry it is on (SKF2); none: the record's steps (a format before) */
-            uint32_t v = p->ent[k][p->cur[k] % NENT][0], id = v && v <= NPAT ? v - 1u : PAT_NONE;
-            if (id != PAT_NONE && pool_used(id))
-                (void)pat_load(t, id);
-        }
     }
     undo_depth--;
     sync_reload = 1;
@@ -1592,13 +1733,10 @@ static void project_load(uint32_t slot)
         return;
     }
     proj_bound(&proj_scratch);                          /* a retained RAM slot of an older format: as from flash */
-    transport_stop_now();                               /* (phase 5) stopped first (the steps are still while kept), */
-    (void)arm_cancel();                                 /* nothing armed comes in; what the tracks have kept */
-    if (keep_all() == 1) {
-        ui_way("PATTERNS FULL", WAY_PATTERNS);
-        return;
-    }
-    if (!project_restore_runtime(&proj_scratch)) {
+    transport_stop_now();                               /* stopped first (its set loads stopped), nothing armed */
+    (void)arm_cancel();                                 /* comes in */
+    if (!project_restore_runtime(&proj_scratch,
+                                 proj_set_of(&proj_slot[slot & 3u], sizeof(project_store_t), slot & 3u))) {
         proj_cur = (uint8_t)(slot & 3u);
         project_clean();
     }
@@ -1723,9 +1861,9 @@ static void settings_save(void)
  * 10 s and a minute: a minute's edits lost, a year's wear at the worst).
  * RESTORE LAST OFF writes none (and restores none). Never after a crash, a hang or a failed boot (main.c): the music
  * that was playing then could be what crashed. Checked every AS_POLL_MS; the main loop only (never the audio ISR).
- * (Skiff phase 5) The steps are the patterns' (bank.c): each write is a round, the patterns the tracks changed kept
- * first (a chunk of them a poll, each an erase in the pool's rotating sectors), then the project; RESTORE LAST OFF
- * keeps the patterns all the same. Patterns waiting with no slot free for another: the round does not wait its gap */
+ * (Skiff P10) The steps and the tape are the music's set in the tape store (tape_store.c TS_MUSIC): a write puts it
+ * first (four erases, only when it changed), then the project. A project save that took the music's set for room
+ * (ts_music_lost) brings a write without the change */
 #define AS_POLL_MS 250u
 #define AS_IDLE_MS 2000u
 #define AS_GAP_MS 20000u
@@ -1736,7 +1874,6 @@ static struct {
     uint32_t t, last, poll;                      /* fm1_ms: seen changed / busy, the last round, the last check */
     uint32_t writes;                             /* (written since power-on: the host tests count them) */
     uint8_t wrote, err;                          /* a round since power-on (last is valid); the last one failed */
-    uint8_t round;                               /* (phase 5) a round going on: the patterns, then the project */
     uint8_t soon;                                /* (2.0) a save asked for one: idle AS_SOON_MS, no gap */
 } as __attribute__((section(".pool")));
 /* (2.0, the unit 2026-10-24: a user sound saved on T1, the unit switched off at once, T1 came back ACID) a save, a load
@@ -1754,6 +1891,23 @@ static uint32_t as_mix(uint32_t h, const void *p, uint32_t n)   /* FNV-1a, conti
     return h;
 }
 
+/* (Skiff P10) the tape as a save keeps it (tape_store.c): L, the target, OVERDUB, each track's MUTE and nodes */
+static uint32_t proj_tape_sig(uint32_t h)
+{
+    uint32_t k, len = tape_length(), n;
+    uint16_t node;
+    h = as_mix(h, &len, sizeof len);
+    h = as_mix(h, &tp_target, 1);
+    h = as_mix(h, &tp_overdub, 1);
+    for (k = 0; k < TAPE_TRACKS; k++) {
+        h = as_mix(h, &tp_trk[k].mute, 1);
+        for (node = tp_trk[k].first, n = 0; node != TAPE_END && n < TAPE_N; node = tp_nx[node], n++) {
+            h = as_mix(h, &tp_w0[node], sizeof tp_w0[node]);
+            h = as_mix(h, &tp_w1[node], sizeof tp_w1[node]);
+        }
+    }
+    return h;
+}
 /* what an autosave would hold, hashed (no copy, no RAM): project_capture's values */
 static uint32_t autosave_sig(void)
 {
@@ -1775,7 +1929,8 @@ static uint32_t autosave_sig(void)
         if (i != G_SLOT && i != G_NAME && i != G_LOAD && i != G_SAVE && !unit_g_id(i))
             h = as_mix(h, &song.g[i], sizeof song.g[i]);
     h = as_mix(h, &motion, sizeof motion);
-    h = as_mix(h, trk_pid, sizeof trk_pid);           /* (phase 5) the patterns the tracks are on */
+    h = as_mix(h, &seq_run, sizeof seq_run);          /* ((Skiff P10) SKF5's SEQ RUN, and the tape) */
+    h = proj_tape_sig(h);
     i = (ui_prefs & PREF_RESTORE_OFF) != 0;           /* (RESTORE LAST back ON: a round, the project written) */
     h = as_mix(h, &i, sizeof i);
     return as_mix(h, proj_name, sizeof proj_name);
@@ -1836,7 +1991,7 @@ static void project_mark_boot(int restored)
 /* (1.2.1, #6) SAVE > PROJECT's DELETE: the slot emptied, in flash (an empty record: st_load reads 0) and in its RAM copy
  * (.noinit, kept over a warm reset; persist_boot and project_load read the flash only when it is empty). The music
  * playing stays; if it was this slot's it is on no slot now, and unknown counts as changed (project_dirty: nothing is
- * lost without a question). Patterns only it named stay in the pool, unused (PATTERNS can clear them).
+ * lost without a question). (Skiff P10) Its set in the tape store goes with it.
  * 0 done, 1 refused (playing, an empty slot), 2 failed (the slot as it was) */
 static int project_erase(uint32_t slot)
 {
@@ -1856,6 +2011,10 @@ static int project_erase(uint32_t slot)
     }
 #endif
     memset(&proj_slot[slot], 0, sizeof proj_slot[slot]);
+    if (ts_on() && ts_erase_slot(slot)) {               /* ((Skiff P10) its set too: the record is gone already) */
+        ui_message("DELETE ERROR");
+        return 2;
+    }
     if (proj_cur == slot) {
         proj_cur = PROJ_NO_SLOT;
         pj_clean = autosave_sig() + 1u;
@@ -1879,10 +2038,6 @@ static void project_new(void)
     memset(drum_mute, 0, sizeof drum_mute);
     transport_stop_now();
     (void)arm_cancel();
-    if (keep_all() == 1) {
-        ui_way("PATTERNS FULL", WAY_PATTERNS);
-        return;
-    }
     transport_req = 2;
     panic_req = (1u << NTRK) - 1u;
     fm1_irq_off();
@@ -1893,7 +2048,7 @@ static void project_new(void)
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;
     motion_lost = 0;
-    memset(trk_pid, 0, sizeof trk_pid);
+    seq_run = (uint8_t)((1u << NTRK) - 1u);
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE && !unit_g_id(i))
             song.g[i] = GP[i].def;
@@ -1912,6 +2067,7 @@ static void project_new(void)
         track_defaults_steps(t);
     }
     undo_depth--;
+    (void)ts_load(TS_NONE, 0);                          /* ((Skiff P10) an empty tape) */
     proj_name[0] = 0;
     proj_cur = PROJ_NO_SLOT;
     project_clean();
@@ -1940,8 +2096,8 @@ static void autosave_hold(void) { as.t = fm1_ms; }   /* the editor's transfers: 
 static void autosave_poll(void)
 {
 #if FELUCCA_FLASH
-    uint32_t sig, w;
-    int rc;
+    uint32_t sig;
+    int lost;
     if (!flash_ok || fm1_ms - as.poll < AS_POLL_MS)
         return;
     as.poll = fm1_ms;
@@ -1953,28 +2109,20 @@ static void autosave_poll(void)
     }
     if (fm1_ms - as.t < (as.soon ? AS_SOON_MS : AS_IDLE_MS))
         return;
-    if (!as.round) {                                   /* (phase 5) a round: the patterns kept, one erase a poll; */
-        w = keep_waiting();                            /* then the project, RESTORE LAST ON */
-        if (sig == as.saved && !w) {
-            as.soon = 0;                               /* ((2.0) nothing new for it: the next change waits its 2 s) */
-            return;
-        }
-        if (w < 2u && as.wrote && !as.soon && fm1_ms - as.last < (as.err ? AS_RETRY_MS : AS_GAP_MS))
-            return;                                    /* (no slot free to wait in: not the gap) */
-        as.round = 1;
-        as.soon = 0;
-        as.last = fm1_ms;
-        as.wrote = 1;
+    lost = ts_music_lost() && !(ui_prefs & PREF_RESTORE_OFF);   /* ((Skiff P10) its set given up for a save) */
+    if (sig == as.saved && !lost) {
+        as.soon = 0;                                   /* ((2.0) nothing new for it: the next change waits its 2 s) */
+        return;
     }
-    rc = keep_poll();
-    sig = as.seen = autosave_sig();                    /* (the round's own change, a new pattern named: no edit) */
-    if (rc == 1)
+    if (as.wrote && !as.soon && fm1_ms - as.last < (as.err ? AS_RETRY_MS : AS_GAP_MS))
         return;
-    as.round = 0;
-    as.err = rc != 0;
-    if (as.err)
-        return;
+    as.soon = 0;
+    as.last = fm1_ms;
+    as.wrote = 1;
     if (!(ui_prefs & PREF_RESTORE_OFF)) {
+        as.err = ts_save(TS_MUSIC) != 0;               /* ((Skiff P10) the music's set first: its tape, its steps) */
+        if (as.err)
+            return;
         project_capture(&proj_scratch);
         proj_wire_gen++;
         as.err = !proj_pack2(&proj_wire, &proj_scratch, PROJ_SKF) || st_save(OBJ_AUTOSAVE, &proj_wire, PROJ_SKF->size) != 0;
@@ -1999,7 +2147,7 @@ static int autosave_boot(int allowed)
         n = st_load(OBJ_AUTOSAVE, &proj_wire, sizeof proj_wire);
         if (n > 0 && proj_import(&proj_scratch, &proj_wire, n)) {
             proj_bound(&proj_scratch);
-            if (!project_restore_runtime(&proj_scratch)) {
+            if (!project_restore_runtime(&proj_scratch, proj_set_of(&proj_wire, n, TS_MUSIC))) {
                 ui_message("RESTORED");
                 rc = 1;
             }

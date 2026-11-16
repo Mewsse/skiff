@@ -7,7 +7,7 @@
  * (0: 4 bars), tape_length(), tape_head, tape_pass, song_ticks; voice.c trk[], trk_note_on / trk_note_off,
  * tape_playing; core.h song.playing / song.rec, NTRK; fm1_irq.h fm1_irq_off / fm1_irq_on. */
 #ifndef TAPE_N
-#define TAPE_N 680u                    /* nodes, all tracks: 10 B each. 1,440 once bank.c's pool is gone (pool headroom) */
+#define TAPE_N 1440u                   /* nodes, all tracks: 10 B each (tape_store.c: three chunks of them) */
 #endif
 #define TAPE_TRACKS 4u
 #define TAPE_END 0xFFFFu
@@ -26,6 +26,9 @@ static uint8_t tape_playing;           /* 1 while the tape sounds a note: the re
 #endif
 #ifndef TAPE_YIELD
 #define TAPE_YIELD() do { } while (0)
+#endif
+#ifndef TAPE_LOAD_WAIT
+#define TAPE_LOAD_WAIT 1               /* tape_load_begin waits for the ISR's block (hostsim.c: 0, the host's one thread) */
 #endif
 #ifndef TAPE_IRQ_HOOKS
 static uint32_t tp_irq_save(void) { fm1_irq_off(); return 0; }
@@ -623,7 +626,7 @@ static void tape_load_begin(const uint16_t *counts)
     }
     tp_ld.track = 0;
     epoch = tp_epoch;
-    while (epoch && tp_epoch == epoch)         /* (epoch 0: the audio has not started, no ISR to wait for) */
+    while (TAPE_LOAD_WAIT && epoch && tp_epoch == epoch)   /* (epoch 0: the audio has not started, no ISR to wait for) */
         TAPE_YIELD();
     for (k = 0; k < TAPE_N; k++)
         tp_nx[k] = (uint16_t)(k + 1u < TAPE_N ? k + 1u : TAPE_END);

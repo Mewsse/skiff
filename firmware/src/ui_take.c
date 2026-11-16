@@ -206,7 +206,6 @@ static struct {
     uint16_t bpm[FR_NC];                                /* the guesses */
     uint32_t ph[FR_NC];                                 /* .. their grid's phase (2^32: a 1/16) */
     uint32_t p0, non;                                   /* the phrase: free_ev from entry p0; its onsets */
-    uint32_t pat;                                       /* the pattern it opened on (trk_pat) */
     int16_t bpm0, len0, div0;                           /* the tempo, LEN and DIV it opened with */
 } fr;
 static step_t fr_from[NSTEP] __attribute__((section(".pool")));   /* the steps as it opened */
@@ -439,7 +438,6 @@ static int free_open(uint32_t k)
     fr.len0 = t->p[P_SLEN];
     fr.div0 = t->p[P_SDIV];
     fr.bpm0 = song.g[G_BPM];
-    fr.pat = trk_pat(k % NTRK);
     free_hold = 1;
     fr.on = 1;
     fr_render();
@@ -472,7 +470,7 @@ static void fr_close(int keep)
     fr.on = 0;
     free_hold = 0;
     ui.take_t = 0;
-    if (!keep && trk_pat(fr.trk) == fr.pat) {          /* (another pattern on it meanwhile: left as it is) */
+    if (!keep) {
         fm1_irq_off();
         memcpy(t->step, fr_from, sizeof fr_from);
         t->p[P_SLEN] = fr.len0;

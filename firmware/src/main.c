@@ -120,7 +120,6 @@ static void felucca_init(void)
         t->engine = t->eng_req;
         track_defaults_steps(t);              /* (a sound load never touches them) */
     }
-    memset(trk_pid, 0, sizeof trk_pid);       /* (Skiff phase 5) no patterns on the tracks */
     undo_depth--;
     sel_set(0);
     song.master_q12 = 2048;                   /* (the pot's level replaces it before the audio starts: master_boot) */
@@ -172,7 +171,7 @@ static void fm1_main(void)
 #endif
     persist_boot();
     tape_init();                                        /* (the note tape: its free list, before the audio runs) */
-    bank_boot();                                        /* (Skiff) the pattern bank (bank.c) */
+    ts_boot();                                          /* (Skiff) the projects' tapes and sequencers (tape_store.c) */
 #if FELUCCA_OTA
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
@@ -266,9 +265,6 @@ static void fm1_main(void)
         ui_set_rev = 1;                       /* off again */
         settings_save();
     }
-#if FELUCCA_LEGACY
-    proj_migrate(boot_clean);                 /* (Skiff phase 5) projects of before: SKF2, their tracks patterns */
-#endif
     if (!CAST_AUDIO_LATE())                   /* (Skiff Studio: a cast's restart has it in already, above) */
         boot_music();
     for (ms = 0; ms < 400u; ms += 10u) {      /* the splash; the pot followed (MIDI IN plays under it) */

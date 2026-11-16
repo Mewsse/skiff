@@ -4,23 +4,25 @@
 // what 2.0 reads, by conv.wasm (web/conv/conv.c: the firmware's own code over a simulated flash).
 //   const conv = await loadConverter(wasmBytesOrUrl);
 //   const { archive, report, writeBack } = conv.convert(readBackup(file));
-// archive: a complete 2.0 archive (29 objects); writeBack: the ids whose bytes changed, which 2.0 couldn't read as they
-// were or the conversion filled (pattern chunks, the user presets' patches): the installer writes back only those;
-// report: a line per object (what it was, what it is now, kept / converted / refused; note: what had no place in 2.0,
-// felucca.c conv_note). Refused: damaged (the unit refuses it too: a restore leaves it out); "kept as it was: the
-// patterns are full": an old project no free pattern could take, which a 2.0 unit keeps whole (OLD FORMAT) for later. An archive without the pattern bank is Felucca's (or Skiff's before it): its user presets of
-// Felucca 1.2+ are mapped by name (conv_source).
+// archive: a complete archive (33 objects); writeBack: the ids whose bytes changed, which the unit couldn't read as
+// they were or the conversion filled ((Skiff P10) the tape store's chunks, the user presets' patches): the installer
+// writes back only those; report: a line per object (what it was, what it is now, kept / converted / refused; note:
+// what had no place, felucca.c conv_note). Refused: damaged (the unit refuses it too: a restore leaves it out); "kept
+// as it was: not converted": an old project the conversion could not write. SKF2 .. SKF4 (their steps were the
+// pattern pool's) are kept as they are: OLD FORMAT on a unit. An archive without Skiff's chunks (16..31 before, 40..59
+// now) is Felucca's: its user presets of Felucca 1.2+ are mapped by name (conv_source).
 import { BACKUP_IDS, bkCrc } from "../fm1backup.js";
 
-const CONV_MAGICS = { 0x534B4634: "SKF4", 0x534B4633: "SKF3", 0x534B4632: "SKF2", 0x534B4631: "SKF1", 0x46554E41: "FUNA" };
+const CONV_MAGICS = { 0x534B4635: "SKF5", 0x534B4634: "SKF4", 0x534B4633: "SKF3", 0x534B4632: "SKF2", 0x534B4631: "SKF1", 0x46554E41: "FUNA" };
 for (let v = 1; v <= 9; v++) CONV_MAGICS[0x46554E30 + v] = `FUN${v}`;
 const convU32 = (b, o) => (b[o] | b[o + 1] << 8 | b[o + 2] << 16 | b[o + 3] << 24) >>> 0;
 
 /* what an object holds, in a word or two (the report) */
 export function convKind(id, b) {
   if (!b || !b.length) return "empty";
+  if (id >= 40) return "tape and steps";
   if (id >= 32) return "samples";
-  if (id >= 16) return "patterns";
+  if (id >= 16) return "patterns (of before)";
   if (id === 0 || id <= 5 && id >= 2) return CONV_MAGICS[convU32(b, 0)] || "unknown";
   if (id === 1) return { 0x534B5331: "SKS1", 0x50455234: "PER4" }[convU32(b, 0)] || "unknown";
   if (id === 6 || id === 7) {
@@ -46,10 +48,10 @@ export async function loadConverter(src) {
       const bytesOf = (id) => input.get(id)?.bytes || new Uint8Array(0);
       const rc = new Map();
       x.conv_reset();
-      x.conv_source(archive.objects.length < BACKUP_IDS.length ? 1 : 0);
+      x.conv_source(archive.objects.some((o) => (o.id >= 16 && o.id < 32) || o.id >= 40) ? 0 : 1);
       for (const id of [...archive.objects.slice(2).map((o) => o.id), 1, 0]) {   // (restoreBackup's order: the music last)
         const b = bytesOf(id);
-        if (id >= 32 || !b.length) continue;
+        if ((id >= 16 && id <= 34) || !b.length) continue;   // (samples; the pattern pool's of before: dropped)
         buf().set(b);
         rc.set(id, x.conv_put(id, b.length));
       }
@@ -58,14 +60,14 @@ export async function loadConverter(src) {
       for (const id of BACKUP_IDS) {
         const was = bytesOf(id);
         let now = was, what = "kept";
-        if (id < 32) {
+        if (id < 32 || id >= 40) {
           const conv = buf().slice(0, x.conv_get(id));
-          const left = !!x.conv_needs(id, conv.length);   // (still a format of before: no pattern was free for its steps)
+          const left = !!x.conv_needs(id, conv.length);   // (still a format of before: not written)
           buf().set(was);
           const needs = !!x.conv_needs(id, was.length), r = rc.get(id);
-          if (needs && (r === 4 || (r === 0 && left))) what = "kept as it was: the patterns are full";
+          if (needs && (r === 4 || (r === 0 && left))) what = "kept as it was: not converted";
           else if (needs && r !== 0) what = "refused, kept as it was";
-          else if (needs || (id === 8 || id === 9 || id >= 16) && !sameBytes(conv, was)) { now = conv; what = was.length ? "converted" : "added"; }
+          else if (needs || (id === 8 || id === 9 || id >= 40) && !sameBytes(conv, was)) { now = conv; what = was.length ? "converted" : "added"; }
         }
         if (now !== was) writeBack.push(id);
         const n = x.conv_note(id), note = n ? String.fromCharCode(...buf().subarray(0, n)) : "";

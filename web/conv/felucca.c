@@ -4,12 +4,11 @@
  * Skiff reads, from Felucca's own sources (GPL-3.0, hugelton/Felucca, the git remote upstream: its tags v1.4 .. v1.6.1
  * and main, Leo Kuroshita's history):
  *   - FUNA projects ("FUN10", written since Felucca 1.2; its project.c, the top and proj_pack / proj_unpack): read here
- *     into project_t (fel_funa), their four tracks' steps and automation patterns in the pool as bank.c proj_migrate
- *     makes them, each with its own automation (fel_pats), then SKF4 (a slot) or the music (fel_put); their songs'
- *     sections onto the slots' lists where they map, after every object (fel_songs; the music's: dropped, noted);
+ *     into project_t (fel_funa), (Skiff P10) their steps the slot's set and their automation the project's (fel_motion),
+ *     then SKF5 (a slot) or the music (fel_put); their songs dropped, noted (fel_songs: no song layer);
  *   - user presets of versions 4 and 5 that Felucca 1.2+ wrote (np 103, 104, 111), by parameter name: conv_fix writes
  *     them as version 6 (fel_up_values), an FM6 sound's patch kept.
- * The page says whose an archive is (conv_source: Felucca's hold no pattern bank; both report "FELUCCA vX.Y"); a FUNA
+ * The page says whose an archive is (conv_source: Felucca's hold no tape store; both report "FELUCCA vX.Y"); a FUNA
  * is Felucca's whatever the archive. What has no place in Skiff is noted per object (conv_note). */
 
 /* ---- Felucca's track parameters by id. Both grew from 1.1's 99 (v1.1.5.1, which Skiff forked): P_LEVEL .. P_LN7
@@ -192,35 +191,26 @@ static int fel_funa(project_t *q, motion_store_t *mk, uint8_t *c, fel_drop_t *d,
     proj_perc(q);                                /* ponytail: else its EDIT automation would stay in mk) */
     return 1;
 }
-/* q's four tracks as pool patterns, each with its automation mk[k] (bank.c proj_migrate's: one the same there already,
- * that one; an empty track none), on q's lists (entry A). 0 done, 2 a step no format holds, 4 the pool full or a write
- * failed */
-static uint32_t fel_pats(project_t *q, const motion_store_t *mk)
+/* (Skiff P10) q's automation: each track's mk[k] into the project's one store (64 records: the rest noted, d->mot) */
+static void fel_motion(project_t *q, const motion_store_t *mk, fel_drop_t *d)
 {
-    uint32_t k, i, id, used;
-    int16_t tv[5];
+    uint32_t k, i;
+    memset(&q->motion, 0, sizeof q->motion);
     for (k = 0; k < PROJ_NT; k++) {
-        for (i = 0, used = mk[k].count; i < NSTEP; i++)
-            used |= q->t[k].step[i].n | q->t[k].step[i].hit;
-        if (!used)
-            continue;
-        for (i = 0; i < 5u; i++)
-            tv[i] = q->t[k].p[BK_TIME[i]];
-        if (!bk_pack_raw(bk_rec, k, q->t[k].step, tv, &mk[k], mk[k].on != 0))
-            return 2;
-        if ((id = pool_find(bk_rec)) == NPAT && ((id = pool_alloc()) == NPAT || pat_keep_now(id, bk_rec)))
-            return 4;
-        q->ent[k][0][0] = (uint8_t)(id + 1u);
+        q->motion.on |= mk[k].on;
+        for (i = 0; i < mk[k].count; i++) {
+            if (q->motion.count >= MOTION_MAX) {
+                d->mot++;
+                continue;
+            }
+            q->motion.event[q->motion.count++] = mk[k].event[i];
+        }
     }
-    while (pend_free() < PEND_N)
-        if (pat_flush_one())
-            return 4;
     q->sum = proj_sum(q);
-    return 0;
 }
 /* conv_put of a FUNA (len bytes in conv_bytes) as object id, as the restore then the music's commit take an older
- * project (editor_backup.c ed_bk_commit, bank.c proj_migrate): its patterns first, then a slot's SKF4, or the music
- * (and the other slots' migration). conv_put's rc */
+ * project (editor_backup.c ed_bk_commit, tape_store.c proj_migrate): (Skiff P10) a slot's set (its steps) first, then
+ * its SKF5, or the music (and the other slots' migration). conv_put's rc */
 static uint32_t fel_put(uint32_t id, uint32_t len)
 {
     static project_t q;
@@ -233,13 +223,18 @@ static uint32_t fel_put(uint32_t id, uint32_t len)
         memset(&fel_drop[id], 0, sizeof fel_drop[id]);   /* (refused: nothing of it noted) */
         return 2;
     }
-    if ((rc = fel_pats(&q, mk)) != 0)
-        return rc;
+    fel_motion(&q, mk, &fel_drop[id]);
     if (!id) {
-        if (project_restore_runtime(&q))
+        if (project_restore_runtime(&q, TS_NONE))
             return 2;
         (void)proj_migrate(1);
     } else {
+        const step_t *steps[NTRK] = {0};
+        uint32_t k;
+        for (k = 0; k < PROJ_NT; k++)
+            steps[k] = q.t[k].step;
+        if ((rc = (uint32_t)ts_save_from(id - 2u, steps, 0)) != 0)
+            return rc == 1u ? 2u : 4u;
         proj_wire_gen++;
         if (!proj_pack2(&proj_wire, &q, PROJ_SKF) || st_save(OBJ_PROJECT0 + id - 2u, &proj_wire, PROJ_SKF->size))
             return 4;
@@ -251,100 +246,14 @@ static uint32_t fel_put(uint32_t id, uint32_t len)
     return 0;
 }
 
-/* ---- the songs: Felucca's (song_chain.c) is the music's sections, each naming the project slot each track plays (its
- * steps, automation and LEN DIV) for `repeat` loops of its clock track (the first one not silent); Skiff's is each
- * track's list of patterns ---- */
-static uint16_t fel_len(int32_t len, int32_t div)   /* LEN steps of DIV in 48ths of a quarter (Felucca's len48_of) */
-{
-    uint32_t n = (uint32_t)clamp(len, 1, NSTEP), d = (uint32_t)clamp(div, 0, 9);
-    return (uint16_t)(n * (d < 6u ? 48u / DIV_DEN[d] : 48u << (d - 5u)));
-}
-/* sections c onto the lists ent / cur of a project whose tracks are on their own patterns own[k] (id + 1, 0 none), of
- * LEN DIV ol[k]: each track's entries the sections, its lane's pattern (that slot's same track: pat[s][k], of length
- * len[s][k]; slot s there: bit s of ok) for the passes that fill the section; a silent lane, or an empty one, a REST
- * (of the track's LEN DIV then: the pattern's before it); then the track on its own pattern (that entry, else one
- * after them: *after bit k). 0 for a song that does not map so: a slot it names empty (Felucca would not play it), a
- * section a track can't fill with 1..16 whole passes, no entry left for the track's own */
-static int fel_song(const uint8_t *c, uint8_t (*ent)[NENT][2], uint8_t *cur, const uint8_t *own, const uint16_t *ol,
-                    uint8_t pat[4][PROJ_NT], uint16_t len[4][PROJ_NT], uint32_t ok, uint16_t *after)
-{
-    uint8_t out[PROJ_NT][NENT][2], at[PROJ_NT];
-    uint32_t n = c[0], e, k, d, l[PROJ_NT];
-    uint16_t af = 0;
-    memset(out, 0, sizeof out);
-    for (k = 0; k < PROJ_NT; k++)
-        l[k] = ol[k];
-    for (e = 0; e < n; e++) {
-        const uint8_t *r = c + 4u + 5u * e;
-        for (k = 0; k < PROJ_NT && r[k] > 3u; k++)
-            ;
-        d = r[4] * (k < PROJ_NT ? len[r[k]][k] : 192u);   /* (every lane silent: a 4/4 bar of 1/16) */
-        for (k = 0; k < PROJ_NT; k++) {
-            uint32_t s = r[k], p = 0;
-            if (s < 4u && !((ok >> s) & 1u))
-                return 0;
-            if (s < 4u && (p = pat[s][k]) != 0u)
-                l[k] = len[s][k];
-            if (d % l[k] || d / l[k] > 16u)
-                return 0;
-            out[k][e][0] = (uint8_t)(p ? p : PAT_REST);
-            out[k][e][1] = (uint8_t)(d / l[k] - 1u);
-        }
-    }
-    for (k = 0; k < PROJ_NT; k++) {
-        for (e = 0; e < n && out[k][e][0] != own[k]; e++)
-            ;
-        if (e == NENT)
-            return 0;
-        if (e == n && own[k]) {
-            out[k][e][0] = own[k];
-            af |= (uint16_t)(1u << k);
-        }
-        at[k] = (uint8_t)e;
-    }
-    memcpy(ent, out, sizeof out);                /* (T5 T6: no list) */
-    memcpy(cur, at, sizeof at);
-    *after |= af;
-    return 1;
-}
-/* conv_fix, after every object: each FUNA's song onto its lists (the music's; a slot's SKF4 written again), the lanes
- * the slots' patterns as they are now (every project of the archive converted); a song that does not map: noted */
+/* ---- the songs: Felucca's (song_chain.c) is the music's sections, each naming the project slot each track plays.
+ * (Skiff P10) Skiff has no song layer, nor lists: every FUNA's song is noted dropped (conv_fix) ---- */
 static void fel_songs(void)
 {
-    static project_t q;
-    uint8_t pat[4][PROJ_NT] = {{0}}, own[PROJ_NT];
-    uint16_t len[4][PROJ_NT] = {{0}}, ol[PROJ_NT];
-    uint32_t s, k, id, ok = 0;
-    for (s = 0; s < 4u; s++)
-        if (proj_fmt_of(&proj_slot[s], sizeof proj_slot[s]) == &PROJ_SKF4 &&
-            proj_import(&q, &proj_slot[s], sizeof proj_slot[s])) {
-            ok |= 1u << s;
-            for (k = 0; k < PROJ_NT; k++) {
-                pat[s][k] = q.ent[k][q.cur[k]][0] <= NPAT ? q.ent[k][q.cur[k]][0] : 0u;
-                len[s][k] = fel_len(q.t[k].p[P_SLEN], q.t[k].p[P_SDIV]);
-            }
-        }
-    for (id = 0; id < 6u; id++) {
-        if (!((fel_ids >> id) & 1u) || !fel_chain[id][0])
-            continue;
-        if (!id) {                                 /* (the music: no lists since the song layer went) */
-            fel_drop[0].song = 1;
-            continue;
-        }
-        fel_drop[id].song = 1;
-        if (!proj_import(&q, &proj_slot[id - 2u], sizeof proj_slot[id - 2u]))
-            continue;
-        for (k = 0; k < PROJ_NT; k++) {
-            own[k] = q.ent[k][q.cur[k]][0];
-            ol[k] = fel_len(q.t[k].p[P_SLEN], q.t[k].p[P_SDIV]);
-        }
-        proj_wire_gen++;
-        if (fel_song(fel_chain[id], q.ent, q.cur, own, ol, pat, len, ok, &fel_drop[id].after) &&
-            proj_pack2(&proj_wire, &q, PROJ_SKF) && !st_save(OBJ_PROJECT0 + id - 2u, &proj_wire, PROJ_SKF->size)) {
-            memcpy(&proj_slot[id - 2u], &proj_wire, sizeof proj_wire);
-            fel_drop[id].song = 0;
-        }
-    }
+    uint32_t id;
+    for (id = 0; id < 6u; id++)
+        if (((fel_ids >> id) & 1u) && fel_chain[id][0])
+            fel_drop[id].song = 1;
 }
 
 /* ---- user presets: a record of versions 4 and 5 that Felucca 1.2+ wrote (np one of its counts since 1.2; before them
@@ -429,8 +338,7 @@ EXPORT uint32_t conv_note(uint32_t id)
     }
     if (d->song) {
         fel_sep();
-        fel_say(d == fel_drop ? "the song's sections (the music has no song now)"
-                              : "the song's sections (a slot empty, or lengths that do not fill them)");
+        fel_say("the song's sections (no songs now)");
     }
     if (d->midi) {
         fel_sep();

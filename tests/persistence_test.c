@@ -32,23 +32,23 @@ static void panel_setup(void) {}
 #define T_AS 0xA9000u                           /* the autosave's pair */
 #define T_FM6_A 0xAB000u                        /* the FM6 patches' pair (OBJ_FM6BANK / OBJ_UPFM6) */
 #define T_FM6_B 0xAC000u
-#define T_POOL(off) ((off) >= FL_BANK_LO && (off) < FL_BANK_HI)
+#define T_TS(off) ((off) >= FL_BANK_LO && (off) < FL_BANK_HI)
 #else
 #define T_AS 0xE5000u
 #define T_FM6_A 0x9F000u
 #define T_FM6_B 0xFE000u
-#define T_POOL(off) (((off) >= 0xE7000u && (off) < 0xE9000u) || ((off) >= 0xEA000u && (off) < 0xFC000u))
+#define T_TS(off) (((off) >= 0xE7000u && (off) < 0xE9000u) || ((off) >= 0xEA000u && (off) < 0xFC000u))
 #endif
 static uint8_t nor[0x100000], flash_ok = 1;
 static int erase_error, fail_after = -1;
-static uint32_t erases, as_erases, pool_erases;  /* (as_erases: the autosave's two sectors, 0xE5000 / 0xE6000; pool_erases:
-                                                  * the pattern pool's twenty, bank.c bk_sector) */
+static uint32_t erases, as_erases, ts_erases;    /* (as_erases: the autosave's two sectors, 0xE5000 / 0xE6000; ts_erases:
+                                                  * the tape store's twenty, tape_store.c ts_sector) */
 static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off, n); return 0; }
 static int st_erase(uint32_t off)
 {
     erases++;
     as_erases += off >= T_AS && off < T_AS + 0x2000u;
-    pool_erases += T_POOL(off);
+    ts_erases += T_TS(off);
     if (erase_error) return -8;
     memset(nor + off, 0xFF, 4096);
     return 0;
@@ -71,7 +71,7 @@ static void fl_plain_window_init(void) {}
 #include "../firmware/src/storage.c"
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
-#include "../firmware/src/bank.c"                 /* (Skiff phase 5: the patterns a project names; kept before saves) */
+#include "../firmware/src/tape_store.c"           /* ((Skiff P10) each slot's tape and steps, the music's) */
 
 enum { ED_UI_STATE = 34, ED_UI_SET, ED_UI_PALETTES, ED_FAV_GET, ED_FAV_SET, ED_COLORS };   /* ((Skiff #27) 39) */
 static uint8_t ed_rep[64];                        /* the reply's bytes (MENU_SET) */
@@ -135,8 +135,8 @@ static void reset(void)
     fail_after = -1;
     up_gen = erases = 0;
     irq_start_race = irq_races = 0;
-    bank_boot();                                  /* (Skiff phase 5: the pattern pool, empty; no track on one) */
-    memset(trk_pid, 0, sizeof trk_pid);
+    tape_init();
+    ts_boot();                                    /* ((Skiff P10) the tape store, empty) */
     motion_lost = 0;
 }
 
@@ -301,8 +301,8 @@ static void as_power_on(void)                            /* RAM lost: the defaul
     host_tracks_init();
     for (k = 0; k < NTRK; k++)
         trk[k].eng_req = trk[k].engine = (uint8_t)TRK_DEF[k][0];
-    bank_boot();                                         /* (the patterns: flash's; the tracks: the restore's) */
-    memset(trk_pid, 0, sizeof trk_pid);
+    tape_init();
+    ts_boot();                                           /* ((Skiff P10) the sets: flash's; the tracks: the restore's) */
     motion_lost = 0;
 }
 static void as_edit(uint32_t i)                          /* a change a project holds: step i's note (always another) */
@@ -323,7 +323,7 @@ static int autosave_test(void)
     project_store_t raw;
     reset();
     as_power_on();
-    as_erases = pool_erases = 0;
+    as_erases = ts_erases = 0;
     ok = !autosave_boot(1) && !as.writes;
     as_run(120000u);
     bad += check("autosave: power-on with none: nothing restored; 2 min unchanged: no write", ok && !as.writes && !as_erases);
@@ -333,7 +333,7 @@ static int autosave_test(void)
     as_run(1500u);
     bad += check("autosave: a change: no write within 2 s, one once idle 2 s (one erase)",
                  ok && as.writes == 1u && as_erases == 1u && st_load(OBJ_AUTOSAVE, &raw, sizeof raw) == (int)PROJ_SKF->size &&
-                 pool_erases == 1u && trk_pid[0] && pool_used(trk_pid[0] - 1u));   /* (phase 5: T1's steps a pattern first, then the project) */
+                 ts_erases == TS_CHUNKS && ts_has(TS_MUSIC));   /* ((Skiff P10) the music's set first, then the project) */
     as_run(600000u);
     bad += check("autosave: 10 min unchanged after it: no more writes", as.writes == 1u && as_erases == 1u);
     song.g[G_SLOT] = 3;                                  /* (the PROJECT page's pick, the selected track: not the music) */
@@ -407,18 +407,10 @@ static int autosave_test(void)
     ui_prefs |= PREF_RESTORE_OFF;
     ok = autosave_boot(1) == 0 && song.g[G_BPM] != 97;
     as_edit(7);
-    w = pool_erases;
+    w = ts_erases;
     as_run(300000u);
     bad += check("autosave: RESTORE LAST OFF: none restored, none written", ok && !as.writes && as_erases == b0);
-    {   /* (phase 5) the patterns are kept all the same: edit 7's track (T4 of four) its pattern's */
-        static step_t st4[NSTEP];
-        static motion_store_t ms4;
-        int16_t v4[5];
-        bad += check("  .. the patterns kept all the same (T4's new steps a pattern, written)", pool_erases == w + 1u &&
-                     trk_pid[7u % NTRK] && pool_used(trk_pid[7u % NTRK] - 1u) &&
-                     !pat_decode(&trk[7u % NTRK], trk_pid[7u % NTRK] - 1u, st4, v4, &ms4) &&
-                     !memcmp(st4, trk[7u % NTRK].step, sizeof st4));
-    }
+    bad += check("  .. (Skiff P10) nor the music's set", ts_erases == w);
     ui_prefs &= (uint8_t)~PREF_RESTORE_OFF;
     {   /* a damaged copy: the other one (A/B); both damaged: none */
         st_hdr_t h;
@@ -503,7 +495,7 @@ static int autosave_test(void)
                  as_erases > 0u && as_erases <= 180u * 60000u / AS_GAP_MS);
     {   /* worst case: a change, then just enough idle, over and over, for 8 hours */
         uint32_t i;
-        as_erases = pool_erases = 0;
+        as_erases = ts_erases = 0;
         for (i = 0; i < 8u * 3600u * 1000u / (AS_IDLE_MS + 1000u); i++) {
             as_edit(i);
             as_run(AS_IDLE_MS + 1000u);
@@ -512,18 +504,10 @@ static int autosave_test(void)
                (unsigned)(as_erases / 2u));
         bad += check("autosave wear, worst case: at most one write every 20 s (1,440 in 8 h)",
                      as_erases <= 8u * 3600u * 1000u / AS_GAP_MS + 1u);
-        {   /* (phase 5) the tracks' patterns: their chunks each written once a round, round their sectors + 4 spare */
-            uint32_t k, c, n = 0, seen = 0;
-            for (k = 0; k < NTRK; k++)
-                if (trk_pid[k] && !((seen >> (c = bk_chunk(trk_pid[k] - 1u))) & 1u)) {
-                    seen |= 1u << c;
-                    n++;
-                }
-            printf("persist:   .. and %u pattern pool erases, the tracks' in %u chunks (about %u per sector)\n",
-                   (unsigned)pool_erases, (unsigned)n, (unsigned)(pool_erases / (n + 4u)));
-            bad += check("  (phase 5) the patterns too: a round every 20 s at most, each chunk changed one write a round",
-                         n && pool_erases > 0u && pool_erases <= as_erases * n);
-        }
+        printf("persist:   .. and %u tape store erases (the music's set, about %u per sector)\n", (unsigned)ts_erases,
+               (unsigned)(ts_erases / TS_NSECT));
+        bad += check("  (Skiff P10) the music's set too: four erases a write at most, round the free sectors",
+                     ts_erases > 0u && ts_erases <= as_erases * TS_CHUNKS);
     }
     return bad;
 }
@@ -538,7 +522,7 @@ static int autosave_save_test(void)
     int16_t rel;
     reset();
     as_power_on();
-    as_erases = pool_erases = 0;
+    as_erases = ts_erases = 0;
     (void)autosave_boot(1);
     sel_set(0);
     as_edit(0);
@@ -578,7 +562,7 @@ static int autosave_save_test(void)
     autosave_soon();                                     /* (a load of the music as it is: nothing new) */
     as_run(1500u);
     ok = as.writes == w;
-    trk[2].p[P_REL] = (int16_t)(trk[2].p[P_REL] + 5);    /* (a sound's change: no pattern to keep, a round of one poll) */
+    trk[2].p[P_REL] = (int16_t)(trk[2].p[P_REL] + 5);    /* (a sound's change: the set unchanged, the record alone) */
     as_run(1600u);                                       /* (past AS_SOON_MS, short of AS_IDLE_MS) */
     ok &= as.writes == w;
     as_run(1500u);
@@ -593,10 +577,8 @@ static int autosave_save_test(void)
     }
     ok = as.writes == w;
     as_run(1500u);
-    ok &= as.round;                                      /* (begun a second after it: T4's pattern first, an erase a poll) */
-    as_run(9000u);
-    bad += check("  .. none during an editor transfer; a second after it, the round (a pattern, then the project)",
-                 ok && as.writes == w + 1u);
+    bad += check("  .. none during an editor transfer; a second after it, the write ((Skiff P10) the music's set, then "
+                 "the project)", ok && as.writes == w + 1u);
     return bad;
 }
 
@@ -918,15 +900,11 @@ int main(void)
                   !memcmp(&got, &old, PROJ_SKF->size));
     trk[0].step[0].note[0] = 72;
     project_save(0);
-    {   /* (phase 5) SKF2: the steps its patterns', kept first */
-        static step_t st0[NSTEP];
-        static motion_store_t ms0;
-        int16_t v0[5];
-        bad += check("successful project save publishes new RAM (the tracks' patterns kept first)", !strcmp(ui.msg, "SAVED") &&
-                      proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) && proj_scratch.g[G_BPM] == 140 &&
-                      proj_ok(&proj_scratch) && trk_pid[0] && proj_scratch.ent[0][0][0] == trk_pid[0] &&
-                      !pat_decode(&trk[0], trk_pid[0] - 1u, st0, v0, &ms0) && st0[0].note[0] == 72u);
-    }
+    trk[0].step[0].note[0] = 50;
+    project_load(0);
+    bad += check("successful project save publishes new RAM ((Skiff P10) its set first: the steps)", !strcmp(ui.msg, "LOADED") &&
+                  proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) && proj_scratch.g[G_BPM] == 140 &&
+                  proj_ok(&proj_scratch) && ts_has(0) && trk[0].step[0].note[0] == 72u);
     before = erases;
     transport_req = 1;
     project_save(1);
@@ -969,11 +947,10 @@ int main(void)
         bad += check("pending PLAY: no rename, no erase", project_rename(0, "DUB") == 1 && erases == before &&
                       !strcmp(ui.msg, "STOP TO SAVE"));
         transport_req = 0;
-        bad += check("project rename: flash has the new name, the music as it was (SKF2 still: its patterns)",
+        bad += check("project rename: flash has the new name, the music as it was (its set untouched)",
                       project_rename(0, "DUB") == 0 &&
                       !strcmp(ui.msg, "RENAMED") && (memset(proj_slot[0].raw, 0, 8), proj_fetch(0), project_name(0, n)) &&
-                      !strcmp(n, "DUB") && *(uint32_t *)proj_slot[0].raw == PROJ_SKF->magic &&
-                      trk_pid[0] && proj_scratch.ent[0][proj_scratch.cur[0] % NENT][0] == trk_pid[0] &&
+                      !strcmp(n, "DUB") && *(uint32_t *)proj_slot[0].raw == PROJ_SKF->magic && ts_has(0) &&
                       st0.note[0] == trk[0].step[0].note[0]);
     }
     {   /* FUN7 itself refuses a step outside its fields: a damaged slot is empty, the tracks stay ((2.0) SKF4 a REPS) */
@@ -988,9 +965,9 @@ int main(void)
 #else
         project_capture(&proj_scratch);
         proj_pack2(&proj_slot[0], &proj_scratch, PROJ_SKF);
-        proj_slot[0].raw[PROJ_ENT4 + 1u] = 40;                    /* track 1 entry A: REPS 41 */
-        bad += check("(2.0) damaged SKF4 slot (hash ok, REPS past 16) is refused", (memcpy(proj_slot[0].raw + PROJ_STORE4 - 4,
-                      &(uint32_t){proj_hash(proj_slot[0].raw, PROJ_STORE4 - 4)}, 4), !project_used(0)));
+        proj_slot[0].raw[11] = 0x40u;                             /* ((Skiff P10) SEQ RUN past the tracks */
+        bad += check("(P10) damaged SKF5 slot (hash ok, SEQ RUN past the tracks) is refused", (memcpy(proj_slot[0].raw + PROJ_STORE5 - 4,
+                      &(uint32_t){proj_hash(proj_slot[0].raw, PROJ_STORE5 - 4)}, 4), !project_used(0)));
 #endif
         st_save(OBJ_PROJECT0, &proj_slot[0], sizeof proj_slot[0]);
         ui.msg[0] = 0;

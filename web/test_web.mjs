@@ -970,7 +970,7 @@ async function editorStepExtras() {
 async function editorStepTies() {
   const C = E.CMD, x = { time: 0, flags: 0, vel: 100, chance: 100, ratchet: 1, flam: 0, cond: 0, nudge: 0 };
   const { rq, done } = attachMock({});
-  ok(E.parse[C.INFO](await rq(E.req.info())).skiff === 103, "ties: INFO 57 01 103 (bit 6)");
+  ok(E.parse[C.INFO](await rq(E.req.info())).skiff === 99, "ties: INFO 57 01 99 (bit 6)");
   let s = E.parse[C.STEP_SET](await rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0], ties: 15 })));
   ok(s.ties === 3 && E.parse[C.STEP_GET](await rq(E.req.stepGet(6))).ties === 3, "ties: STEP_SET writes them, to the step's 2 notes");
   s = E.parse[C.STEP_SET](await rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0] })));
@@ -993,7 +993,7 @@ async function editorStepTies() {
   const o = attachMock({ noTies: true });
   const oi = E.parse[C.INFO](await o.rq(E.req.info()));
   s = E.parse[C.STEP_SET](await o.rq(E.req.stepSet(6, { ...x, n: 2, notes: [60, 64, 0, 0], ties: 1 })));
-  ok(oi.skiff === 39 && s.ties === 0, "ties: firmware without them (57 01 39): none");
+  ok(oi.skiff === 35 && s.ties === 0, "ties: firmware without them (57 01 35): none");
   o.done();
 }
 
@@ -1051,44 +1051,28 @@ async function editorTransportNames() {
   o.done();
 }
 
-/* (Skiff W3) POOL (INFO 57 01 bit 2): each pattern's LEN and uses, CLEAR (only unused), ((2.0, INFO 58 01 01) EMPTY,
-   CLEAR UNUSED); LIST (79), PERFORM (80), LIST2 (82) are gone with the song layer */
+/* (P10 store swap) the pattern pool is gone: INFO 57 01 99 (no POOL bit), no 58 01, command 78 unanswered; LIST (79), PERFORM (80),
+   LIST2 (82) are gone with the song layer */
 async function editorPool() {
   const C = E.CMD;
   const { rq, done } = attachMock({});
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(info.skiff === 103 && info.song2 === 1, "pool: INFO 57 01 103 (POOL, (#21) SMP_MIX, (2.0) ties; no LIST, PERFORM), 58 01 01");
-  ok(C.LIST === undefined && C.PERFORM === undefined && C.LIST2 === undefined && !E.req.list && !E.req.perform, "pool: no LIST, PERFORM, LIST2");
-  const err = await rq([79, []], { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
-  ok(/^timeout/.test(err || ""), "pool: LIST (79) unanswered");
-  let q = E.parse[C.POOL](await rq(E.req.pool()));
-  ok(q.pats.length === 64 && q.pats[0].len === 16 && q.pats[0].refs === 1 && q.pats[3].len === 8 && !q.pats[3].refs && !q.pats[63].len,
-     "pool: each pattern's LEN and uses (a track on it)");
-  q = E.parse[C.POOL](await rq(E.req.pool(3)));
-  ok(!q.rc && !q.pats[3].len && E.parse[C.POOL](await rq(E.req.pool(0))).rc === 2, "pool: CLEAR an unused one; one in use refused");
-  q = E.parse[C.POOL](await rq(E.req.pool(0, 2)));
-  ok(!q.rc && q.op === 2 && q.pats[0].len === 16 && q.pats[0].refs === 1 && E.parse[C.POOL](await rq(E.req.pool(63, 2))).rc === 1,
-     "pool: EMPTY of a used one (it stays); an empty one refused");
-  await rq(E.req.transport(1));
-  ok(E.parse[C.POOL](await rq(E.req.pool(null, 3))).rc === 3 && E.parse[C.POOL](await rq(E.req.pool(0, 2))).rc === 3,
-     "pool: CLEAR UNUSED, EMPTY refused while playing");
-  await rq(E.req.transport(2));
-  q = E.parse[C.POOL](await rq(E.req.pool(null, 3)));
-  ok(!q.rc && q.op === 3 && !q.pats[1].len && q.pats[0].len && q.pats[2].len && E.parse[C.POOL](await rq(E.req.pool(null, 3))).rc === 1,
-     "pool: CLEAR UNUSED (02 goes, the used ones stay); then nothing to clear");
-  ok(E.req.pool()[1].length === 0 && E.req.pool(7)[1].join() === "1,7" && js(E.req.pool(9, 2)) === js([78, [2, 9]]) &&
-     js(E.req.pool(null, 3)) === js([78, [3]]), "pool: the requests' bytes");
-  done();
-  {
-    const o = attachMock({ noSong: true });
-    ok(E.parse[C.INFO](await o.rq(E.req.info())).skiff === 3, "pool: firmware without it (57 01 03): no Song tab");
-    o.done();
+  ok(info.skiff === 99 && !info.song2, "pool gone: INFO 57 01 99 (SMP_MIX, ties; no POOL bit), no 58 tag");
+  ok(C.LIST === undefined && C.PERFORM === undefined && C.LIST2 === undefined && !E.req.list && !E.req.perform, "pool gone: no LIST, PERFORM, LIST2");
+  ok(C.POOL === undefined && E.req.pool === undefined && E.parse[78] === undefined, "pool gone: no C.POOL, no req.pool, no parser");
+  for (const cmd of [78, 79]) {
+    const err = await rq([cmd, []], { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
+    ok(/^timeout/.test(err || ""), `pool gone: command ${cmd} unanswered`);
   }
-  const o = attachMock({ noSong2: true });
-  const i2 = E.parse[C.INFO](await o.rq(E.req.info()));
-  const e2 = await o.rq(E.req.pool(null, 3), { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
-  ok(i2.skiff === 103 && !i2.song2 && /^timeout/.test(e2 || ""), "pool: firmware before (no 58 01): song2 0, CLEAR UNUSED unanswered");
+  done();
+  const o = attachMock({ noTies: true });
+  ok(E.parse[C.INFO](await o.rq(E.req.info())).skiff === 35, "pool gone: without ties INFO 57 01 is 35");
   o.done();
+  {
+    const x = attachMock({ noSong: true });
+    ok(E.parse[C.INFO](await x.rq(E.req.info())).skiff === 3, "pool gone: firmware without the later caps (57 01 03)");
+    x.done();
+  }
 }
 
 /* RATCH: a step's ratchet (1..4) after its chance, INFO 52 01 04; older firmware (no tag): none, replies read x1 */

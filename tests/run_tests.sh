@@ -121,7 +121,7 @@
 #                   them, their sounds by parameter name, NUDGE, automation and song; its user presets by name.
 # LEGACY (2.0, Tier B 10): the formats of before are read by the converter alone (FELUCCA_LEGACY, core.h). The tests
 #                   of them (project_test, motion_test, ratchet_test, fm4_*, conv_test) build so; upreset, settings, UI,
-#                   persistence, bank, backup and robust run twice: as 2.0 is (OLD FORMAT where a record of before is
+#                   persistence, tape store, backup and robust run twice: as 2.0 is (OLD FORMAT where a record of before is
 #                   met) and as the converter's build (*_legacy: the migrations of 1.x), the fuzzer under ASan both ways.
 # Sanitizers (ASan + UBSan, when the compiler has them; SANITIZE=0 skips): the stored-data and protocol tests again
 #                   (loader, M-UPGRADE entry, editor, projects, backup, ROBUST) and three short fuzz runs with fixed
@@ -226,9 +226,9 @@ run "update loader's screen (Skiff): UPDATE MODE, WRITING and its bar, UPDATE FA
 
 # the SMK-37 Pro build (BOARD_SMK37; after genkigenki's SMK-37 layer): the flash map and the store's owner tag, the
 # package layout, the OTA staging and the loader's windows on SMK-layout packages (made here from the FM-1 binaries:
-# only the layout and the protocol are under test); the pool and persistence on its layout below (build/gen)
+# only the layout and the protocol are under test); the tape store and persistence on its layout below (build/gen)
 $CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_flash_test" tests/smk_flash_test.c
-run "SMK-37 Pro flash map: every object, the pool and the sample slot inside the windows, protected ranges never"     "$OUT/smk_flash_test"
+run "SMK-37 Pro flash map: every object, the tape store and the sample slot inside the windows, protected ranges never"     "$OUT/smk_flash_test"
 $CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_owner_test" tests/smk_owner_test.c
 run "SMK-37 Pro store owner tag (family SKIFF): another firmware's store cleared, ours kept, the stock mapping"     "$OUT/smk_owner_test"
 python3 tools/fm1pkg_make.py --board smk37 build/felucca.bin build/loader/ota.bin "$OUT/smk_new.fwsc" >/dev/null
@@ -343,12 +343,12 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "persistence: deferred settings, retry and failed-save rollback; (2.0) a FUN5 slot OLD FORMAT" "$OUT/persistence_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_legacy" tests/persistence_test.c -lm
     run "persistence, the converter's build (FELUCCA_LEGACY): an SKF2 autosave, FUN5 and FUN7 slots" "$OUT/persistence_test_legacy"
-    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/bank_test" tests/bank_test.c -lm
-    run "pattern bank (Skiff): patterns kept exactly, torn saves, fallback, wear, the sequence wrap" "$OUT/bank_test"
-    $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/bank_test_legacy" tests/bank_test.c -lm
-    run "pattern bank, the converter's build (FELUCCA_LEGACY): projects of before become patterns (proj_migrate)" "$OUT/bank_test_legacy"
-    $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/bank_test_smk" tests/bank_test.c -lm
-    run "pattern bank on the SMK-37 Pro layout (USRFLASH 0xD6000..)" "$OUT/bank_test_smk"
+    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/tape_store_test" tests/tape_store_test.c -lm
+    run "tape store (Skiff P10): four slots of full tapes and sequencers, torn saves, fallback, wear, the music's set, the generation wrap, OLD FORMAT" "$OUT/tape_store_test"
+    $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/tape_store_test_legacy" tests/tape_store_test.c -lm
+    run "tape store, the converter's build (FELUCCA_LEGACY): projects holding their steps become SKF5 and a set (proj_migrate)" "$OUT/tape_store_test_legacy"
+    $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/tape_store_test_smk" tests/tape_store_test.c -lm
+    run "tape store on the SMK-37 Pro layout (USRFLASH 0xD6000..)" "$OUT/tape_store_test_smk"
     $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_smk"         tests/persistence_test.c -lm
     run "persistence on the SMK-37 Pro layout (the store from 0x9D000, its owner tag at boot)" "$OUT/persistence_test_smk"
     $CC -O1 -w -DBOARD_SMK37=1 -Ifirmware/hal -Ibuild/gen -Ifirmware/src -o "$OUT/smk_ui_test" tests/smk_ui_test.c -lm
@@ -494,7 +494,7 @@ else
     run "ASan/UBSan: update loader (other app -> this build)" "$A/ldr_test" "$OUT/old.fwsc" build/felucca.fwsc
     $SCC -DOWN_PKG=1 -o "$A/ota_test" tests/ota_test.c
     run "ASan/UBSan: M-UPGRADE entry (own loader)" "$A/ota_test" build/felucca.fwsc
-    for t in editor_test project_test backup_test conv_test robust_test bank_test duck_test persistence_test ui_test; do
+    for t in editor_test project_test backup_test conv_test robust_test tape_store_test duck_test persistence_test ui_test; do
         $SCC -o "$A/$t" tests/$t.c -lm
         run "ASan/UBSan: $t" "$A/$t"
     done

@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Fuzz harness: mutated / random project stores (with and without a valid hash, FUN1..FUN8 magics, any length)
- * through proj_import -> project_restore_runtime -> render; (2.0) SKF4 records too, their counts mutated with the rest.
- * run_tests.sh runs it briefly under ASan / UBSan with a fixed seed, as 2.0 is (SKF4 and SKF3 seeds) and with
- * FELUCCA_LEGACY (the converter's readers: SKF4 and SKF1 seeds).   fuzz_proj [ITERATIONS [SEED]] */
+ * through proj_import -> project_restore_runtime -> render; (2.0) SKF4 records too, their counts mutated with the rest;
+ * ((Skiff P10) SKF5: its motion block, SEQ RUN). run_tests.sh runs it briefly under ASan / UBSan with a fixed seed, as
+ * the firmware is (SKF5 seeds, and SKF3 ones: OLD FORMAT, never imported) and with FELUCCA_LEGACY (the converter's
+ * readers: SKF5 and SKF1 seeds).   fuzz_proj [ITERATIONS [SEED]] */
 #define EDITOR_TEST_NO_MAIN 1
 #include "editor_test.c"                                /* hostsim, the stubs, RAM flash, reset() */
 static uint32_t rs = 0x2545F491u;
@@ -18,17 +19,23 @@ int main(int argc, char **argv)
     if (argc > 2) rs = (uint32_t)atoi(argv[2]) | 1u;
     reset();
     for (i = 0; i < iters; i++) {
-        uint32_t mode = rnd() % 8u, sz = mode && mode < 4u ? PROJ_STORE4 : FELUCCA_LEGACY ? PROJ_STORE_SIZE : PROJ_STORE3;
+        uint32_t mode = rnd() % 8u, sz = mode && mode < 4u ? PROJ_STORE5 : FELUCCA_LEGACY ? PROJ_STORE_SIZE : PROJ_STORE3;
         if (mode == 0) {                                            /* fully random bytes */
             for (j = 0; j < sizeof st.raw; j++) st.raw[j] = (uint8_t)rnd();
             if (rnd() & 1u) { uint32_t m = 0x46554E30u + 1u + rnd() % 8u; memcpy(st.raw, &m, 4); }   /* "FUN1".."FUN8" */
         } else {                                                    /* a valid store, mutated */
             for (j = 0; j < NTRK; j++) if (rnd() & 1u) trk_note_on(&trk[j], 48u + rnd() % 36u, 1u + rnd() % 127u);
+            for (j = rnd() % 6u; j; j--) {                          /* ((Skiff P10) SKF5's motion: events, locks */
+                track_t *t = &trk[rnd() % NTRK];
+                if (rnd() & 1u) motion_set_event(t, rnd() % NSTEP, P_REV, (int16_t)(rnd() % 128u));
+                else motion_set_lock(t, rnd() % NSTEP, P_E0 + rnd() % 8u, 0);
+            }
+            seq_run = (uint8_t)(rnd() & ((1u << NTRK) - 1u));
             project_capture(&a);
 #if FELUCCA_LEGACY
-            if (sz == PROJ_STORE4 ? !proj_pack2(ps, &a, PROJ_SKF) : !proj_pack(ps, &a)) continue;   /* (SKF4, SKF1) */
+            if (sz == PROJ_STORE5 ? !proj_pack2(ps, &a, PROJ_SKF) : !proj_pack(ps, &a)) continue;   /* (SKF5, SKF1) */
 #else
-            if (!proj_pack2(ps, &a, sz == PROJ_STORE4 ? PROJ_SKF : &PROJ_SKF3)) continue;           /* ((2.0) SKF4, SKF3) */
+            if (!proj_pack2(ps, &a, sz == PROJ_STORE5 ? PROJ_SKF : &PROJ_SKF3)) continue;           /* (SKF5, SKF3) */
 #endif
             k = 1u + rnd() % 48u;
             for (j = 0; j < k; j++) {
@@ -44,7 +51,7 @@ int main(int argc, char **argv)
             rnd() % 2u ? sz : PROJ_STORE_SIZE;
         if (proj_import(&c, st.raw, (int)n)) {
             imported++;
-            project_restore_runtime(&c);
+            project_restore_runtime(&c, TS_NONE);
             for (j = 0; j < NTRK; j++) trk_note_on(&trk[j], 48u + rnd() % 36u, 100);
             for (j = 0; j < 12u; j++) mix_block(o, CTL);
         }

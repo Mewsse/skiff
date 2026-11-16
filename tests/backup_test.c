@@ -37,7 +37,7 @@ static void fl_plain_window_init(void) {}
 #include "../firmware/src/storage.c"
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
-#include "../firmware/src/bank.c"                 /* (Skiff: the pattern bank, objects 16..31) */
+#include "../firmware/src/tape_store.c"           /* ((Skiff P10) the tape store, objects 40..59) */
 
 enum { ED_BACKUP_LIST = 65, ED_BACKUP_GET, ED_BACKUP_PUT };
 static uint8_t rep[4096];
@@ -68,19 +68,6 @@ static int check(const char *what, int ok)
     return !ok;
 }
 
-/* track k's pattern kept as pattern id, the track on it, written now (stopped): 0 done (SAVE > PATTERNS' put, before the
- * song layer went) */
-static int keep_as(uint32_t k, uint32_t id)
-{
-    if (!trk_rec(k) || pat_keep_now(id, bk_rec))
-        return 4;
-    trk_pid[k] = (uint8_t)(id + 1u);
-    trk_sig[k] = proj_hash(bk_rec, BK_REC);
-    while (pend_free() < PEND_N)
-        if (pat_flush_one())
-            return 2;
-    return 0;
-}
 static void reset(void)
 {
     memset(nor, 0xFF, sizeof nor);
@@ -101,8 +88,8 @@ static void reset(void)
     erase_error = 0;
     erases = 0;
     ed_bk_valid = ed_bk_put = 0;
-    bank_boot();                                         /* (Skiff: the pattern bank, from the erased flash: empty) */
-    memset(trk_pid, 0, sizeof trk_pid);                  /* (phase 5: no track on a pattern, power-on's) */
+    tape_init();
+    ts_boot();                                           /* ((Skiff P10) the tape store, from the erased flash: empty) */
     motion_lost = 0;
 }
 
@@ -207,11 +194,11 @@ int main(void)
 
     reset();
     trk[0].step[0] = (step_t){{60}, 1, ST_NOTE, 0, 96, 0, 0};
-    bad += check("LIST captures the runtime: 29 objects (id 8 empty, id 9 the FM6 patches, (Skiff) 16..31 the pattern "
-                 "bank), runtime 2560 B ((2.0) SKF4, six tracks), the tracks' patterns written first",
-                 list(0, &len, &crc) == 0 && rep[2] == 29u && rep[3 + 10u * 11u] == 16u && rep[3 + 25u * 11u] == 31u &&
-                 len == PROJ_SKF->size && len == 2560u && crc == st_crc32(ED_BK_RAW, len) &&
-                 trk_pid[0] && pool_used(trk_pid[0] - 1u) && keep_waiting() == 0u);
+    bad += check("LIST captures the runtime: 33 objects (id 8 empty, id 9 the FM6 patches, (Skiff P10) 40..59 the tape "
+                 "store), runtime 2560 B (SKF5), the music's set written first",
+                 list(0, &len, &crc) == 0 && rep[2] == 33u && rep[3 + 10u * 11u] == 40u && rep[3 + 29u * 11u] == 59u &&
+                 rep[3 + 30u * 11u] == 32u && len == PROJ_SKF->size && len == 2560u && crc == st_crc32(ED_BK_RAW, len) &&
+                 ts_has(TS_MUSIC) && !ts_has(0));
     bad += check("an empty project slot lists as length 0", list(2, &len, &crc) == 0 && len == 0);
     bad += check("GET of the runtime copy", get(0, 0, 64) == 0);
     project_save(0);
@@ -325,10 +312,9 @@ int main(void)
     reset();
     trk[1].step[3] = (step_t){{64}, 1, ST_NOTE, 0, 96, 0, 0};
 #if !FELUCCA_LEGACY
-    (void)keep_all();                                    /* ((2.0) the steps are the patterns': kept first, as LIST does) */
     project_capture(&proj_scratch);
     proj_pack2(&st, &proj_scratch, PROJ_SKF);
-    bad += check("(2.0) an SKF4 project restores into slot 3 (flash and RAM)",
+    bad += check("(P10) an SKF5 project restores into slot 3 (flash and RAM)",
                  put_all(4, &st, PROJ_STORE4, st_crc32(&st, PROJ_STORE4)) == 0 && project_used(2) &&
                  !memcmp(&proj_slot[2], &st, PROJ_STORE4) &&
                  st_load(OBJ_PROJECT0 + 2, &proj_wire, sizeof proj_wire) == (int)PROJ_STORE4);
@@ -493,7 +479,7 @@ int main(void)
     project_capture(&proj_scratch);
     proj_pack(&st, &proj_scratch);
 #else
-    (void)keep_all();                                    /* ((2.0) SKF4: the steps in the pattern it names) */
+    (void)ts_save(TS_MUSIC);                             /* ((Skiff P10) the music's set: its steps, as LIST writes it) */
     project_capture(&proj_scratch);
     proj_pack2(&st, &proj_scratch, PROJ_SKF);
 #endif
@@ -521,12 +507,16 @@ int main(void)
         b.nslot = 3;
         bad += check("a bank with the wrong slot count is refused", put_all(7, &b, sizeof b, st_crc32(&b, sizeof b)) == 2u);
     }
-    /* (Skiff) the pattern bank: each chunk an object (16..31), read out and written back exactly */
+    /* (Skiff P10) the tape store: each chunk an object (40 + slot x 4 + chunk; the music's 56..59), read out and
+     * written back exactly; the pattern pool's objects of before (16..31) taken and dropped */
     reset();
     {
-        static uint8_t got[16][BK_LEN];
-        uint32_t lens[16], crcs[16], c, k, t2;
-        step_t want[NSTEP];
+        static uint8_t got[TS_OBJS][TS_LEN + 16u];
+        static step_t want[NTRK][NSTEP];
+        static uint32_t w0[TAPE_N], w1[TAPE_N];
+        static uint8_t chunk[TS_LEN + 16u];
+        uint32_t lens[TS_OBJS], crcs[TS_OBJS], c, k, n, e0;
+        uint16_t node;
         int ok = 1;
         for (k = 0; k < NTRK; k++) {
             track_t *t = &trk[k];
@@ -537,53 +527,88 @@ int main(void)
             step_set_rflam(&t->step[3], 5);
             motion_set_lock(t, 3, P_REV, (int16_t)(40 + k));
         }
-        memcpy(want, trk[2].step, sizeof want);
-        ok &= keep_as(0, 1u) == 0 && keep_as(2, 41u) == 0 && keep_as(3, 63u) == 0;   /* (phase 5: patterns 02, 42, 64:
-                                                         * chunks 0, 10, 15, as the bank's slots T1 B, T3 J, T4 P were) */
-        for (c = 0; c < 16u; c++)
-            ok &= list(16u + c, &lens[c], &crcs[c]) == 0;
-        t2 = trk_pid[1];
-        ok &= lens[0] == BK_LEN && lens[2 * 4u + 2u] == BK_LEN && lens[3 * 4u + 3u] == BK_LEN && !lens[1] && !lens[4];
-        for (c = 0; c < 16u; c++)
-            ok &= !lens[c] || (get_all(16u + c, got[c], lens[c]) == 0 && st_crc32(got[c], lens[c]) == crcs[c]);
-        bad += check("(Skiff) the pattern bank: 16 objects, a chunk with a pattern 3552 B (its CRC), the rest 0",
-                     ok);
-        {   /* (phase 5) T3 on 42, edited, then 42's chunk restored: T3 off it, its edit a new pattern, 42 the backup's */
-            static uint8_t r[BK_REC];
-            trk[2].step[5] = (step_t){{90}, 1, ST_NOTE, 0, 99};
-            ok = trk_pat(2) == 41u && put_all(16u + 10u, got[10], lens[10], crcs[10]) == 0 && !trk_pid[2] &&
-                 keep_all() == 0 && trk_pat(2) != 41u && trk_pat(2) != PAT_NONE && !pat_read(41, r) &&
-                 !memcmp(r, got[10] + BK_REC, BK_REC);
-            bad += check("  a chunk restored: the track on its pattern let go (its edit a new one), the backup's kept", ok);
-        }
-        memset(nor + 0xE7000, 0xFF, 0x2000);           /* a new unit: the bank's sectors erased */
-        memset(nor + 0xEA000, 0xFF, 0x12000);
-        bank_boot();
-        ok = !pool_used(41);
-        for (c = 0; c < 16u; c++)
-            ok &= put_all(16u + c, got[c], lens[c], lens[c] ? crcs[c] : st_crc32(got[c], 0)) == 0;
-        track_defaults_steps(&trk[1]);
-        ok &= pool_used(1) && pool_used(41) && pool_used(63) && t2 && pool_used(t2 - 1u);   /* (T2's: kept at LIST) */
-        ok &= pat_load(&trk[1], 41) == 0 && !memcmp(trk[1].step, want, sizeof want);   /* (T2 onto 42 too) */
-        bank_boot();
-        ok &= pool_used(41);
-        bad += check("  restored onto an empty bank: every chunk as it was (a pattern loads exactly), after a power cycle",
-                     ok);
-        ok = put_all(16u, got[0], 0, st_crc32(got[0], 0)) == 0 && !pool_used(1);
-        bad += check("  an empty object over a kept chunk empties it", ok);
-        got[2 * 4u + 2u][BK_REC + BK_STEPS + 4u] = 7u;   /* (pattern J of track 3: a step with n 7, no firmware wrote) */
-        ok = put_all(16u + 10u, got[10], BK_LEN, st_crc32(got[10], BK_LEN)) == 2u && pool_used(41);
-        bad += check("  a chunk holding a step no firmware wrote: refused (2), the bank as it was", ok);
-        got[10][BK_REC + BK_STEPS + 4u] = 0;
+        tape_set_len(8);
+        for (n = 0; n < 600u; n++)
+            (void)tape_insert(n % TAPE_TRACKS, (n * 61u) % (8u * TAPE_BAR) | (40u + n % 50u) << 20 | (n % NTRK) << 27,
+                              (1u + n) | 90u << 20, TAPE_ANY_PASS);
+        tp_trk[2].mute = 1;
+        memcpy(want, trk[0].step, sizeof want);
+        for (k = n = 0; k < TAPE_TRACKS; k++)
+            for (node = tp_trk[k].first; node != TAPE_END; node = tp_nx[node], n++) {
+                w0[n] = tp_w0[node];
+                w1[n] = tp_w1[node];
+            }
+        ok &= project_save(1) == 0 && ts_has(1);
+        for (c = 0; c < TS_OBJS; c++)
+            ok &= list(TS_OBJ0 + c, &lens[c], &crcs[c]) == 0;
+        ok &= !lens[0] && !lens[3] && lens[4] == TS_LEN + 16u && lens[5] == TS_LEN && lens[7] == TS_LEN &&
+              lens[16] == TS_LEN + 16u && lens[19] == TS_LEN;   /* (slot 2's; the music's: LIST wrote it) */
+        for (c = 0; c < TS_OBJS; c++)
+            ok &= !lens[c] || (get_all(TS_OBJ0 + c, got[c], lens[c]) == 0 && st_crc32(got[c], lens[c]) == crcs[c]);
+        ok &= !memcmp(got[4], nor + ts_sector(tst.sect[1][0] - 1u) + 256u, TS_LEN) &&
+              !memcmp(got[4] + TS_LEN, &tst.meta[1], 16u);
+        bad += check("(P10) the tape store: 20 objects; a set's chunks 3840 B (chunk 0 + its 16 B meta), CRC as listed; "
+                     "an empty slot's 0", ok);
+        for (c = 0; c < TS_NSECT; c++)                    /* a new unit: the store's sectors erased */
+            memset(nor + ts_sector(c), 0xFF, 0x1000u);
+        tape_init();
+        ts_boot();
+        ok = !ts_has(1) && !ts_has(TS_MUSIC);
+        for (c = 0; c < TS_OBJS; c++)
+            ok &= put_all(TS_OBJ0 + c, got[c], lens[c], lens[c] ? crcs[c] : st_crc32(got[c], 0)) == 0;
+        ok &= ts_has(1) && ts_has(TS_MUSIC) && !ts_has(0) && !ts_has(2);
+        tape_init();
+        ts_boot();
+        for (k = 0; k < NTRK; k++)
+            track_defaults_steps(&trk[k]);
+        ok &= ts_has(1) && !ts_load(1, 1) && !memcmp(trk[0].step, want, sizeof want) && tp_trk[2].mute &&
+              tape_length() == 8u * TAPE_BAR;
+        for (k = n = 0; k < TAPE_TRACKS; k++)
+            for (node = tp_trk[k].first; node != TAPE_END; node = tp_nx[node], n++)
+                ok &= tp_w0[node] == w0[n] && tp_w1[node] == w1[n];
+        ok &= n == 600u;
+        bad += check("  restored onto an empty store: every set as it was (the tape, the steps load exactly), after a "
+                     "power cycle", ok);
+        e0 = erases;
+        ok = put_all(TS_OBJ0 + 4u, got[4], TS_LEN + 16u, crcs[4]) == 0 && put_all(TS_OBJ0 + 5u, got[5], TS_LEN, crcs[5]) == 0 &&
+             ts_has(1) && tst.sect[1][0] && erases == e0 + 2u;
+        tape_init();
+        ts_boot();
+        bad += check("  half a set coming in (two of its four chunks): the slot keeps the set it had (power cycle too)",
+                     ok && ts_has(1));
+        ok = 1;
+        for (c = 4u; c < 8u; c++)
+            ok &= put_all(TS_OBJ0 + c, got[c], 0, st_crc32(got[c], 0)) == 0;
+        ok &= !ts_has(1);
+        tape_init();
+        ts_boot();
+        bad += check("  a set of four empty objects: the slot's set gone (power cycle too)", ok && !ts_has(1));
+        memcpy(chunk, got[7], TS_LEN);
+        chunk[2u * TS_SEQ_REC + 1u + 4u * 9u + 4u] = 7u; /* (T3 step 5: n 7, no firmware wrote) */
+        ok = put_all(TS_OBJ0 + 7u, chunk, TS_LEN, st_crc32(chunk, TS_LEN)) == 2u;
+        memcpy(chunk, got[4], TS_LEN + 16u);
+        chunk[3] = 0xC0u;                                 /* (a record's bits 30, 31: no firmware wrote) */
+        ok &= put_all(TS_OBJ0 + 4u, chunk, TS_LEN + 16u, st_crc32(chunk, TS_LEN + 16u)) == 2u;
+        memcpy(chunk, got[4], TS_LEN + 16u);
+        chunk[TS_LEN] = 0;                                /* (L 0 bars) */
+        chunk[TS_LEN + 1u] = 0;
+        ok &= put_all(TS_OBJ0 + 4u, chunk, TS_LEN + 16u, st_crc32(chunk, TS_LEN + 16u)) == 2u && ts_has(TS_MUSIC);
+        bad += check("  a chunk holding a step, a record or a meta no firmware wrote: refused (2), the store as it was", ok);
         song.playing = 1;
-        bad += check("  playing: PUT and LIST refused (3)", put_begin(16u + 10u, BK_LEN, crcs[10]) == 3u &&
-                     list(16u, &len, &crc) == 3u);
+        bad += check("  playing: PUT and LIST refused (3)", put_begin(TS_OBJ0 + 4u, TS_LEN + 16u, crcs[4]) == 3u &&
+                     list(TS_OBJ0, &len, &crc) == 3u);
         song.playing = 0;
-        bad += check("  a bank chunk of the wrong length: refused at begin (1)", put_begin(17u, 100u, 0) == 1u);
+        bad += check("  a chunk of the wrong length: refused at begin (1)", put_begin(TS_OBJ0 + 5u, TS_LEN + 16u, 0) == 1u &&
+                     put_begin(TS_OBJ0 + 4u, TS_LEN, 0) == 1u && put_begin(60u, 0, 0) == 1u);
+        e0 = erases;
+        memset(chunk, 0x5A, sizeof chunk);
+        ok = put_all(16u, chunk, 3552u, st_crc32(chunk, 3552u)) == 0 && put_all(31u, chunk, 0, st_crc32(chunk, 0)) == 0 &&
+             erases == e0 && put_begin(18u, 3553u, 0) == 1u;
+        bad += check("  an archive of before: its pattern pool's chunks (16..31, up to 3552 B) taken and dropped", ok);
     }
 #if FELUCCA_LEGACY                                       /* ((2.0) the converter's: web/conv) */
-    /* (Skiff phase 5) an older archive: its projects (SKF1) stored as they come, SKF2 once its music (id 0, the last
-     * object of a restore) is in: their tracks patterns */
+    /* (Skiff phase 5) an older archive: its projects (SKF1) stored as they come; once its music (id 0, the last
+     * object of a restore) is in, (P10) SKF5 and their slot's set (the steps) */
     reset();
     {
         static project_t pj;
@@ -592,12 +617,14 @@ int main(void)
         trk[0].step[0] = (step_t){{60}, 1, ST_NOTE, 0, 96, 0, 0};
         project_capture(&pj);
         ok = proj_pack(&w, &pj) && put_all(2, &w, sizeof w, st_crc32(&w, sizeof w)) == 0 &&
-             st_load(OBJ_PROJECT0, &st, sizeof st) == (int)sizeof w && !pool_used(0);
+             st_load(OBJ_PROJECT0, &st, sizeof st) == (int)sizeof w && !ts_has(0);
         ok &= put_all(0, &w, sizeof w, st_crc32(&w, sizeof w)) == 0 && trk[0].step[0].note[0] == 60u &&
               st_load(OBJ_PROJECT0, &st, sizeof st) == (int)PROJ_SKF->size && *(const uint32_t *)st.raw == PROJ_SKF->magic &&
-              *(const uint32_t *)proj_slot[0].raw == PROJ_SKF->magic && pool_used(0) &&
-              st.raw[PROJ_ENT4] == 1u;                 /* ((2.0) SKF4: track 1's entry A names pattern 001) */
-        bad += check("(phase 5) an older archive: its projects as they came, SKF2 once its music is restored", ok);
+              *(const uint32_t *)proj_slot[0].raw == PROJ_SKF->magic && ts_has(0);
+        trk[0].step[0].note[0] = 50u;
+        project_load(0);
+        ok &= trk[0].step[0].note[0] == 60u;
+        bad += check("(phase 5) an older archive: its projects as they came, (P10) SKF5 and a set once its music is in", ok);
     }
     /* (phase 6) project objects of 1280 (SKF2), 2048 (SKF3) and 3840 bytes (a retained slot holding one): each kept in
      * its format */
@@ -620,7 +647,8 @@ int main(void)
     }
 #else
     /* (2.0) project objects of 2048 (SKF3) and 3840 bytes (1.x's backups: a slot's whole RAM copy): kept as SKF3, and a
-     * backup gives the record's own size (2048: 1.4.x restores it) */
+     * backup gives the record's own size (2048: 1.4.x restores it). (P10) OLD FORMAT: kept as they are; the music of
+     * one (id 0) taken, the music as it was */
     reset();
     {
         static project_t pj;
@@ -636,7 +664,9 @@ int main(void)
               st_load(OBJ_PROJECT0 + 3u, &st, sizeof st) == (int)PROJ_STORE3 &&
               list(5, &len, &crc) == 0 && len == PROJ_STORE3 && crc == st_crc32(&w3, PROJ_STORE3) &&
               put_all(0, &w3, PROJ_STORE3, st_crc32(&w3, PROJ_STORE3)) == 0;
-        bad += check("(2.0) project objects of 2048 and 3840 bytes (SKF3): kept as they are, listed at 2048", ok);
+        ok &= proj_old(3);
+        bad += check("(2.0) project objects of 2048 and 3840 bytes (SKF3): kept as they are (P10: OLD FORMAT), listed at "
+                     "2048", ok);
     }
 #endif
     printf("backup test %s\n", bad ? "FAILED" : "passed");

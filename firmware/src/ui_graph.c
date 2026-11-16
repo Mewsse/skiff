@@ -1776,11 +1776,6 @@ static uint32_t graph_signature(void)
         if (song.playing && song.rec)
             h ^= (ui.frame / 4u + 1u) * 2246822519u;
     }
-    if (pg->graph == GR_BANK)                        /* (Skiff phase 5) the pool, the one picked (and the tracks: below) */
-        h = (h ^ (bank_gen() * 2654435761u + ui.bslot * 40503u + ui.bact * 7919u)) * 16777619u;   /* ((2.0) ACTION) */
-    if (pg->graph == GR_BANK)                        /* (Skiff phase 5) the patterns the tracks are on */
-        for (i = 0; i < NTRK; i++)
-            h = (h ^ (uint32_t)trk_pid[i] << 16) * 16777619u;
     if (pg->scope == SC_ENGINE && (ENGINES[t->eng_req % NENGINES] == &ENG_WHEEL || t->eng_req % NENGINES == ENGI_FM6 ||
                                    (FELUCCA_FM4 && t->eng_req % NENGINES == ENGI_DIGITAL)))
         h ^= (ui.hot_t ? ui.hot_col + 1u : 0u) * 65537u;
@@ -1960,41 +1955,6 @@ static void graph_user(void)
             str_cpy(nm, "--", sizeof nm);            /* ((2.0) an OLD FORMAT one too: up_name's label in here grew
                                                       * draw_graph by about 300 B; LOAD and SAVE's question name it) */
         list_row(LIST_Y(row), k == ui.uslot, tag, T_MID, nm, used ? T_TEXT : T_DIM, 232);
-    }
-}
-/* (Skiff phase 5) SAVE > PATTERNS, the pool view, as the chosen mockup draws it (design/mock_p5.py pool): the 64
- * patterns, 8 x 8, a kept one its number in a tile (BLOCKS: SURF on the black ground; FLAT, LINE: RAISE on the
- * panel): TEXT while something uses it, MID and outlined DIM while nothing does (it can be cleared: bank.c pool_refs);
- * the one KNOB 1 picked TEXT, INK on it (outlined TEXT when unused); an empty id a dot */
-#define PV_W 28                                      /* a tile 28 wide, 30 apart from x 1: 1 .. 238 */
-static void graph_bank(void)
-{
-    int32_t th = 15, py = 17;
-    uint16_t tile = T_SURF;
-    uint32_t id, n;
-    cv_rect(0, 0, 240, (int32_t)cv_h, T_BG);         /* (over the panel: the tiles are on the ground) */
-    cv_bg = T_BG;
-    for (id = 0; id < NPAT; id++) {
-        int32_t x = 1 + 30 * (int32_t)(id % 8u), y = 2 + py * (int32_t)(id / 8u);
-        int pick = id == ui.bslot % NPAT;
-        uint16_t fill = pick ? T_TEXT : tile;
-        char s[3];
-        if (!pool_used(id)) {
-            cv_rect(x + 13, y + th / 2, 2, 2, T_DIM);
-            if (pick)
-                cv_frame(x, y, PV_W, th, T_TEXT);
-            continue;
-        }
-        n = pool_refs(id);
-        if (ux.neon && pick)                         /* ((Skiff S1) NEON: the pick a dusk; the others glass, CRYPT's */
-            ne_vgrad(x, y, PV_W, th, NE_HOT, 3);     /* stone (cv_rrect)) */
-        else
-            cv_rrect(x, y, PV_W, th, 0, fill, T_BG);
-        if (!n)                                      /* nothing uses it: it can be cleared ((2.0, #46) lit while KNOB 4 */
-            cv_frame(x, y, PV_W, th, pick || ui.bact == BA_UNUSED ? T_TEXT : T_DIM);   /* is CLEAR UNUSED) */
-        pat_num(s, id);
-        GFX_HOOK_ALIGN(x, y, x + PV_W, y + th, AL_HV, "pool tile number centred");
-        cv_text_in(x, y + CAP_IN(S, th), PV_W, &AF_S, s, pick ? T_INK : n || ui.bact == BA_UNUSED ? T_TEXT : T_MID, fill);
     }
 }
 /* SEQ > TAPE: the four lanes over the tape's length, a note a mark in its instrument's colour (a muted track's: DIM),
@@ -2784,10 +2744,6 @@ static void draw_graph(void)
         case GR_USER:
             cv_oy = pad;
             graph_user();
-            break;
-        case GR_BANK:                                /* (Skiff phase 5) the pool view, from the panel's top (the mockup's) */
-            cv_oy = 0;
-            graph_bank();
             break;
         case GR_TAPE:
             cv_oy = 0;

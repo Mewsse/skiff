@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* (Skiff 2.0, #25) per-note ties (design/TIER_B.md, piece 1 step 2): the sequencer (seq.c seq_step, seq_gate_end) and
- * the record (project.c step_put9 / step_get9, bank.c bk_pack_raw), on the real sources with tests/ui_test.c's stubs:
+ * the record (project.c step_put9 / step_get9, tape_store.c's sequencers' chunk), on the real sources with
+ * tests/ui_test.c's stubs:
  *   OVERLAP  C4 held four steps by per-note ties (steps 2..4 list it tied), E4 starting on step 3: C4 one note-on,
  *            never retriggered, sounding to the end of step 4 as a TIE chain's note does; E4 one note-on, ended at
  *            its GATE
@@ -10,8 +11,8 @@
  *   RATCH    E4 x2 beside the tied C4: E4 twice, C4 once and on throughout
  *   STOP     mid-hold: everything ends
  *   RECORD   ties round trip in the 9-byte step (byte 7 of a step without hits); ties of notes a step doesn't have are
- *            refused; a record with ties is version 3 (1.4 reads 1 and 2 only), one without stays version 1, byte 7
- *            of every hitless step 0
+ *            refused; (Skiff P10) a project saved and loaded keeps them (the slot's set), byte 7 of a hitless step
+ *            without ties 0
  * Built and run by tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
@@ -161,11 +162,9 @@ static int sequencer(void)
 
 static int record(void)
 {
-    static const int16_t TV[5] = {8, 2, 0, 64, 0};
-    static motion_store_t ms;
-    static step_t st[NSTEP], back;
-    static uint8_t r[BK_REC];
+    static step_t back;
     uint8_t b[9];
+    track_t *t;
     int bad = 0, ok;
     uint32_t i;
     step_t s = {{C4, E4}, 2, ST_NOTE, 0, 100, 0, 1};    /* C4 tied, E4 new */
@@ -178,18 +177,21 @@ static int record(void)
     bad += check("RECORD: a step's ties in byte 7 (no hits), back as they were; a tie of a note it doesn't have "
                  "refused; with hits byte 7 is their accents", ok);
 
-    memset(st, 0, sizeof st);
-    st[0] = (step_t){{C4}, 1, ST_NOTE, 0, 100};
-    st[1] = (step_t){{0}, 0, ST_TIE, 0, 0};
-    st[2] = (step_t){{C4, E4}, 2, ST_NOTE, 0, 100};
-    ok = bk_pack_raw(r, 0, st, TV, &ms, 0) && r[0] == BK_VER;
-    for (i = 0; i < NSTEP; i++)
-        ok &= r[BK_STEPS + i * 9u + 7u] == 0u;
-    st[2].acc = 1;                                     /* (C4 tied on step 3) */
-    ok &= bk_pack_raw(r, 0, st, TV, &ms, 0) && r[0] == BK_VER3 && bk_ver(r[0]) && !(r[0] == 1u || r[0] == 2u);
-    ok &= step_get9(&back, r + BK_STEPS + 2u * 9u) && step_ties(&back) == 1u;
-    bad += check("  a record without ties stays version 1 (byte 7 of every hitless step 0); with one it is version 3: "
-                 "2.0 reads it back, 1.4 (versions 1 and 2) shows it empty", ok);
+    ui_power_on();
+    t = &trk[0];
+    track_defaults_steps(t);
+    t->step[0] = (step_t){{C4}, 1, ST_NOTE, 0, 100};
+    t->step[1] = (step_t){{0}, 0, ST_TIE, 0, 0};
+    t->step[2] = (step_t){{C4, E4}, 2, ST_NOTE, 0, 100};
+    t->step[2].acc = 1;                                /* (C4 tied on step 3) */
+    ok = !project_save(0) && ts_has(0);
+    for (i = 0; i < NSTEP; i++)                        /* (the sequencers' chunk: byte 7 of each hitless step) */
+        ok &= ts_ram[tst.sect[0][3] - 1u][256u + 1u + i * 9u + 7u] == (i == 2u ? 1u : 0u);
+    track_defaults_steps(t);
+    project_load(0);
+    ok &= step_ties(&t->step[2]) == 1u && t->step[2].n == 2u && !step_ties(&t->step[0]) && t->step[1].time == ST_TIE;
+    bad += check("  (Skiff P10) saved and loaded (the slot's set): the tie back; byte 7 of a hitless step without "
+                 "ties 0", ok);
     return bad;
 }
 

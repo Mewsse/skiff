@@ -319,7 +319,6 @@ static uint32_t page_icon(const page_t *pg)
 {
     switch (pg->graph) {
     case GR_TRK: return ICON_X_MIXER;         /* MIXER (GLO): vertical faders */
-    case GR_BANK: return ICON_X_PATTERN;      /* (Skiff) SAVE > PATTERNS: the bank */
     case GR_FEEL: return ICON_PROB;           /* (Skiff 2.0) FEEL: the die (CHANCE's) */
     case GR_EVENTS: return motion_icon();     /* AUTOMATION ((Skiff U3) the list) */
     default: return ICON_NONE;

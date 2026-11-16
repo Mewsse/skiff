@@ -1,15 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* (Skiff W3) the editor's transport and the projects' names (EDITOR_PROTOCOL.md "Transport, project names"); INFO
- * 57 01 caps (bit 0 TRANSPORT, bit 1 PROJ_NAME; bit 2 editor_song.c.s). Included by editor.c.
+ * 57 01 caps (bit 0 TRANSPORT, bit 1 PROJ_NAME; bit 2, the pattern pool's POOL: gone with it, Skiff P10). Included by
+ * editor.c.
  *   TRANSPORT: [op] 1 PLAY (playing: nothing), 2 STOP, 3 RESTART (from the top), 4 REC (the selected track armed or not,
  *     as its button: ui_input.c rec_tap) -> rc, playing, counting in, the request the audio has yet to take (seq.c
  *     transport_req: 1 start, 2 stop, 3 restart), the armed tracks, the selected track. No op: the state.
  *   PROJ_NAME: [op 1 SAVE AS / 2 RENAME, slot, name (0..12 of 32..126, upper-cased; its 0 optional)] -> op, rc (0 done,
- *     1 refused: playing, patterns full, an empty slot; 2 failed), the music's slot (127 none), changed since, its
+ *     1 refused: playing, an empty slot; 2 failed), the music's slot (127 none), changed since, its
  *     name, then each slot: used, its name. A save or a rename stops the transport first (ed_flash_stop) */
 enum { ED_TRANSPORT = 76, ED_PROJ_NAME };
-#define ED_SKIFF_CAPS 103u                      /* TRANSPORT, PROJ_NAME, POOL, (#21) SMP_MIX (editor.c), (2.0, #25) a
-                                                 * step's ties (editor.c ed_step_put); bits 3, 4 (LIST, PERFORM) gone */
+#define ED_SKIFF_CAPS 99u                       /* TRANSPORT, PROJ_NAME, (#21) SMP_MIX (editor.c), (2.0, #25) a step's
+                                                 * ties (editor.c ed_step_put); bits 2, 3, 4 (POOL, LIST, PERFORM) gone */
 
 /* a name from the editor -> b (PROJ_NAME_LEN + 1), upper case; 0: refused (too long, a byte outside 32..126) */
 static int ed_proj_name_in(const uint8_t *a, uint32_t n, char *b)

@@ -3,16 +3,17 @@
 /* (Skiff 2.0, Tier B: design/TIER_B.md 10) The converter (web/conv/conv.c) on the host. Archives of before in,
  * 2.0's formats out, and the converted objects restored onto a fresh unit (the same code again) play the same notes
  * and sounds:
- *   - an archive of 1.x (the music SKF3, settings PER4, a v5 preset, its patterns): nothing to convert;
- *   - old projects (FUN9 and SKF1 in the slots, SKF1 as the music, an SKF2) -> SKF4, their steps patterns, a DIGITAL
- *     track FM6;
+ *   - an archive of 1.x (the music SKF3, settings PER4, a v5 preset, its patterns): nothing to convert ((Skiff P10)
+ *     SKF3 kept as it is: OLD FORMAT on a unit, its steps were the pool's);
+ *   - old projects (FUN9 and SKF1 in the slots, SKF1 as the music) -> SKF5, their steps their slot's set (the tape
+ *     store), a DIGITAL track FM6; an SKF2 kept as it is;
  *   - Felucca's settings (PER4 without Skiff's mark): kept (2.0 reads them), taken as SKS1 by a unit;
  *   - user presets of versions 2 and 3 (a grid), a DIGITAL sound and an FM6 sound of version 2 with its patch -> 6, a
  *     version 5 kept;
  *   - a damaged project refused (rc 2), the others converted;
  *   - Felucca 1.2+ (web/conv/felucca.c): FUNA projects of 111 and 104 parameters (the music, slots 1 and 2) built as
- *     Felucca's project.c writes them -> SKF4, their sounds by parameter name, steps with NUDGE, RATCH and conditions,
- *     automation and locks of its own parameters, the song's sections on the lists; its user presets of versions 4
+ *     Felucca's project.c writes them -> SKF5, their sounds by parameter name, steps with NUDGE, RATCH and conditions,
+ *     automation and locks of its own parameters, the songs dropped (noted); its user presets of versions 4
  *     and 5 (np 103, 104, 111) -> 6 by name, an FM6 sound's patch kept; what has no place noted (conv_note).
  * conv_test DIR also writes the archives as web/fm1backup.js keeps them, for web/conv/conv_test.mjs (the same
  * conversion by conv.wasm): DIR/conv_1x.json, DIR/conv_old.json (Felucca's 13 objects), DIR/conv_funa.json
@@ -26,16 +27,18 @@ static int check(const char *what, int ok)
     return !ok;
 }
 
-typedef struct { uint32_t len; uint8_t b[3840]; } obj_t;   /* an archive's object (ids 0..31: no samples here) */
-static obj_t in[32], out[32];
-static const uint8_t ORDER[] = {2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
-                                31, 1, 0};        /* (web/fm1backup.js restoreBackup: the music last) */
+#define NOBJ 60u                                   /* (ids 0..59: no samples here) */
+typedef struct { uint32_t len; uint8_t b[3856]; } obj_t;   /* an archive's object */
+static obj_t in[NOBJ], out[NOBJ];
+static const uint8_t ORDER[] = {2, 3, 4, 5, 6, 7, 8, 9, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+                                55, 56, 57, 58, 59, 1, 0};   /* (web/fm1backup.js restoreBackup: the music last) */
+static int listed(uint32_t id) { return id < 10u || (id >= 40u && id < NOBJ); }   /* (the unit's LIST, no samples) */
 
 static void get_all(obj_t *o)
 {
     uint32_t id;
-    for (id = 0; id < 32u; id++) {
-        o[id].len = conv_get(id);
+    for (id = 0; id < NOBJ; id++) {
+        o[id].len = listed(id) ? conv_get(id) : 0u;
         memcpy(o[id].b, conv_bytes, o[id].len);
     }
 }
@@ -59,26 +62,32 @@ static int needs(const obj_t *o, uint32_t id)
 }
 static uint32_t magic(const obj_t *o, uint32_t id) { return o[id].len >= 4u ? *(const uint32_t *)o[id].b : 0u; }
 
-/* the archive o (the objects ids, n of them; the samples, 32..34, empty) to path as fm1backup.js keeps one */
+/* the archive o (the samples, 32..34, empty) to path as fm1backup.js keeps one: felucca 0 the unit's now (ids 0..9,
+ * 40..59), 1 / 2 Felucca's (0..9), 3 Skiff's of before (0..9, 16..31: the pattern pool's, empty) */
 static const char *fixtures;                       /* (conv_test DIR) */
 static void write_archive(const char *name, const obj_t *o, int felucca)
 {
     static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     char path[512];
     FILE *f;
-    uint32_t id, i, first = 1;
+    uint32_t id, i, n, first = 1;
     if (!fixtures)
         return;
     snprintf(path, sizeof path, "%s/%s", fixtures, name);
     if (!(f = fopen(path, "w")))
         return;
     fprintf(f, "{\"format\":\"felucca-backup\",\"version\":1,\"firmware\":\"%s\",\"created\":\"2026-10-24T00:00:00.000Z\","
-            "\"objects\":[", felucca == 2 ? "FELUCCA v1.6.1" : felucca ? "FELUCCA v1.1.5" : "FELUCCA v1.3.3");
-    for (id = 0; id < 35u; id++) {
-        uint32_t len = id < 32u ? o[id].len : 0u;
-        const uint8_t *p = id < 32u ? o[id].b : 0;
-        if ((id > 9u && id < 16u) || (felucca && id >= 16u && id < 32u))
+            "\"objects\":[", felucca == 2 ? "FELUCCA v1.6.1" : felucca == 1 ? "FELUCCA v1.1.5" : "FELUCCA v1.3.3");
+    for (n = 0; n < 33u; n++) {
+        uint32_t len;
+        const uint8_t *p;
+        id = n < 10u ? n : n < 30u ? (felucca == 3 ? n + 6u : 30u + n) : n + 2u;   /* (0..9, 16..31 or 40..59, 32..34) */
+        if ((felucca == 1 || felucca == 2) && n >= 10u && n < 30u)
             continue;
+        if (felucca == 3 && id >= 32u && n < 30u)
+            continue;
+        len = listed(id) ? o[id].len : 0u;
+        p = listed(id) ? o[id].b : 0;
         fprintf(f, "%s{\"id\":%u,\"size\":%u,\"crc\":%u,\"data\":\"", first ? "" : ",", id, len,
                 len ? st_crc32(p, len) : 0u);
         first = 0;
@@ -239,7 +248,7 @@ int main(int argc, char **argv)
 {
     static project_t p, q, got;
     static project_store_t st;
-    static uint32_t rc[32];
+    static uint32_t rc[NOBJ];
     uint32_t id, k;
     int bad = 0, ok;
     fixtures = argc > 1 ? argv[1] : 0;
@@ -262,33 +271,10 @@ int main(int argc, char **argv)
         b.r[0] = rec_of(UP_VER_GRID, ENGI_DRUM, "DRUM 01", NP_14, 0);
         memcpy(in[6].b, &b, sizeof b); in[6].len = sizeof b;
     }
-    for (id = 0; id < 32u; id++)
+    for (id = 0; id < NOBJ; id++)
         ok &= !needs(in, id);
-    bad += check("an archive of 1.x (SKF3, PER4, a v5 preset, patterns): nothing to convert", ok && in[16].len);
-    write_archive("conv_1x.json", in, 0);
-
-    /* 1b. (2.0) an old project no free pattern can take (the archive's pool full): left as it is (SKF1, which a 2.0 unit
-     * keeps whole: OLD FORMAT); conv.js reports it kept, "the patterns are full" (web/conv/conv_test.mjs) */
-    {
-        static uint8_t r[BK_REC];
-        conv_reset();
-        music(36);
-        project_capture(&p);
-        ok = proj_pack(&st, &p);                   /* (tracks 1..4 with steps: patterns none of the pool's) */
-        ok &= bk_pack(r, &trk[5]);                 /* (an empty track's pattern, in every id) */
-        for (id = 0; id < BK_POOL; id++)
-            ok &= pool_put(id, r) == 0;
-        get_all(in);
-        memcpy(in[2].b, &st, sizeof st); in[2].len = sizeof st;
-        ok &= needs(in, 2) && !needs(in, 0) && in[31].len;
-        write_archive("conv_full.json", in, 0);
-        conv_reset();
-        put_all(in, rc);
-        conv_fix();
-        get_all(out);
-        ok &= rc[2] == 0 && magic(out, 2) == PROJ_MAGIC && needs(out, 2) && !needs(out, 0);
-        bad += check("(2.0) an old project no free pattern can take (the pool full): left as it is (SKF1)", ok);
-    }
+    bad += check("an archive of 1.x (SKF3, PER4, a v5 preset): nothing to convert (P10: SKF3 kept, OLD FORMAT)", ok);
+    write_archive("conv_1x.json", in, 3);
 
     /* 2. old projects and settings, user presets of before: converted, then read by a fresh unit */
     conv_reset();
@@ -339,25 +325,26 @@ int main(int argc, char **argv)
         memcpy(in[6].b, &b, sizeof b); in[6].len = sizeof b;
         bad += check("(the archive) a v2 FM6 sound's patch in object 9", !upf_get(4, pk));
     }
-    for (id = 16; id < 32u; id++)
-        in[id].len = 0;                            /* (an archive without Skiff's pattern bank: Felucca's) */
-    ok &= needs(in, 0) && !needs(in, 1) && needs(in, 2) && needs(in, 3) && needs(in, 4) && needs(in, 6);
+    for (id = 40; id < NOBJ; id++)
+        in[id].len = 0;                            /* (an archive without Skiff's tape store: Felucca's) */
+    ok &= needs(in, 0) && !needs(in, 1) && needs(in, 2) && needs(in, 3) && !needs(in, 4) && needs(in, 6);
     write_archive("conv_old.json", in, 1);
-    bad += check("old projects (FUN9, SKF1, SKF2), presets of before: conv_needs (Felucca's PER4: not)", ok);
+    bad += check("old projects (FUN9, SKF1; P10: not SKF2), presets of before: conv_needs (Felucca's PER4: not)", ok);
 
     conv_reset();
-    conv_source(1);                                /* (no pattern bank: Felucca's, as conv.js says) */
+    conv_source(1);                                /* (no tape store: Felucca's, as conv.js says) */
     put_all(in, rc);
     conv_fix();
     get_all(out);
     write_archive("conv_old_native.json", out, 0);
     ok = rc[0] == 0 && rc[1] == 0 && rc[2] == 0 && rc[3] == 0 && rc[4] == 0 && rc[5] == 2 && rc[6] == 0 && rc[9] == 0;
     bad += check("restored: every object taken, the damaged one refused (rc 2)", ok);
-    ok = magic(out, 0) == PROJ_MAGIC4 && magic(out, 2) == PROJ_MAGIC4 && magic(out, 3) == PROJ_MAGIC4 &&
-         magic(out, 4) == PROJ_MAGIC4 && !out[5].len && magic(out, 1) == SKS_MAGIC && out[1].len == sizeof(sks_t);
-    for (id = 0; id < 32u; id++)
+    ok = magic(out, 0) == PROJ_MAGIC5 && magic(out, 2) == PROJ_MAGIC5 && magic(out, 3) == PROJ_MAGIC5 &&
+         magic(out, 4) == PROJ_MAGIC2 && !out[5].len && magic(out, 1) == SKS_MAGIC && out[1].len == sizeof(sks_t) &&
+         out[40].len == TS_LEN + 16u && out[44].len && !out[48].len && out[56].len;
+    for (id = 0; id < NOBJ; id++)
         ok &= !needs(out, id);
-    bad += check("out: the music and three slots SKF4, settings SKS1; nothing left to convert", ok);
+    bad += check("out: the music and two slots SKF5 and their sets, the SKF2 kept, settings SKS1; nothing left", ok);
     {
         const up_bank_t *b = (const up_bank_t *)out[6].b;
         const up_bank_t *a = (const up_bank_t *)in[6].b;
@@ -379,19 +366,19 @@ int main(int argc, char **argv)
     conv_reset();
     put_all(out, rc);
     ok = 1;
-    for (id = 0; id < 32u; id++)
+    for (id = 0; id < NOBJ; id++)
         ok &= !rc[id];
     ok &= music_is(72);
-    bad += check("a fresh unit takes them all; the music plays its notes (its patterns)", ok);
-    project_load(1);                               /* (slot 2: the SKF1's, now SKF4 and patterns) */
+    bad += check("a fresh unit takes them all; the music plays its notes (its set)", ok);
+    project_load(1);                               /* (slot 2: the SKF1's, now SKF5 and its set) */
     ok = proj_cur == 1u && music_is(60) && trk[1].eng_req == ENGI_FM6;
     project_load(0);                               /* (slot 1: the FUN9's) */
     ok &= proj_cur == 0u && music_is(60);
     bad += check("  slots 1 and 2 (FUN9, SKF1): the same notes, DIGITAL as FM6", ok);
-    project_load(2);                               /* (slot 3: the SKF2's, no steps) */
+    project_load(2);                               /* (slot 3: the SKF2's, no steps; the converter's build reads it) */
     ok = proj_cur == 2u && trk[2].eng_req == ENGI_DRUM && proj_import(&got, &proj_slot[2], sizeof proj_slot[2]) &&
          got.t[2].engine == ENGI_DRUM;
-    bad += check("  slot 3 (SKF2): its sounds (T3 DRUM)", ok);
+    bad += check("  slot 3 (SKF2, kept): its sounds (T3 DRUM)", ok);
     {
         uint8_t pk[FM6_PACKED], want[FM6_PACKED];
         memcpy(want, FM6_FACTORY[2], sizeof want);
@@ -416,7 +403,7 @@ int main(int argc, char **argv)
         uint8_t pk[FM6_PACKED], fpk[FM6_PACKED];
         char note[260];
         int16_t v[P_COUNT];
-        uint32_t i, n, a1;
+        uint32_t i, n;
         memset(&fa, 0, sizeof fa);
         fa.np = 111;
         for (k = 0; k < G_COUNT; k++)
@@ -506,24 +493,25 @@ int main(int argc, char **argv)
         conv_fix();
         get_all(out);
         write_archive("conv_funa_native.json", out, 0);
-        ok = !rc[0] && !rc[1] && !rc[2] && !rc[3] && !rc[6] && !rc[9] && magic(out, 0) == PROJ_MAGIC4 &&
-             magic(out, 2) == PROJ_MAGIC4 && magic(out, 3) == PROJ_MAGIC4 && out[16].len &&
+        ok = !rc[0] && !rc[1] && !rc[2] && !rc[3] && !rc[6] && !rc[9] && magic(out, 0) == PROJ_MAGIC5 &&
+             magic(out, 2) == PROJ_MAGIC5 && magic(out, 3) == PROJ_MAGIC5 && out[40].len && out[44].len && out[56].len &&
              proj_import(&got, out[2].b, (int)out[2].len) && got.g[G_ROUTE] == 0 && got.g[G_BPM] == 133;
         ok &= !memcmp(got.name, "FELUCCA SONG", 12);   /* (slot 1's MIDI IN CH5-8: Skiff's CH1-6, what a first boot
                                                         * adopts; the music's is the unit's) */
         n = conv_note(0);
         memcpy(note, conv_bytes, n); note[n] = 0;
         ok &= !!strstr(note, "T1 ANALOG filter TYPE") && !!strstr(note, "T1 T2 NUDGE") &&
-              !!strstr(note, "MIDI IN TRACK") && !!strstr(note, "has no song now") && conv_note(2) && !conv_note(3);
+              !!strstr(note, "MIDI IN TRACK") && !!strstr(note, "no songs now") && conv_note(2) && !conv_note(3);
         n = conv_note(6);
         memcpy(note, conv_bytes, n); note[n] = 0;
         ok &= !!strstr(note, "U04 ANALOG filter TYPE") && !!strstr(note, "categories: 2") && !strstr(note, "U03");
-        bad += check("  restored: the music, slots 1, 2 SKF4; noted: filter TYPE, NUDGE, MIDI, categories", ok);
+        bad += check("  restored: the music, slots 1, 2 SKF5 and their sets; noted: filter TYPE, NUDGE, MIDI, songs, categories",
+                     ok);
 
         conv_reset();                              /* the converted objects onto a fresh unit */
         put_all(out, rc);
         ok = 1;
-        for (id = 0; id < 32u; id++)
+        for (id = 0; id < NOBJ; id++)
             ok &= !rc[id] && !needs(out, id);
         ok &= trk[0].eng_req == 0u && trk[0].p[P_LSYNC] == 3 && trk[0].p[P_LTRIG] == 1 && trk[0].p[P_LPOL] == 1 &&
               motion_base_value(&trk[0], P_SPRD) == 40 && trk[0].p[P_ITYPE] == 2 && trk[0].p[P_IA] == 80 &&
@@ -548,20 +536,15 @@ int main(int argc, char **argv)
         }
         bad += check("  its steps: NUDGE x4 (none where it did not play), RATCH, conditions; locks, automation",
                      ok && n == 3u);
-        a1 = trk_pid[0];
-        ok = a1 && a1 <= NPAT && pool_used(a1 - 1u) && trk_pid[1] && trk_pid[2];
-        bad += check("  the music's tracks on their own patterns (its song: dropped, no lists since the song layer went)",
-                     ok);
-        project_load(0);                           /* (slot 1: the music as saved, the song on its lists) */
+        bad += check("  the music's steps its set (TS_MUSIC); its song dropped (no song layer)", ts_has(TS_MUSIC));
+        project_load(0);                           /* (slot 1: the music as saved) */
         ok = proj_cur == 0u && trk[0].p[P_LSYNC] == 3 && motion_base_value(&trk[0], P_SPRD) == 40 &&
-             proj_import(&proj_scratch, &proj_slot[0], sizeof proj_slot[0]) && proj_scratch.ent[0][2][1] == 3u &&
-             proj_scratch.ent[2][1][0] == PAT_REST &&
-             trk_pid[0] == proj_scratch.ent[0][proj_scratch.cur[0] % NENT][0];
+             trk[0].step[0].note[0] == 60u && trk[2].step[8].hit == 5u;
         project_load(1);                           /* (slot 2: Felucca 1.4's) */
         ok &= proj_cur == 1u && trk[0].eng_req == 2u && trk[0].p[P_LSYNC] == 2 && trk[0].p[P_SPRD] == 20 &&
               trk[0].p[P_E0 + 2] == 99 && !trk[0].p[P_ITYPE] && !trk[0].p[P_ESYNC] && trk[0].step[8].note[0] == 62u &&
               trk[1].eng_req == 3u && trk[1].step[0].note[0] == 55u;
-        bad += check("  slots 1 and 2 (FUNA of 111 and 104): sounds by name, notes, slot 1's song", ok);
+        bad += check("  slots 1 and 2 (FUNA of 111 and 104): sounds by name, notes", ok);
         ok = 1;
         for (k = 0; k < 5u; k++)
             ok &= up_used(k) && up_rec(k)->ver == UP_VER_SID && !memcmp(up_rec(k)->name, b.r[k].name, 12);

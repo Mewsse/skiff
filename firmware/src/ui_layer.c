@@ -1390,7 +1390,7 @@ static void shift_map(smap_t *m)
     const sheet_t *sh = sheet_of(g);
     const char *pj = ui.home || g == GR_BROWSE ? SND : sel ? "STEP" : g == GR_STEPS ? "DIR" : g == GR_DELAY || g == GR_FXDLY ? "MODE" :
                      g == GR_INS ? "MIX" :            /* ((2.5) INSERT 2's page before) */
-                     g == GR_USER || g == GR_SLOTS ? "SLOT" : g == GR_BANK ? "PATTERN" : g == GR_EVENTS ? "ROW" :
+                     g == GR_USER || g == GR_SLOTS ? "SLOT" : g == GR_EVENTS ? "ROW" :
                      sh ? sh->pj : g == GR_SLICES ? "SLICE" : SND;
     static const smap_t ALL[9] = {{"BUTTONS", "PAGES", 0}, {"HOLD ONE", "ITS LAYER", 0}, {"HOLD SAVE", "UNDO", 0},
                                   {"+ SAVE", "TAKE", 2}, {"+ REC", "REC SET", 2}, {"+ BUTTON", "LOCK", 2},

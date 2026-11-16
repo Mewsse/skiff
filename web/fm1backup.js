@@ -2,14 +2,21 @@
 // Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 // Local, complete musical archives. Requests name whitelisted objects, never flash addresses.
 // 8: the FM6 patch bank of 1.0..1.0.2 (listed empty since 1.0.3: a restore of an older archive's bank moves its patches
-// into the user presets restored before it); 9: the user presets' FM6 patches (1.0.3); 16..31: Skiff's pattern bank,
-// a chunk of 4 patterns each (3552 bytes, 0 when all empty)
+// into the user presets restored before it); 9: the user presets' FM6 patches (1.0.3); 40..59: Skiff's tape store
+// (id 40 + slot * 4 + chunk, slots 0..3 the projects, slot 4 the current music; 3840 bytes, chunk 0 of a slot 3856, 0 when
+// the slot has no set); 32..34: the sample slots. 16..31: the pattern pool of the earlier Skiff (3552 bytes a chunk): its
+// 29-object archives still read and restore (the device takes and drops them), no new archive lists them.
 const BANK_IDS = Array.from({ length: 16 }, (_, i) => 16 + i);
-export const BACKUP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...BANK_IDS, 32, 33, 34];
-const BACKUP_IDS_V3 = BACKUP_IDS.filter((id) => id < 16 || id >= 32);   // Felucca 1.0.3.. (no bank), and its archives
+const TAPE_IDS = Array.from({ length: 20 }, (_, i) => 40 + i);
+const BACKUP_IDS_SKIFF2 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...BANK_IDS, 32, 33, 34];
+export const BACKUP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...TAPE_IDS, 32, 33, 34];
+const BACKUP_IDS_V3 = BACKUP_IDS_SKIFF2.filter((id) => id < 16 || id >= 32);   // Felucca 1.0.3.. (no bank), and its archives
 const BACKUP_IDS_V2 = BACKUP_IDS_V3.filter((id) => id !== 9);           // 1.0..1.0.2, and their archives
 const BACKUP_IDS_V1 = BACKUP_IDS_V2.filter((id) => id !== 8);           // firmware before FM6, and its archives
-const idsOf = (n) => [BACKUP_IDS, BACKUP_IDS_V3, BACKUP_IDS_V2, BACKUP_IDS_V1].find((ids) => ids.length === n) || null;
+const isSample = (id) => id >= 32 && id <= 34;
+const isTape = (id) => id >= 40 && id <= 59;
+const maxSize = (id) => isSample(id) ? 81920 : isTape(id) && (id - 40) % 4 === 0 ? 3856 : 3840;
+const idsOf = (n) => [BACKUP_IDS, BACKUP_IDS_SKIFF2, BACKUP_IDS_V3, BACKUP_IDS_V2, BACKUP_IDS_V1].find((ids) => ids.length === n) || null;
 export const BACKUP_CMD = { LIST: 65, GET: 66, PUT: 67 };
 const BACKUP_CHUNK = 256;
 export const bkU32 = (n) => Array.from({ length: 5 }, (_, i) => (n >>> (i * 7)) & (i === 4 ? 15 : 127));
@@ -58,7 +65,7 @@ export function bkManifest(a) {
     const p = 3 + i * 11;
     if (a[p] !== id) throw new Error("Unexpected archive object");
     const size = bkR32(a, p + 1), crc = bkR32(a, p + 6);
-    if (size > (id >= 32 ? 81920 : 3840) || (!size && crc)) throw new Error("Archive object too large");
+    if (size > maxSize(id) || (!size && crc)) throw new Error("Archive object too large");
     return { id, size, crc };
   });
 }
@@ -69,13 +76,13 @@ export function readBackup(file) {
   if (!file || file.format !== "felucca-backup" || file.version !== 1 || !ids)
     throw new Error("Not a complete Felucca backup");
   const objects = file.objects.map((o, i) => {
-    if (!o || o.id !== ids[i] || !Number.isInteger(o.size) || o.size < 0 || o.size > (o.id >= 32 ? 81920 : 3840) ||
+    if (!o || o.id !== ids[i] || !Number.isInteger(o.size) || o.size < 0 || o.size > maxSize(o.id) ||
         !Number.isInteger(o.crc) || o.crc < 0 || o.crc > 0xffffffff || typeof o.data !== "string" ||
         o.data.length !== 4 * Math.ceil(o.size / 3) || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(o.data))
       throw new Error("Invalid backup object");
     const bytes = Uint8Array.from(atob(o.data), (c) => c.charCodeAt(0));
     if (bytes.length !== o.size || bkCrc(bytes) !== o.crc) throw new Error("Backup checksum mismatch");
-    if (o.id >= 32 && o.size) {
+    if (isSample(o.id) && o.size) {
       if (o.size < 512) throw new Error("Short sample backup");
       const view = new DataView(bytes.buffer), length = view.getUint32(16, true), count = bytes[6];
       if (view.getUint32(0, true) !== 0x504d5346 || view.getUint16(4, true) !== 1 || !count || count > 16 ||
@@ -121,7 +128,7 @@ export async function restoreBackup(request, file, onProgress = () => {}, only =
   const put = async (args) => { const a = await ask([BACKUP_CMD.PUT, args]); bkCheck(a[2]); return a; };
   // Restore live music last. Other objects commit individually; a disconnect can leave a partial restore.
   for (const o of [...archive.objects.slice(2), archive.objects[1], archive.objects[0]].filter(pick)) {
-    if (o.id >= 32) {
+    if (isSample(o.id)) {
       const slot = o.id - 32;
       const check = (a) => { if (a[0] !== slot) throw new Error("Unexpected sample reply"); bkCheck(a.at(-1)); };
       if (!o.size) check(await ask([14, [slot]]));
@@ -137,8 +144,9 @@ export async function restoreBackup(request, file, onProgress = () => {}, only =
         done += 512; onProgress(done, total);
       }
     } else {
-      if (o.id === 9 || BANK_IDS.includes(o.id)) {   // firmware before 1.0.3 does not take id 9, firmware without Skiff's
-                                                     // bank not 16..31 (rc 1 at begin, nothing written): skip them
+      if (o.id === 9 || BANK_IDS.includes(o.id) || isTape(o.id)) {   // firmware before 1.0.3 does not take id 9, firmware
+                                                     // without Skiff's pool not 16..31, without the tape store not 40..59
+                                                     // (rc 1 at begin, nothing written): skip them
         const a = await ask([BACKUP_CMD.PUT, [0, o.id, ...bkU32(o.size), ...bkU32(o.crc)]]);
         if (a[2] === 1) { done += o.size; onProgress(done, total); continue; }
         bkCheck(a[2]);

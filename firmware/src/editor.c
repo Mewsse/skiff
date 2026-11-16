@@ -388,7 +388,6 @@ static int ed_flash_stop(void)
 #include "editor_fm6.c"
 #include "editor_menu.c"
 #include "editor_project.c"                         /* (Skiff W3) TRANSPORT, PROJ_NAME */
-#include "editor_song.c"                            /* (Skiff W3) POOL, LIST, PERFORM */
 
 /* MOTION's reply: the records of track k as (step, id, v14), a lock's id without its MOTION_LOCK bit (a 7-bit SysEx
  * byte); kinds (1.1: the ops 5..7): then one byte per record, in the same order, 0 automation, 1 lock. The query and
@@ -426,8 +425,6 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
         return n == 3u;
     case ED_TRANSPORT: case ED_PROJ_NAME:
         return ed_project_args_ok(cmd, a, n);
-    case ED_POOL:
-        return ed_song_args_ok(cmd, a, n);
     case ED_KIT_GET:                                   /* (Skiff W3) a lane; a lane and its 15 values, each in range */
         return n == 1u && a[0] < 8u;
 #if FELUCCA_CAST
@@ -522,7 +519,6 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_project_handle(cmd, a, na)) { ed_send(); return; }
-    if (ed_song_handle(cmd, a, na)) { ed_send(); return; }
     switch (cmd) {
     case ED_MOTION: {
         track_t *t = &trk[a[0]]; uint32_t rc = 0;
@@ -563,8 +559,6 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             0x49, 1, P_COUNT & 127u, P_COUNT >> 7, P_E0 & 127u, P_E0 >> 7,   /* (Skiff 1.3) wide ids: P_COUNT and
                                          * P_E0 in two bytes; a track id from 128 on as scope 2 (ED_TID), a motion
                                          * record's from 128 on with bit 6 of its step byte */
-            0x58, 1, ED_SONG2,                          /* (2.0) the pool's EMPTY, CLEAR UNUSED (editor_song.c; last: an
-                                                         * editor before reads up to 49 01 only) */
 #if FELUCCA_CAST
             0x59, 1, 1u | (BOARD_SMK37 ? 2u : 0u),     /* (Skiff Studio) the cast, cmd 83 (cast.c); bit 1: the SMK-37's
                                                          * layout (its copy: felucca_cast_smk.wasm) */

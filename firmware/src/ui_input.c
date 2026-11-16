@@ -98,7 +98,7 @@ static int mom_turn(uint32_t k, int32_t s)
     } else {
         if (act_cols() || lock_held() || !(pg->scope == SC_TRACK || pg->scope == SC_ENGINE || pg->scope == SC_GLOBAL) ||
             pg->graph == GR_EVENTS || pg->graph == GR_BROWSE || pg->graph == GR_USER ||
-            pg->graph == GR_BANK || pg->graph == GR_TAPE || sheet_of(pg->graph) || (pg->graph == GR_SLICES && k < 2u) ||
+            pg->graph == GR_TAPE || sheet_of(pg->graph) || (pg->graph == GR_SLICES && k < 2u) ||
             (pg->graph == GR_MOD && k == 0u))
             return 0;
         d = page_desc(pg, k, &vp);
@@ -1460,10 +1460,6 @@ static void edit_param(uint32_t slot, int32_t steps)
         ui.act2 = (uint8_t)(st ? st - 1 : 0);
         return;
     }
-    if (pg->graph == GR_BANK && slot == 3u) {             /* ((2.0, #46) PATTERNS' KNOB 4: the ACTION, OCT+ does it */
-        ui.bact = (uint8_t)clamp((int32_t)ui.bact + (steps > 0 ? 1 : -1), 0, BA_N - 1);
-        return;
-    }
     if ((act_cols() >> slot) & 1u) {                      /* an action's knob picks it (right) or drops it (left); */
         ui.act = steps > 0 ? (uint8_t)(slot + 1u) : ui.act == slot + 1u ? 0u : ui.act;   /* OCT+ does it (act_do) */
         ui.act2 = 0;
@@ -1472,11 +1468,6 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (pg->graph == GR_USER) {                           /* KNOB 1 the slot */
         if (slot == 0u)
             ui.uslot = (uint8_t)clamp((int32_t)ui.uslot + steps, 0, UP_SLOTS - 1);
-        return;
-    }
-    if (pg->graph == GR_BANK) {                           /* (Skiff phase 5) PATTERNS: KNOB 1 the pattern, 01 .. 64 */
-        if (slot == 0u)
-            ui.bslot = (uint8_t)clamp((int32_t)ui.bslot + steps, 0, NPAT - 1);
         return;
     }
     if (pg->graph == GR_MOD && slot == 0u) {             /* MOD: KNOB 1 the route ((2.0) the fixed seven, then the slots), */
@@ -1523,28 +1514,22 @@ static void tape_knob(uint32_t slot, int32_t steps)
     }
 }
 
-/* (2.5, the user's 3A) SAVE > PROJECT's CLEAR TRACKS: stopped, every track's pattern kept in the pool first (as NEW does: SAVE > PATTERNS and the song's
- * entries still have them), then each track's steps and automation emptied, on no pattern (a new one when kept);
- * the sounds stay */
+/* (2.5, the user's 3A) SAVE > PROJECT's CLEAR TRACKS: stopped, each track's steps and automation emptied; the sounds
+ * (and the tape) stay */
 static void tracks_wipe(void)
 {
     uint32_t k;
     transport_stop_now();
-    if (keep_all() == 1) {
-        ui_way("PATTERNS FULL", WAY_PATTERNS);
-        return;
-    }
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
         motion_clear(t);
         fm1_irq_off();
         track_defaults_steps(t);
-        trk_pid[k] = 0;
         fm1_irq_on();
         t->nheld = 0;
         t->arp_phys = 0;
     }
-    undo_clear();                                       /* (the copies were of patterns the tracks are not on now) */
+    undo_clear();                                       /* (the copies were of the steps before) */
     ui_message("TRACKS CLEARED");
 }
 
@@ -1581,37 +1566,6 @@ static void act_do(void)
             ui_message("THAT TRACK IS EMPTY");
         else
             confirm_open(CF_TAPE_MERGE, target | ((uint32_t)ui.tsrc - 1u) << 4);
-        return;
-    }
-    if (cur_page()->graph == GR_BANK) {                   /* (Skiff phase 5) the pool view: CLEAR the pattern picked,
-                                                         * after its dialog, when nothing uses it (bank.c pool_clear);
-                                                         * ((2.0, #46) KNOB 4's ACTION: or EMPTY it, or CLEAR UNUSED) */
-        uint32_t id = ui.bslot % NPAT, n;
-        char b[24];
-        if (ui.bact == BA_UNUSED) {
-            if (!(n = pool_unused()))
-                ui_message("NOTHING UNUSED");
-            else if (transport_busy())
-                ui_message("STOP TO CLEAR");
-            else
-                confirm_open(CF_CLEAR_UNUSED, n);
-        } else if (!pool_used(id)) {
-            ui_message(ui.bact == BA_EMPTY ? "NOTHING TO EMPTY" : "NOTHING TO CLEAR");
-        } else if (ui.bact == BA_EMPTY) {
-            if (transport_busy())
-                ui_message("STOP TO EMPTY");
-            else
-                confirm_open(CF_EMPTY_BANK, id);
-        } else if ((n = pool_refs(id)) != 0u) {          /* "USED BY 3 ENTRIES" */
-            str_cpy(b, "USED BY ", sizeof b);
-            fmt_int(b + 8, (int32_t)n);
-            str_cpy(b + str_len(b), n == 1u ? " ENTRY" : " ENTRIES", sizeof b - str_len(b));
-            ui_message(b);
-        } else if (transport_busy()) {
-            ui_message("STOP TO CLEAR");
-        } else {
-            confirm_open(CF_ERASE_BANK, id);
-        }
         return;
     }
     if (cur_page()->graph == GR_USER) {                   /* 1 LOAD, 2 ERASE (or NAME), 3 SAVE (the NAME screen first) */
@@ -1826,7 +1780,7 @@ static void presets_turn(int32_t s)
             cursor_turn(s);
             cursor_audition();                            /* ((1.3) STEP PREVIEW) */
         }
-    } else if (g == GR_USER || g == GR_BANK || g == GR_SLOTS || g == GR_EVENTS) {
+    } else if (g == GR_USER || g == GR_SLOTS || g == GR_EVENTS) {
         edit_param(0, s);                                 /* KNOB 1's */
         ui.hot_col = 0;
         ui.hot_t = 40;
@@ -2302,12 +2256,6 @@ static void ui_input(void)
                 name_open(NK_USER_SAVE, ui.confirm_trk);
             } else if (kind == CF_ERASE_USER) {
                 up_ui(1u, ui.confirm_trk);
-            } else if (kind == CF_ERASE_BANK) {         /* (Skiff phase 5) the pool view's CLEAR */
-                pool_clear(ui.confirm_trk);
-            } else if (kind == CF_EMPTY_BANK) {         /* ((2.0, #46) .. EMPTY, CLEAR UNUSED */
-                pool_empty(ui.confirm_trk);
-            } else if (kind == CF_CLEAR_UNUSED) {
-                pool_clear_unused();
             } else if (kind == CF_TAPE_CLEAR) {
                 char b[24] = "TAPE 1 CLEARED";
                 tape_clear(ui.confirm_trk & 3u);
@@ -2338,20 +2286,12 @@ static void ui_input(void)
             } else {
                 track_t *t = &trk[ui.confirm_trk % NTRK];
                 undo_label = "CLEAR";
-                char b[24] = "PATTERN 00 CLEARED";     /* ((Skiff U4) which one: its number) */
-                uint32_t id = trk_pat(ui.confirm_trk % NTRK);
                 load_begin(t, UNDO_PAT);
                 track_defaults_steps(t);
                 load_end(t);
                 t->nheld = 0;                           /* and the latched arp chord */
                 t->arp_phys = 0;
-                if (id < NPAT) {
-                    pat_num(b + 8, id);
-                    b[10] = ' ';
-                } else {
-                    str_cpy(b, "PATTERN CLEARED", sizeof b);
-                }
-                ui_message(b);
+                ui_message("PATTERN CLEARED");
             }
         } else if (oct & 1u) {
             ui.confirm = 0;
@@ -2522,7 +2462,7 @@ static void ui_input(void)
             continue;
         }
         if (ui.home || pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
-            pg->graph == GR_TAPE || ((pg->graph == GR_USER || pg->graph == GR_BANK || pg->graph == GR_MOD) && k == 0u)
+            pg->graph == GR_TAPE || ((pg->graph == GR_USER || pg->graph == GR_MOD) && k == 0u)
             || (pg->graph == GR_SLICES && k < 2u) || sheet_of(pg->graph)) {   /* (not an empty
                                                          * column; (Skiff) a sheet's four) */
             ui.hot_col = (uint8_t)k;
