@@ -317,6 +317,124 @@ static int test_arp(void)
     return bad;
 }
 
+/* the live-play delay (seq.c live_hold / live_tick): GRID 1/4 at 120 BPM, the late window 19 ticks */
+static int sounds(const track_t *t, uint32_t note)
+{
+    uint32_t i;
+    for (i = 0; i < NVOICE; i++)
+        if (t->v[i].gate && t->v[i].note == note)
+            return 1;
+    return 0;
+}
+static void live_begin(uint32_t grid, uint32_t offset)
+{
+    uint32_t blk;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = (uint8_t)grid;
+    transport_req = 1;
+    for (blk = 0; blk < 4000u && (tape_head < 960u || tape_head % TAPE_TPQ < offset); blk++)
+        events_block(CTL);
+}
+static uint32_t live_until(const track_t *t, uint32_t note, int on)
+{
+    uint32_t blk;
+    for (blk = 0; blk < 4000u && sounds(t, note) != on; blk++)
+        events_block(CTL);
+    return song_ticks;
+}
+static void live_end(void)
+{
+    transport_req = 2;
+    events_block(CTL);
+}
+static int test_live(void)
+{
+    track_t *t = &trk[0];
+    uint32_t press, line, at, off, blk, i, bad = 0;
+    int ok;
+
+    live_begin(3, 100);
+    press = song_ticks;
+    line = press + TAPE_TPQ - tape_head % TAPE_TPQ;
+    input_on(t, 60, 100);
+    ok = live_n == 1u && !sounds(t, 60) && !t->hits;
+    at = live_until(t, 60, 1);
+    bad += check("live, GRID 1/4: a note 100 ticks after a beat waits, sounds on the next beat", ok && at >= line && at < line + 3u && !live_n);
+    live_end();
+
+    live_begin(3, 8);
+    input_on(t, 60, 100);
+    bad += check("live, GRID 1/4: a note 8 ticks after a beat (in the window) sounds now", !live_n && sounds(t, 60) && t->hits == 1u);
+    live_end();
+
+    live_begin(3, 100);
+    press = song_ticks;
+    input_on(t, 60, 100);
+    for (blk = 0; blk < 4000u && song_ticks < press + 60u; blk++)
+        events_block(CTL);
+    input_off(t, 60);
+    ok = live_n == 1u && !sounds(t, 60);
+    at = live_until(t, 60, 1);
+    off = live_until(t, 60, 0);
+    bad += check("live: pressed and let go before the line keeps its length (60 ticks)", ok && off - at >= 57u && off - at <= 63u && !live_n);
+    live_end();
+
+    live_begin(3, 100);
+    for (i = 0; i < 16u; i++)
+        input_on(t, 40u + i, 100);
+    ok = live_n == 16u && !t->hits;
+    input_on(t, 80, 100);
+    bad += check("live: queue full (16): the next note sounds now, the 16 stay", ok && live_n == 16u && sounds(t, 80));
+    live_end();
+
+    live_begin(3, 100);
+    input_on(t, 60, 100);
+    ok = live_n == 1u;
+    live_end();
+    for (blk = 0; blk < 800u; blk++)
+        events_block(CTL);
+    bad += check("live: STOP drops what waits, it never sounds", ok && !live_n && !t->hits);
+
+    live_begin(3, 100);
+    input_on(t, 60, 100);
+    input_on(trk + 1, 62, 100);
+    panic_req = 1u;
+    events_block(CTL);
+    ok = live_n == 1u && live_q[0].trk == 1u;
+    bad += check("live: panic of a track drops its waiting notes, not another's", ok);
+    live_end();
+
+    live_begin(3, 100);
+    input_on(t, 60, 100);
+    input_on(t, 64, 100);
+    ok = live_n == 2u && !t->hits;
+    unit_settings[32 * 15 + 26] = 0;
+    events_block(CTL);
+    bad += check("live: GRID set OFF flushes what waits, in order played", ok && !live_n && t->hits == 2u && last_note == 64u &&
+                 sounds(t, 60) && sounds(t, 64));
+    live_end();
+
+    live_begin(3, 100);
+    trk[1].p[P_FOLLOW] = 1;
+    input_on(t, 60, 100);
+    ok = fol_src[0].held == 0u;
+    live_until(t, 60, 1);
+    bad += check("live: a chord's followers hear it when the note sounds, not before", ok && fol_src[0].held == 1u);
+    live_end();
+
+    live_begin(3, 100);
+    t->p[P_AMODE] = AM_UP;
+    input_on(t, 60, 100);
+    bad += check("live: with the ARP on a note is the ARP's (waits in arp_wait), not queued", !live_n && t->nheld == 1u);
+    live_end();
+
+    live_begin(0, 100);
+    input_on(t, 60, 100);
+    bad += check("live, GRID OFF: a note sounds at once, nothing queued", !live_n && sounds(t, 60) && t->hits == 1u);
+    live_end();
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
@@ -331,6 +449,7 @@ int main(void)
     fails += test_arm();
     fails += test_arm_grid();
     fails += test_arp();
+    fails += test_live();
     printf(fails ? "grid: %u FAILED\n" : "grid: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

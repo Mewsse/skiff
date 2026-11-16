@@ -383,7 +383,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/drift_test" tests/drift_test.c -lm
     run "(2.5, #107) DRIFT: the quarter x24, every DIV a share; 5 DIVs and the click together for 30 min" "$OUT/drift_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/grid_test" tests/grid_test.c -lm
-    run "GRID and the tape's clock: every grid's floor / next / window with SWING, 1,000 bars exact, tempo changes, external pulses, SPP, PLAY / STOP, SEQ RUN and MUTE armed, the ARP's first key on the GRID" "$OUT/grid_test"
+    run "GRID and the tape's clock: every grid's floor / next / window with SWING, 1,000 bars exact, tempo changes, external pulses, SPP, PLAY / STOP, SEQ RUN and MUTE armed, the ARP's first key on the GRID, the live-play delay" "$OUT/grid_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/perform_test" tests/perform_test.c -lm
     mkdir -p build/perform_demo build/fx_demo
     run "FX layer effects: on the 1/16, stereo, too-long REPEAT, SLICER, silent keys, idle bit-identical, clicks, OCT UP / DN, cost, demos" "$OUT/perform_test" build/perform_demo build/fx_demo

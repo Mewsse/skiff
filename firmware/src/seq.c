@@ -681,15 +681,15 @@ static uint32_t arp_due[NPART] __attribute__((section(".pool")));   /* song_tick
  * one starts now. 1: still waiting. Not inlined: once a key goes down, kept out of the audio ISR's loop */
 static __attribute__((noinline)) int arp_wait(track_t *t)
 {
-    uint32_t grid = grid_idx(), k = trk_index(t), head = tape_head, swing = (uint32_t)(song.g[G_SWING] < 0 ? 0 : song.g[G_SWING]);
-    if (!grid || !song.playing) {
+    uint32_t k = trk_index(t), ahead;
+    if (!song.playing || !grid_idx()) {
         t->arp_pos = ARP_START;
         return 0;
     }
     if (t->arp_pos == ARP_START) {
-        if (head - grid_floor(grid, swing, head) <= grid_window(grid, (uint32_t)song.g[G_BPM]))
+        if (!grid_late(tape_head, &ahead))
             return 0;
-        arp_due[k] = song_ticks + grid_next(grid, swing, head) - head;
+        arp_due[k] = song_ticks + ahead;
         t->arp_pos = ARP_WAIT;
     }
     if ((int32_t)(song_ticks - arp_due[k]) < 0 && arp_due[k] - song_ticks <= TAPE_BAR)
@@ -995,7 +995,9 @@ static __attribute__((noinline)) void cin_keep(track_t *t, uint32_t note, uint32
     cin_up[i] &= (uint8_t)~(1u << k);
 }
 
-static void input_on(track_t *t, uint32_t note, uint32_t vel)
+static uint8_t in_from_key;                      /* the notes going into input_on now are a key's (key_on): their MIDI OUT is KEYS's */
+/* a played note (a key's, MIDI IN's) sounds: input_on's decision, or live_tick's, made */
+static void input_now(track_t *t, uint32_t note, uint32_t vel, uint32_t keys)
 {
     uint32_t arp = t->p[P_AMODE] && !in_solo;      /* ((2.1, #74) a SOLO black key's: as with the ARP off) */
     if (!in_solo)
@@ -1012,11 +1014,13 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
         arp_add(t, note);
     else
         trk_note_on(t, note, vel);
+    if (keys)
+        (void)mo_note(t, note, vel, 1);
 }
 
 static int midi_note_held(const track_t *t, uint32_t note);
 static int midi_local_held(const track_t *t, uint32_t note);
-static void input_off(track_t *t, uint32_t note)
+static void input_off_now(track_t *t, uint32_t note)
 {
     if (!in_solo)
         fol_key(t, note, 0);                        /* ((2.1) one fewer holding its chord) */
@@ -1035,6 +1039,122 @@ static void input_off(track_t *t, uint32_t note)
         arp_remove(t, note);                        /* both: the note may have started in the */
     if (!t->p[P_AMODE] || !kb_sol_held(t, note))    /* other mode (ARP switched while held); ((2.1, #74) */
         trk_note_off(t, note);                      /* the ARP on: not one a SOLO black key sounds) */
+}
+
+/* The live-play delay: with the GRID on and playing, a note played later than the line's window (grid_late) waits for
+ * the next line (live_q, in the order played); a note let go before it sounds keeps the length it was held (RELEASED,
+ * off_due; before that off_due is the press). ARP notes are the ARP's (arp_wait). Every function with a loop is not
+ * inlined: events_block's own cost stays (tests/target_budget.py) */
+enum { LF_KEY = 1, LF_REL = 2, LF_SOUNDED = 4, LF_SOLO = 8 };
+typedef struct {
+    uint8_t trk, note, vel, flags;
+    uint32_t due;                                   /* song_ticks the note sounds at */
+    uint32_t off_due;                               /* song_ticks it ends at (RELEASED) */
+} live_ev_t;
+#define LIVE_N 16u
+static live_ev_t live_q[LIVE_N] __attribute__((section(".pool")));
+static uint8_t live_n __attribute__((section(".pool")));
+
+static __attribute__((noinline)) int live_hold(track_t *t, uint32_t note, uint32_t vel)
+{
+    uint32_t ahead;
+    live_ev_t *ev;
+    if (live_n == LIVE_N || !song.playing || !grid_late(tape_head, &ahead))
+        return 0;
+    ev = &live_q[live_n++];
+    ev->trk = (uint8_t)trk_index(t);
+    ev->note = (uint8_t)note;
+    ev->vel = (uint8_t)vel;
+    ev->flags = (uint8_t)((in_from_key ? LF_KEY : 0u) | (in_solo ? LF_SOLO : 0u));
+    ev->due = song_ticks + ahead;
+    ev->off_due = song_ticks;
+    return 1;
+}
+
+static void live_remove(uint32_t at)
+{
+    for (live_n--; at < live_n; at++)
+        live_q[at] = live_q[at + 1u];
+}
+
+static void live_off(const live_ev_t *ev)
+{
+    track_t *t = &trk[ev->trk];
+    in_solo = (ev->flags & LF_SOLO) != 0u;
+    input_off_now(t, ev->note);
+    if (ev->flags & LF_KEY)
+        (void)mo_note(t, ev->note, 0, 1);
+    in_solo = 0;
+}
+
+/* a note let go: 1 when it was still waiting (its end is kept for when it sounds) */
+static __attribute__((noinline)) int live_release(const track_t *t, uint32_t note)
+{
+    uint32_t i;
+    for (i = 0; i < live_n; i++) {
+        live_ev_t *ev = &live_q[i];
+        if (ev->trk == trk_index(t) && ev->note == note && !(ev->flags & LF_REL)) {
+            ev->flags |= LF_REL;
+            ev->off_due = ev->due + (song_ticks - ev->off_due);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* each block (events_block): the notes whose line came sound, in the order played, then the ends due. The GRID turned
+ * OFF: what waits sounds now */
+static __attribute__((noinline)) void live_tick(void)
+{
+    uint32_t i = 0, grid = grid_idx();
+    while (i < live_n) {
+        live_ev_t *ev = &live_q[i];
+        if (!(ev->flags & LF_SOUNDED) && (!grid || (int32_t)(song_ticks - ev->due) >= 0)) {
+            in_solo = (ev->flags & LF_SOLO) != 0u;
+            input_now(&trk[ev->trk], ev->note, ev->vel, ev->flags & LF_KEY);
+            in_solo = 0;
+            ev->flags |= LF_SOUNDED;
+        }
+        if ((ev->flags & LF_SOUNDED) && !(ev->flags & LF_REL)) {
+            live_remove(i);
+        } else if ((ev->flags & LF_SOUNDED) && (int32_t)(song_ticks - ev->off_due) >= 0) {
+            live_off(ev);
+            live_remove(i);
+        } else {
+            i++;
+        }
+    }
+}
+
+/* the tracks in mask let go (Stop, a locate, a panic, an engine switch): what never sounded is dropped, what sounds
+ * until its end ends now */
+static __attribute__((noinline)) void live_drop(uint32_t mask)
+{
+    uint32_t i = 0;
+    while (i < live_n) {
+        const live_ev_t *ev = &live_q[i];
+        if (!((mask >> ev->trk) & 1u)) {
+            i++;
+            continue;
+        }
+        if (ev->flags & LF_SOUNDED)
+            live_off(ev);
+        live_remove(i);
+    }
+}
+
+static void input_on(track_t *t, uint32_t note, uint32_t vel)
+{
+    if (!(t->p[P_AMODE] && !in_solo) && live_hold(t, note, vel))
+        return;
+    input_now(t, note, vel, in_from_key);
+}
+
+static void input_off(track_t *t, uint32_t note)
+{
+    if (live_n && live_release(t, note))
+        return;
+    input_off_now(t, note);
 }
 
 /* the effect of key k in the FX layer (PF_N none): the first PF_M1 white keys (F3 .. E5) in order, black keys
@@ -1062,13 +1182,14 @@ static void key_on(uint32_t k, track_t *t)
     uint32_t n = kb_chord_of(k, t), i;
     kb_chn[k] = 0;
     in_key = (uint8_t)KB_IN(k);                     /* (the arp keeps the key: arp_add) */
+    in_from_key = 1;
     for (i = 0; i < n; i++) {
         uint32_t x = kb_chord[k][i];
         if (midi_local_held(t, x))
             continue;
         input_on(t, x, KB_VEL(k));
-        (void)mo_note(t, x, KB_VEL(k), 1);
     }
+    in_from_key = 0;
     in_key = in_solo = 0;
     kb_chn[k] = (uint8_t)n;
     last_note = kb_note[k];                         /* (step entry, the SAMPLE zone: the key's note) */
@@ -1318,6 +1439,7 @@ static __attribute__((noinline)) uint32_t tape_beat_frac(void)
 /* PLAY, Start, a locate: the clock to a tick (a bar line for PLAY), the head with it */
 static __attribute__((noinline)) void tape_locate(uint32_t tick)
 {
+    live_drop((1u << NTRK) - 1u);
     song_ticks = tick;
     tape_head = tick % tape_length();
     tape_beat = tick / TAPE_TPQ;
@@ -1451,6 +1573,7 @@ static void seq_stop(void)
 {
     uint32_t i;
     song.playing = 0;
+    live_drop((1u << NTRK) - 1u);
     free_stop();                                   /* ((2.5) take.c: what is played from now: a free take */
     thr_out = 0;                                   /* (Skiff) the throws back at once (throw.c) */
     cin_left = 0;                                  /* (a count-in: cancelled, nothing recorded) */
@@ -2170,6 +2293,8 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         RING_PUBLISH();
         midi_in_overflow = 0;
     }
+    if (live_n)
+        live_drop(pr);
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         if ((pr >> i) & 1u) {
@@ -2179,6 +2304,8 @@ static __attribute__((noinline)) void events_block(uint32_t n)
             t->arp_phys = 0;
             arp_forget(t);
         }
+        if (live_n && t->eng_req != t->engine)
+            live_drop(1u << i);                       /* (a note that waits for the GRID: not onto the new engine) */
         engine_block(t);                              /* engine switch: fade, then switch (voice.c) */
         /* ARP turned off, or HOLD released with no key down: drop the latched chord */
         if ((t->armp && !t->p[P_AMODE]) || (t->aholdp && !t->p[P_AHOLD] && !t->arp_phys)) {
@@ -2191,6 +2318,8 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         t->armp = t->p[P_AMODE];
         t->aholdp = t->p[P_AHOLD];
     }
+    if (live_n)
+        live_tick();
     strum_tick(n);                                    /* ((2.5) a strum's notes whose time came; this block's kept */
     sq_in = 1;                                        /* for strum_flush, at the end (voice.c)) */
     kb_ped_block(pr);                                 /* (the keys held: the hold's end, another track, a panic) */

@@ -76,7 +76,11 @@ ins_drive 280
 ins_swept 228
 ins_filter 74
 tape_clock 0
-arp_wait 0
+arp_wait 155
+live_hold 0
+live_release 9
+live_tick 138
+live_drop 50
 strum_tick 139
 strum_flush 531
 mix_spread 143

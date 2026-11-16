@@ -59,3 +59,13 @@ static uint32_t grid_idx(void)
     uint32_t idx = MSET(15, 26);
     return idx < GRID_N ? idx : 0u;
 }
+
+/* tick (the head) is later than the line's window after its line, the GRID on: 1, *ahead the ticks to the next line */
+static int grid_late(uint32_t tick, uint32_t *ahead)
+{
+    uint32_t idx = grid_idx(), swing = song.g[G_SWING] < 0 ? 0u : (uint32_t)song.g[G_SWING];
+    if (!idx || tick - grid_floor(idx, swing, tick) <= grid_window(idx, (uint32_t)song.g[G_BPM]))
+        return 0;
+    *ahead = grid_next(idx, swing, tick) - tick;
+    return 1;
+}
