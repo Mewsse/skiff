@@ -8,6 +8,9 @@
 #include "hostsim.c"
 #undef main
 
+static uint8_t unit_settings[32 * 16];                /* (the unit's settings, as ui.c's mset_io: GRID at [15][26]) */
+static const uint8_t *const mset_io = unit_settings;
+
 #define TWO_BARS (2u * TAPE_BAR)
 
 static int check(const char *what, int ok)
@@ -273,6 +276,47 @@ static int test_arm_grid(void)
     return bad;
 }
 
+/* the ARP's first key on the GRID (seq.c arp_wait): past the line's window it waits for the next line, within it, or
+ * with GRID OFF, it starts at once */
+static uint32_t arp_press(uint32_t grid, uint32_t offset, uint32_t *waited, uint32_t *start)
+{
+    track_t *t = &trk[0];
+    uint32_t blk, press, base;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = (uint8_t)grid;
+    t->p[P_AMODE] = AM_UP;
+    t->p[P_APROB] = 127;
+    transport_req = 1;
+    for (blk = 0; blk < 4000u && (tape_head < 960u || tape_head % TAPE_TPQ < offset); blk++)
+        events_block(CTL);
+    press = song_ticks;
+    base = tape_head - tape_head % TAPE_TPQ;
+    arp_add(t, 60);
+    events_block(CTL);
+    *waited = t->arp_pos == ARP_WAIT;
+    for (blk = 0; blk < 4000u && !t->arp_note; blk++)
+        events_block(CTL);
+    *start = song_ticks - press;
+    press = tape_head - base;
+    transport_req = 2;
+    events_block(CTL);
+    return t->arp_note != 0 ? press : 0u;
+}
+static int test_arp(void)
+{
+    uint32_t waited, start, at, bad = 0;
+    at = arp_press(3, 100, &waited, &start);
+    bad += check("ARP, GRID 1/4: a key 100 ticks after a beat waits, its first note on the next beat",
+                 waited && at >= TAPE_TPQ && at < TAPE_TPQ + 40u && start >= 330u && start < 400u);
+    at = arp_press(3, 8, &waited, &start);
+    bad += check("ARP, GRID 1/4: a key 8 ticks after a beat (in the window) starts now", !waited && start < 12u);
+    at = arp_press(0, 100, &waited, &start);
+    bad += check("ARP, GRID OFF: a key 100 ticks after a beat: no wait, the ARP's own 1/16 line 20 ticks on, as before", !waited && start >= 15u && start < 30u);
+    at = arp_press(1, 600, &waited, &start);
+    bad += check("ARP, GRID 1 BAR: a key past the bar line waits for the next bar", waited && at >= 0u && start > 1000u);
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
@@ -286,6 +330,7 @@ int main(void)
     fails += test_external();
     fails += test_arm();
     fails += test_arm_grid();
+    fails += test_arp();
     printf(fails ? "grid: %u FAILED\n" : "grid: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

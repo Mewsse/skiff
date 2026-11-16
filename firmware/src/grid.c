@@ -51,3 +51,11 @@ static uint32_t grid_window(uint32_t idx, uint32_t bpm)
     uint32_t ticks = grid_ticks(idx) / 8u, ms20 = bpm * GRID_LATE_MS_BPM / 25u;
     return ticks < ms20 ? ticks : ms20;
 }
+
+/* the GRID setting (ui.c ui_grid: favorites.factory[15][26], through the unit's settings pointer; a value past the
+ * table, or a build without the UI: OFF) */
+static uint32_t grid_idx(void)
+{
+    uint32_t idx = MSET(15, 26);
+    return idx < GRID_N ? idx : 0u;
+}

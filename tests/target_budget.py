@@ -45,6 +45,7 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "track_insert", "ins_drive", "ins_swept",   # (Skiff 1.3) FX > INSERT (fx.c), on a track that uses one
          "ins_filter",                               # ((2.5) its FILTR)
          "tape_clock",                                # the tape's head (seq.c), once a block while playing
+         "arp_wait",                                  # an ARP start held for a GRID line (seq.c), until the line
          "strum_tick", "strum_flush",                # ((2.5) SCL > CHORD's STRUM, voice.c: each block's start and end)
          "mix_spread", "esync_coef", "mod_depth",   # (Skiff 1.3) SPREAD (fx.c), ENV SYNC (voice.c), MOD DEPTH (mod.c)
          "smx_render",                           # (Skiff, #21) a user sample's sound with its own sends (fx.c)

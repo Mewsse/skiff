@@ -265,6 +265,7 @@ static int kb_solo(const track_t *t, uint32_t k)
 
 /* ------------------------------------------------------------- arp --- */
 #define ARP_START 0xFFFFFFFu                    /* arp_pos: the first key just went down (arp_add) */
+#define ARP_WAIT 0xFFFFFFEu                     /* arp_pos: the first key was late for a GRID line: it waits for the next */
 static void arp_add(track_t *t, uint32_t note)
 {
     uint32_t i, k = in_key - 1u;
@@ -402,6 +403,21 @@ static __attribute__((noinline)) int step_cond_ok(const track_t *t, const step_t
 }
 #include "motion.c"
 
+/* the tape's clock (tape_clock, below) */
+static uint32_t tape_beat __attribute__((section(".pool"))), song_ticks __attribute__((section(".pool")));
+static uint32_t tape_head __attribute__((section(".pool"))), tape_len __attribute__((section(".pool")));
+static uint16_t tape_pass __attribute__((section(".pool"))), tape_frac __attribute__((section(".pool")));
+
+/* the one door of every sequencer note (the step sequencer's, the ARP's) onto its track: vel 0 ends the note. The tape
+ * and the keys sound through trk_note_on themselves */
+static void seq_out(track_t *t, uint32_t note, uint32_t vel)
+{
+    if (vel)
+        trk_note_on(t, note, vel);
+    else
+        trk_note_off(t, note);
+}
+
 /* the ARP's modes (P_AMODE). Append-only: a stored value keeps its meaning (ORD plays as UP, the ORD switch of
  * ARP 2 orders the notes). 1.2 (Discussion #95), over the note list (the held notes low to high, or as played,
  * across OCT octaves), C E G held: DNUP G E C E; UP+8 C E G C' (the first note again an octave above the top);
@@ -429,7 +445,7 @@ static __attribute__((noinline)) int kb_sol_held(const track_t *t, uint32_t note
 static void arp_note_off(track_t *t, uint32_t note)
 {
     if (!kb_sol_held(t, note))
-        trk_note_off(t, note);
+        seq_out(t, note, 0);
 }
 
 /* CHORD's notes. Not inlined: they run once an arp step, and kept out of the audio ISR's loop over the tracks
@@ -465,7 +481,7 @@ static __attribute__((noinline)) void arp_chord(track_t *t, const uint32_t *list
             rec_note(t, nt, 100);
         else
             take_note(t, nt, 100);                  /* (Skiff: TAKES) */
-        trk_note_on(t, nt, 100);
+        seq_out(t, nt, 100);
     }
 }
 
@@ -624,7 +640,7 @@ static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
             rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
         else
             take_note(t, t->arp_note, 100);         /* (Skiff: TAKES, the same) */
-        trk_note_on(t, t->arp_note, 100);
+        seq_out(t, t->arp_note, 100);
     }
 }
 
@@ -659,6 +675,29 @@ static __attribute__((noinline)) void arp_onto_grid(track_t *t, uint32_t period,
         arp_fire(t, period);
 }
 
+static uint32_t arp_due[NPART] __attribute__((section(".pool")));   /* song_ticks the waiting start is due at */
+
+/* GRID on and playing: a first key later than the line's window waits for the next line (arp_pos ARP_WAIT), an earlier
+ * one starts now. 1: still waiting. Not inlined: once a key goes down, kept out of the audio ISR's loop */
+static __attribute__((noinline)) int arp_wait(track_t *t)
+{
+    uint32_t grid = grid_idx(), k = trk_index(t), head = tape_head, swing = (uint32_t)(song.g[G_SWING] < 0 ? 0 : song.g[G_SWING]);
+    if (!grid || !song.playing) {
+        t->arp_pos = ARP_START;
+        return 0;
+    }
+    if (t->arp_pos == ARP_START) {
+        if (head - grid_floor(grid, swing, head) <= grid_window(grid, (uint32_t)song.g[G_BPM]))
+            return 0;
+        arp_due[k] = song_ticks + grid_next(grid, swing, head) - head;
+        t->arp_pos = ARP_WAIT;
+    }
+    if ((int32_t)(song_ticks - arp_due[k]) < 0 && arp_due[k] - song_ticks <= TAPE_BAR)
+        return 1;
+    t->arp_pos = ARP_START;
+    return 0;
+}
+
 static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
 {
     uint32_t period, len;
@@ -676,6 +715,8 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
     }
     period = div_samples((uint32_t)t->p[P_ARATE]);
     sw = t->p[P_ASWING] * (int32_t)period / 250;
+    if ((t->arp_pos == ARP_START || t->arp_pos == ARP_WAIT) && arp_wait(t))
+        return;
     if (t->arp_pos == ARP_START)
         arp_onto_grid(t, period, sw);
     t->arp_pos += n;
@@ -1267,9 +1308,6 @@ static void mo_rt(uint32_t b, uint32_t due) { (void)mo_put(0x0Fu | b << 8, due);
  * song_ticks the ticks (due times: never wrapped), tape_head the same wrapped at tape_len, tape_pass the wraps.
  * tape_frac is the last tick into the beat: it never goes back within one. In the pool, zero at boot: tape_len 0 means
  * 4 bars until the tape's own (tape.c) sets it */
-static uint32_t tape_beat __attribute__((section(".pool"))), song_ticks __attribute__((section(".pool")));
-static uint32_t tape_head __attribute__((section(".pool"))), tape_len __attribute__((section(".pool")));
-static uint16_t tape_pass __attribute__((section(".pool"))), tape_frac __attribute__((section(".pool")));
 
 static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; }
 static __attribute__((noinline)) uint32_t tape_beat_frac(void)
@@ -1354,7 +1392,7 @@ static void seq_release(track_t *t)
 {
     uint32_t i, k = trk_index(t);
     for (i = 0; i < t->seq_n; i++)
-        trk_note_off(t, t->seq_notes[i]);
+        seq_out(t, t->seq_notes[i], 0);
     t->seq_n = 0;
     t->seq_hold = 0;
     t->slide_glide = 0;                             /* live MONO / LEG keys must not glide after it */
@@ -1367,7 +1405,7 @@ static __attribute__((noinline)) void seq_keep_only(track_t *t, uint32_t keep)
     uint32_t k = trk_index(t), i, n = 0, km = 0, tm = 0;
     for (i = 0; i < t->seq_n; i++) {
         if (!((keep >> i) & 1u)) {
-            trk_note_off(t, t->seq_notes[i]);
+            seq_out(t, t->seq_notes[i], 0);
             continue;
         }
         km |= ((seq_k[k] >> i) & 1u) << n;
@@ -1627,12 +1665,12 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
             seq_release(t);
         for (i = 0; i < m; i++)
             if (!(((sk | on | xs) >> i) & 1u))
-                trk_note_on(t, nn[i], vv[i]);
+                seq_out(t, nn[i], vv[i]);
         for (i = 0; i < t->seq_n; i++) {            /* release what is not held over (nor plays again) */
             for (j = 0; j < m && (nn[j] != t->seq_notes[i] || ((xs >> j) & 1u)); j++)
                 ;
             if (j == m)
-                trk_note_off(t, t->seq_notes[i]);
+                seq_out(t, t->seq_notes[i], 0);
         }
         t->seq_n = 0;
         for (i = 0; i < m; i++)
