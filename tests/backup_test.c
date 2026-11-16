@@ -590,10 +590,14 @@ int main(void)
         chunk[3] = 0xC0u;                                 /* (a record's bits 30, 31: no firmware wrote) */
         ok &= put_all(TS_OBJ0 + 4u, chunk, TS_LEN + 16u, st_crc32(chunk, TS_LEN + 16u)) == 2u;
         memcpy(chunk, got[4], TS_LEN + 16u);
+        chunk[4] = chunk[5] = 0xFFu;                      /* (a record 2^20 - 1 ticks long: past any tape) */
+        chunk[6] |= 0x0Fu;
+        ok &= put_all(TS_OBJ0 + 4u, chunk, TS_LEN + 16u, st_crc32(chunk, TS_LEN + 16u)) == 2u;
+        memcpy(chunk, got[4], TS_LEN + 16u);
         chunk[TS_LEN] = 0;                                /* (L 0 bars) */
         chunk[TS_LEN + 1u] = 0;
         ok &= put_all(TS_OBJ0 + 4u, chunk, TS_LEN + 16u, st_crc32(chunk, TS_LEN + 16u)) == 2u && ts_has(TS_MUSIC);
-        bad += check("  a chunk holding a step, a record or a meta no firmware wrote: refused (2), the store as it was", ok);
+        bad += check("  a chunk holding a step, a record (bits 30, 31; a length past 256 bars) or a meta no firmware wrote: refused (2), the store as it was", ok);
         song.playing = 1;
         bad += check("  playing: PUT and LIST refused (3)", put_begin(TS_OBJ0 + 4u, TS_LEN + 16u, crcs[4]) == 3u &&
                      list(TS_OBJ0, &len, &crc) == 3u);
@@ -605,6 +609,40 @@ int main(void)
         ok = put_all(16u, chunk, 3552u, st_crc32(chunk, 3552u)) == 0 && put_all(31u, chunk, 0, st_crc32(chunk, 0)) == 0 &&
              erases == e0 && put_begin(18u, 3553u, 0) == 1u;
         bad += check("  an archive of before: its pattern pool's chunks (16..31, up to 3552 B) taken and dropped", ok);
+    }
+    /* (Skiff P10) a restore cut after three chunks of slot 1's set, the store full: the set coming in is released by a
+     * save short of room, a USB reset, or ED_BK_STALE_MS without a chunk; then the saves work, the music's set again */
+    {
+        static uint8_t part[3][TS_LEN + 16u];
+        uint32_t lens[3], crcs[3], c, mode, slot;
+        int ok = 1, held = 1;
+        for (mode = 0; mode < 3u; mode++) {
+            reset();
+            tape_set_len(2);
+            for (slot = 0; slot < TS_SLOTS; slot++) {
+                (void)tape_insert(0, (100u + slot) | 60u << 20, 50u | 90u << 20, TAPE_ANY_PASS);
+                ok &= ts_save(slot) == 0;
+            }
+            for (c = 0; c < 3u; c++)
+                ok &= list(TS_OBJ0 + c, &lens[c], &crcs[c]) == 0 && get_all(TS_OBJ0 + c, part[c], lens[c]) == 0;
+            for (c = 0; c < 3u; c++)
+                ok &= put_all(TS_OBJ0 + c, part[c], lens[c], crcs[c]) == 0;
+            ok &= ts_restoring() && !ts_has(TS_MUSIC) && ts_music_lost();
+            if (mode == 1u)
+                usb.resets++;
+            else if (mode == 2u)
+                fm1_ms += ED_BK_STALE_MS + 1u;
+            ed_bk_poll();
+            held &= mode ? !ts_restoring() : ts_restoring();
+            (void)tape_insert(0, 900u | 62u << 20, 50u | 90u << 20, TAPE_ANY_PASS);
+            ok &= ts_save(1) == 0 && !ts_restoring() && ts_music_lost();
+            ok &= ts_save(TS_MUSIC) == 0 && ts_has(TS_MUSIC) && !ts_music_lost();
+            tape_init();
+            ts_boot();
+            ok &= ts_has(0) && ts_has(1) && ts_has(TS_MUSIC) && !ts_restoring();
+        }
+        bad += check("(P10) a restore cut after 3 chunks: released (a save short of room, USB reset, 15 s), saves work, "
+                     "the music's set written again", ok && held);
     }
 #if FELUCCA_LEGACY                                       /* ((2.0) the converter's: web/conv) */
     /* (Skiff phase 5) an older archive: its projects (SKF1) stored as they come; once its music (id 0, the last

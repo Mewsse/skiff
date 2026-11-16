@@ -993,6 +993,7 @@ static void ed_service(void)
     const uint8_t *p;
     uint32_t n;
     ed_sync();                                             /* v2 pushes (while watched) */
+    ed_bk_poll();                                          /* ((Skiff P10) a restore's set left half in: released) */
     CAST(cast_flush());                                    /* (Skiff Studio) the cast out */
     if (!ota_frame_get(&p, &n) || n < 4u || p[0] != ED_HDR0 || p[1] != ED_HDR1 || p[2] != ED_HDR2)
         return;

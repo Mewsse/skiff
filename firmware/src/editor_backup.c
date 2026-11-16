@@ -30,6 +30,8 @@ _Static_assert(sizeof proj_wire_u.raw >= sizeof(upf_t) && sizeof proj_wire_u.raw
 static sks_t ed_bk_settings;
 static uint8_t ed_bk_valid, ed_bk_put, ed_bk_id, ed_bk_gen;
 static uint32_t ed_bk_len, ed_bk_crc, ed_bk_pos, ed_bk_ms, ed_bk_usb;
+static uint32_t ed_bk_ts_ms, ed_bk_ts_usb;          /* ((Skiff P10) the last tape store chunk put: when, at which USB reset */
+#define ED_BK_STALE_MS 15000u                       /* a PUT, a set coming in: given up after this long without a chunk */
 static void ed_bk_u32(uint32_t n) { for (uint32_t i = 0; i < 5u; i++) ed_b((n >> (i * 7u)) & 127u); }
 static uint32_t ed_bk_r32(const uint8_t *p)
 {
@@ -204,6 +206,7 @@ static uint32_t ed_bk_commit(void)
         return upf_save() == 2 ? 4u : 0u;           /* (a failed write keeps the restored RAM copy) */
     } else if (ED_BK_TAPE(ed_bk_id)) {              /* ((Skiff P10) a tape store chunk: every record checked, then */
         if (!ts_obj_ok(ed_bk_id - TS_OBJ0, raw, ed_bk_len)) return 2;   /* written into its slot's set coming in */
+        ed_bk_ts_ms = fm1_ms; ed_bk_ts_usb = usb.resets;
         return ts_obj_put(ed_bk_id - TS_OBJ0, raw, ed_bk_len) ? 4u : 0u;
     } else if (ED_BK_OLD(ed_bk_id)) {               /* (the pattern pool's of before: dropped) */
         return 0;
@@ -266,7 +269,7 @@ static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
         ed_bk_usb = usb.resets; ed_bk_ms = fm1_ms;
         return 0;
     }
-    if (!ed_bk_put || ed_bk_id != a[1] || ed_bk_usb != usb.resets || fm1_ms - ed_bk_ms > 15000u ||
+    if (!ed_bk_put || ed_bk_id != a[1] || ed_bk_usb != usb.resets || fm1_ms - ed_bk_ms > ED_BK_STALE_MS ||
         ed_bk_gen != proj_wire_gen) {                 /* (a project save / load reused the staging RAM) */
         ed_bk_put = 0; return 5;
     }
@@ -283,6 +286,13 @@ static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
     if (ed_flash_stop()) return 3;
     memcpy(ED_BK_RAW + ed_bk_pos, ed_smp_buf, count); ed_bk_pos += count;
     return 0;
+}
+/* main loop: (Skiff P10) a restore's tape store set left half in (USB reset, no chunk for ED_BK_STALE_MS): released, so
+ * the saves have their sectors again */
+static void ed_bk_poll(void)
+{
+    if (ts_restoring() && (usb.resets != ed_bk_ts_usb || fm1_ms - ed_bk_ts_ms > ED_BK_STALE_MS))
+        ts_restore_drop();
 }
 static int ed_backup_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
 {

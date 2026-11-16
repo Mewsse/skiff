@@ -257,9 +257,21 @@ static uint32_t ts_take(void)                      /* the next free sector from 
     }
     return TS_NONE;
 }
-/* n sectors free, the music's set given up for them when needed: 1 */
-static int ts_room(uint32_t n)
+/* a backup's set coming in, never finished (its chunks stop, USB reset, a save short of room): released, its sectors
+ * free (its generation stays taken: boot passes it, short of chunks). The music's set given up for it is written again
+ * by the next autosave round (tst.lost) */
+static void ts_restore_drop(void)
 {
+    tst.rslot = TS_NONE;
+    tst.rmask = tst.rzero = 0;
+}
+static int ts_restoring(void) { return tst.rslot != TS_NONE; }
+/* n sectors free, the music's set given up for them when needed (restore: for the set coming in; else a set coming in
+ * is released first): 1 */
+static int ts_room(uint32_t n, int restore)
+{
+    if (ts_free_n() < n && !restore && ts_restoring())
+        ts_restore_drop();
     if (ts_free_n() < n && ts_has(TS_MUSIC)) {
         ts_drop(TS_MUSIC);
         tst.lost = 1;
@@ -360,10 +372,12 @@ static int ts_write(uint32_t slot, ts_src_t *src, const uint32_t *sum, const ts_
     uint8_t to[TS_CHUNKS];
     uint32_t c, gen = tst.top + 1u;
     int rc;
-    if (!ts_room(TS_CHUNKS))
+    if (!ts_room(TS_CHUNKS, 0))
         return -1;
     for (c = 0; c < TS_CHUNKS; c++)
         to[c] = (uint8_t)ts_take();
+    tst.top = gen;                                 /* (taken before the first erase: a failed try's chunks are never
+                                                    * the generation of a later set) */
     tape_enc_begin(&src->it);
     for (c = 0; c < TS_CHUNKS; c++)
         if ((rc = ts_chunk_write(to[c], slot, c, gen, src, sum[c], m)) != 0)
@@ -374,7 +388,6 @@ static int ts_write(uint32_t slot, ts_src_t *src, const uint32_t *sum, const ts_
     }
     tst.meta[slot] = *m;
     tst.gen[slot] = gen;
-    tst.top = gen;
     if (slot == TS_MUSIC)
         tst.lost = 0;
     return 0;
@@ -532,7 +545,8 @@ static int ts_obj_ok(uint32_t n, const uint8_t *b, uint32_t len)
                           (uint32_t)b[pos + 3u] << 24;
             uint32_t w1 = b[pos + 4u] | (uint32_t)b[pos + 5u] << 8 | (uint32_t)b[pos + 6u] << 16 |
                           (uint32_t)b[pos + 7u] << 24;
-            if ((w0 || w1) && ((w0 >> 30) || TP_INST(w0) >= NTRK || !TP_LEN(w1) || !TP_VEL(w1) || (w1 >> 27)))
+            if ((w0 || w1) && ((w0 >> 30) || TP_INST(w0) >= NTRK || !TP_LEN(w1) || TP_LEN(w1) > TAPE_LEN_MAX ||
+                               !TP_VEL(w1) || (w1 >> 27)))
                 return 0;
         }
         return 1;
@@ -566,7 +580,7 @@ static int ts_obj_put(uint32_t n, const uint8_t *b, uint32_t len)
         src.raw = b;
         if (!c)
             memcpy(&tst.rmeta, b + TS_LEN, sizeof tst.rmeta);
-        if (!ts_room(1) || (i = ts_take()) == TS_NONE ||
+        if (!ts_room(1, 1) || (i = ts_take()) == TS_NONE ||
             ts_chunk_write(i, slot, c, tst.rgen, &src, proj_hash(b, TS_LEN), &tst.rmeta)) {
             tst.rslot = TS_NONE;
             return 1;
@@ -589,7 +603,7 @@ static int ts_obj_put(uint32_t n, const uint8_t *b, uint32_t len)
     for (c = 0; c < TS_CHUNKS; c++) {
         if (!((tst.rzero >> c) & 1u))
             continue;
-        if (!ts_room(1) || (i = ts_take()) == TS_NONE ||
+        if (!ts_room(1, 1) || (i = ts_take()) == TS_NONE ||
             ts_chunk_write(i, slot, c, tst.rgen, &src, sum[c], &tst.rmeta)) {
             tst.rslot = TS_NONE;
             return 1;

@@ -1540,7 +1540,11 @@ static int project_save_as(uint32_t slot, const char *name)
         ui_message("STOP TO SAVE");                     /* sequencer (storage_hw.c): only while stopped */
         return 1;
     }
-    if (ts_on() && (kr = ts_save(slot & 3u)) != 0) {   /* ((Skiff P10) the slot's set first: the tape, the steps) */
+    if (!ts_on()) {                                    /* ((Skiff P10) no flash for its set: a LOAD would bring */
+        ui_message("STORAGE ERROR");                   /* the record back without its tape and steps) */
+        return 2;
+    }
+    if ((kr = ts_save(slot & 3u)) != 0) {              /* ((Skiff P10) the slot's set first: the tape, the steps) */
         ui_message(kr == 1 ? "SAVE FORMAT ERROR" : "SAVE ERROR");
         return 2;
     }

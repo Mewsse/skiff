@@ -37,13 +37,19 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 static void panel_setup(void) {}
 
 static uint8_t nor[0x100000], flash_ok = 1;
-static int fail_after = -1, erase_fail;
+static int fail_after = -1, erase_fail, read_fail_after = -1, erase_fail_after = -1;
 static uint32_t erases[256];                      /* per sector (offset >> 12) */
-static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off, n); return 0; }
-static int st_erase(uint32_t off)
+static int st_read(uint32_t off, void *dst, uint32_t n)   /* (read_fail_after: that many, then one fails) */
+{
+    if (read_fail_after >= 0 && !read_fail_after--)
+        return -6;
+    memcpy(dst, nor + off, n);
+    return 0;
+}
+static int st_erase(uint32_t off)                 /* (erase_fail_after: that many, then one fails) */
 {
     erases[(off >> 12) & 255u]++;
-    if (erase_fail)
+    if (erase_fail || (erase_fail_after >= 0 && !erase_fail_after--))
         return -8;
     memset(nor + off, 0xFF, 4096);
     return 0;
@@ -104,6 +110,7 @@ static void fresh(void)                           /* a new unit: flash erased, t
     flash_ok = 1;
     fail_after = -1;
     erase_fail = 0;
+    read_fail_after = erase_fail_after = -1;
     tape_init();
     ts_boot();
     motion_lost = 0;
@@ -435,8 +442,10 @@ static int playing_and_delete(void)
     flash_ok = 0;
     ts_boot();
     ok = !ts_has(1) && ts_save(1) == 2;
+    rich(0, 6);
+    ok &= project_save(1) == 2 && str_eq(ui.msg, "STORAGE ERROR") && !project_used(1);
     flash_ok = 1;
-    bad += check("no flash: no set, a save says so", ok);
+    bad += check("no flash: no set, a save says so (a project save refused: its tape and steps have nowhere to go)", ok);
     return bad;
 }
 
@@ -569,10 +578,51 @@ static int dx_kit_project(void)
     return bad;
 }
 
+/* a save failing in the session (a program error, a read-back error, an erase failing), then a save that works: after a
+ * power cycle the set is the last one saved (the failed try's chunks are never of the retry's generation) */
+static int fail_then_retry(void)
+{
+    static snap_t want, got;
+    uint32_t mode, pre, cut, j, k, runs = 0, wrong = 0;
+    int bad = 0;
+    for (mode = 0; mode < 3u; mode++)
+        for (pre = 0; pre < 10u; pre++)
+            for (cut = mode == 2u ? 0u : 1u; cut <= (mode == 2u ? 3u : 60u); cut += mode == 2u ? 1u : 3u) {
+                int first, retry;
+                fresh();
+                for (k = 0; k < NTRK; k++)
+                    rich(k, k);
+                for (j = 0; j <= pre; j++) {
+                    tape_fill(100u + j, 1u + j, 2);
+                    (void)ts_save(TS_MUSIC);
+                }
+                tape_fill(600, 20, 2);
+                if (mode == 0u)
+                    fail_after = (int)cut;
+                else if (mode == 1u)
+                    read_fail_after = (int)cut;
+                else
+                    erase_fail_after = (int)cut;
+                first = ts_save(TS_MUSIC);
+                fail_after = read_fail_after = erase_fail_after = -1;
+                tape_fill(600, 30, 2);
+                retry = ts_save(TS_MUSIC);
+                snap(&want);
+                power_cycle();
+                scramble();
+                (void)ts_load(TS_MUSIC, 1);
+                snap(&got);
+                runs++;
+                wrong += first == 0 || retry != 0 || !same_seq(&want, &got);
+            }
+    bad += check("a save failing (program, read-back, erase), then one that works: the last one comes back", !wrong && runs);
+    return bad;
+}
+
 int main(void)
 {
     int bad = layout() + fidelity() + torn() + wear_and_wrap() + playing_and_delete() + old_format() + migrate() +
-              dx_kit_project();
+              dx_kit_project() + fail_then_retry();
     printf("%s\n", bad ? "TAPE STORE TEST FAILED" : "tape store tests passed");
     return bad != 0;
 }
