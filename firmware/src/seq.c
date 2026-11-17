@@ -409,7 +409,6 @@ static uint16_t tape_pass __attribute__((section(".pool"))), tape_frac __attribu
 
 /* the one door of every sequencer note (the step sequencer's, the ARP's) onto its track: vel 0 ends the note. The tape
  * and the keys sound through trk_note_on themselves */
-static uint8_t seq_src;                          /* 1 while seq_out sounds a note: SEQ REC's steps are not the tape's to copy */
 static void seq_out(track_t *t, uint32_t note, uint32_t vel)
 {
     seq_src = 1;
@@ -579,6 +578,10 @@ static volatile uint8_t tape_cued __attribute__((section(".pool")));
 static uint32_t join_at __attribute__((section(".pool")));
 static uint8_t cin_note[NTRK][4], cin_vel[NTRK][4], cin_n[NTRK], cin_up[NTRK];   /* kept notes; cin_up bit k: let go */
 static int seq_counting(void) { return cin_left != 0u; }
+/* what the tape and the sequencers wait for (the UI's: the LEDs, the tape's sign): a count-in or a join to come */
+static int seq_cin(void) { return cin_left != 0u && (cin_starts & JOIN_SEQ) != 0u; }
+static uint32_t seq_waits(void) { return (song.playing | seq_cin() | (join_want & JOIN_SEQ)) != 0u; }
+static uint32_t tape_pending(void) { return (join_want | cin_starts | tape_cued) & (JOIN_TAPE | JOIN_TAPE_REC); }
 static uint32_t click_beat_len(void) { return 4u * div_samples(2); }   /* DIV 2: 1/16 */
 static int click_wanted(void)                  /* CLICK REC: while a track is armed, the tape records or will */
 {
@@ -1503,10 +1506,14 @@ static int tape_head_set(uint32_t bar)
     fm1_irq_on();
     return done;
 }
-static int tape_bar_step(int dir)
+/* the main loop's tape request (tape_req: written here only while the slot is free, cleared by the audio ISR): 1 when
+ * written, 0 when the last one has not been taken yet */
+static int tape_ask(uint32_t op)
 {
-    uint32_t bars = tape_length() / TAPE_BAR;
-    return tape_head_set((tape_head / TAPE_BAR + (dir < 0 ? bars - 1u : 1u)) % bars);
+    if (tape_req)
+        return 0;
+    tape_req = (uint8_t)op;
+    return 1;
 }
 static __attribute__((noinline)) uint32_t tape_beat_frac(void)
 {

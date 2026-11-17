@@ -115,8 +115,11 @@ Sizes (Pro, with the note tape and the editor's Tape tab; `./build.sh`): app 581
   the settings keep it once it rests 1.5 s, so it comes back at power-on.
 - **The extra buttons:** KNOB BANK is SHIFT, as HOME held but on a button of its own: the map, + BT for TAKE, and
   + a layer's button to lock that layer. Let go, it does nothing (HOME still taps home, and held opens MENU).
-  FADER BANK steps the faders' bank. < and > move the note tape's head a bar back and on, stopped only (playing, the
-  header says STOP FIRST).
+  FADER BANK steps the faders' bank. < and > move the note tape's head a bar back and on, playing too.
+- **The tape's transport:** KNOB BANK held + the bottom row of pads, pads 9..16 of the scan, 1..8 here: PLAY, PAUSE,
+  REC (the selected track; pressed again while it records: punch out), a bar back, a bar on, the top, the last bar
+  (these two stopped only: STOP FIRST) and UNDO. Such a press is never a step or a note, nor its release; a pad held as
+  a key before SHIFT lets go as that key. The pads show the transport while KNOB BANK is held, the top row dark.
 - **Pads:** always a grid. Where the FM-1's keys show a map of their own (a layer, the DRUM grid, NAME, SLICES, or a
   layer's button held), the pads are its 16 white keys, lit as the FM-1's key LEDs would be, in the track's colour.
   Elsewhere they are the selected track's 16 steps of the page shown. A tap sets an empty step to the last note

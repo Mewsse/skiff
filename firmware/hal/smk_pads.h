@@ -19,11 +19,13 @@ enum { SMK_BTN_KNOB_BANK = 0, SMK_BTN_FADER_BANK = 1, SMK_BTN_LEFT = 2, SMK_BTN_
  * (smk_padq_take), never a note. A release goes where its press went */
 static const uint8_t SMK_WHITE_NOTE[SMK_NPAD] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};
 #define SMK_PAD_TAP 0x80u
+#define SMK_PAD_XPORT 0x81u       /* KNOB BANK held, a bottom-row pad: a tape transport press (smk_ui.c smk_tape_pad), never a note or a step */
 static uint8_t smk_pad_note[SMK_NPAD];   /* what a pad's press did: its white key + 1, SMK_PAD_TAP a step tap, 0 none */
 static volatile uint8_t smk_pad_steps;   /* the UI's: 1 the pads are step taps (smk_padq), 0 the white keys */
 static volatile uint8_t smk_pedal;       /* the UI's (smk_ui.c): 1 the pedal is down, it holds the keys (seq.c) */
 #define SMK_PADQ 32u
-static volatile uint16_t smk_padq[SMK_PADQ];   /* step taps: pad << 8 | velocity (0: let go) */
+#define SMK_PADQ_XPORT 0x1000u    /* a smk_padq entry: a transport press (no release is queued) */
+static volatile uint16_t smk_padq[SMK_PADQ];   /* step taps: pad << 8 | velocity (0: let go); transport presses: SMK_PADQ_XPORT | .. */
 static volatile uint8_t smk_padq_w, smk_padq_r;
 /* (Skiff) MENU > KEY VELOCITY (smk_ui.c, a settings byte): how a key's or a pad's velocity plays. DYNAMIC as struck;
  * SOFT for a light touch (loud sooner), HARD for a heavy one; FIXED 64 / 100 / 127 */
@@ -56,6 +58,28 @@ static int32_t smk_extkey_take(void)
         smk_extq_r = (uint8_t)((smk_extq_r + 1u) % SMK_EXTQ);
     }
     return v;
+}
+
+/* a pad hit (vel) or release (0), shift: KNOB BANK held at the scan. A step tap or a transport press is queued for the
+ * UI; the white key it returns (n + 1) is the caller's to press or let go, 0 none. The way a press went is kept for its
+ * release, so a pad held as a key before SHIFT lets go as that key, and one pressed as a transport never plays or taps
+ * on its release. The bottom row is read here, in the scan: smk_pad_steps is set once a frame and would race a quick
+ * SHIFT + pad */
+static uint32_t smk_pad_event(uint32_t pad, uint32_t vel, uint32_t shift)
+{
+    uint32_t how = vel ? (shift && pad >= SMK_NPAD / 2u ? SMK_PAD_XPORT : smk_pad_steps ? SMK_PAD_TAP : SMK_WHITE_NOTE[pad] + 1u)
+                       : smk_pad_note[pad];
+    uint8_t w = smk_padq_w;
+    if (!how)
+        return 0;
+    smk_pad_note[pad] = vel ? (uint8_t)how : 0u;
+    if (how < SMK_PAD_TAP)
+        return how;
+    if ((how == SMK_PAD_TAP || vel) && (uint8_t)((w + 1u) % SMK_PADQ) != smk_padq_r) {
+        smk_padq[w] = (uint16_t)((how == SMK_PAD_XPORT ? SMK_PADQ_XPORT : 0u) | pad << 8 | vel);
+        smk_padq_w = (uint8_t)((w + 1u) % SMK_PADQ);
+    }
+    return 0;
 }
 
 /* the next step tap (pad << 8 | velocity, 0 = let go), -1 if none */

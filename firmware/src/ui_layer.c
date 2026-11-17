@@ -526,7 +526,7 @@ static void arm_set(uint32_t k, uint32_t op)
         return;
     }
     str_cpy(b + 3, ARM_NAME[op], sizeof b - 3u);
-    if (!song.playing) {
+    if (!clock_run()) {
         arm[k].op = ARM_NONE;
         fm1_irq_off();
         arm_do(&trk[k], op);
@@ -1388,7 +1388,7 @@ static void shift_map(smap_t *m)
                      g == GR_INS ? "MIX" :            /* ((2.5) INSERT 2's page before) */
                      g == GR_USER || g == GR_SLOTS ? "SLOT" : g == GR_EVENTS ? "ROW" :
                      sh ? sh->pj : g == GR_SLICES ? "SLICE" : SND;
-    static const smap_t ALL[9] = {{"BUTTONS", "PAGES", 0}, {"HOLD ONE", "ITS LAYER", 0}, {"HOLD SAVE", "UNDO", 0},
+    static const smap_t ALL[9] = {{"+ PADS", "TAPE", 2}, {"HOLD ONE", "ITS LAYER", 0}, {"HOLD SAVE", "UNDO", 0},
                                   {"+ SAVE", "TAKE", 2}, {"+ REC", "REC SET", 2}, {"+ BUTTON", "LOCK", 2},
                                   {"+ PRESETS", "RANGE", 2}, {"+ OCT-", "COPY", 2}, {"+ OCT+", "PASTE", 2}};   /* ((2.0)
                                                      * NOTES, FEEL: the selection's, ui_input.c sel_shift, sel_copy) */

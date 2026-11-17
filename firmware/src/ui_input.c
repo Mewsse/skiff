@@ -404,7 +404,7 @@ static void ui_leds(void)
     }
     for (k = 0; k < NB; k++)
         led_put(nd, panel.btn[k], 1);
-    if (song.playing || seq_counting())                 /* playing: PLAY's green, its own LED dark in every mode */
+    if (song.playing || seq_cin())                      /* playing: PLAY's green, its own LED dark in every mode */
         led_clear(nd, panel.btn[B_PLAY]);
     for (c = 0; c < FM1_NCOL; c++) {
         if (mode == LEDS_INV)                           /* INV: the active ones dark, the rest lit */
@@ -419,7 +419,7 @@ static void ui_leds(void)
         nl[c] &= (uint8_t)~nb[c];                       /* breathing: neither lit (INV's idle) nor the glow */
         nd[c] &= (uint8_t)~nb[c];
     }
-    if (song.playing || (seq_counting() && cin_pos < click_beat_len() / 4u))   /* counting in: green on each beat */
+    if (song.playing || (seq_cin() && cin_pos < click_beat_len() / 4u))   /* counting in: green on each beat */
         nl[LED_PLAY_GREEN >> 3] |= (uint8_t)(1u << (LED_PLAY_GREEN & 7u));
     smk_leds_out(nl, nd, nb, nm);
 }
@@ -523,7 +523,7 @@ static void play_press(void)
 {
     if (layer_play())
         return;
-    transport_req = song.playing || seq_counting() ? 2u : 1u;
+    transport_req = seq_waits() ? 2u : 1u;             /* (the tape's count-in is not PLAY's to cancel: it joins it) */
 }
 
 /* live recording into the selected track now: the STEP page's key entry pauses meanwhile */
@@ -1994,8 +1994,8 @@ static void ui_input(void)
     ml_poll();                                          /* ((1.3) MIDI LEARN: a CC came for the picked parameter) */
     free_hint();                                        /* ((2.5) a phrase played stopped: how to keep it, once) */
     if (scr_input(pressed, notes)) {                    /* MENU > SCREEN OFF: dark, or the wake gesture: swallowed */
-        if (((pressed >> panel.btn[B_PLAY]) & 1u) && (song.playing || seq_counting()))
-            transport_req = 2;                          /* (Skiff U1) .. but PLAY still stops the music */
+        if (((pressed >> panel.btn[B_PLAY]) & 1u) && (clock_run() || seq_counting()))
+            transport_req = 4;                          /* (Skiff U1) .. but PLAY still stops the music (the tape too) */
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
     }
     if (((pressed >> panel.btn[B_OCTUP]) & 1u) &&      /* ((1.3) MOMENTARY: OCT+ with LFO held: kept (no octave); (2.0, */
@@ -2169,8 +2169,8 @@ static void ui_input(void)
     if (name_on() && !ui.confirm) {                     /* NAME: the keys type, KNOB 1 / 2, OCT+ / OCT- (ui_name.c); */
         if (ui.save_t0)                                 /* SAVE does nothing */
             ui.save_t0 |= 2u;
-        if (((pressed >> panel.btn[B_PLAY]) & 1u) && (song.playing || seq_counting()))
-            transport_req = 2;                          /* PLAY stops a transport started meanwhile (MIDI Start, the
+        if (((pressed >> panel.btn[B_PLAY]) & 1u) && (clock_run() || seq_counting()))
+            transport_req = 4;                          /* PLAY stops a transport started meanwhile (MIDI Start, the
                                                          * editor) so the name can be saved; it never starts one */
         ui.pg_down = 0;
         name_input(notes, oct);

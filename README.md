@@ -495,7 +495,7 @@ scenes and no LAUNCH point: what a track plays is what is on its steps, and the 
 - **The head** is where the tape is. PLAY starts from the bar line it is on (so every GRID line falls where the click,
   the steps and the arpeggiator count it), GLO + PLAY from the top; STOP leaves it, STOP again sends it home; an
   external Start goes to the top, Song Position moves it. The SMK-37's **<** and **>** step it a bar back and on
-  while stopped (STOP FIRST says why not while playing).
+  (playing too: the tape's notes end, the head keeps its place in the bar).
 - **GRID** (MENU › TIMING, REC layer KNOB 3, PERFORM's SELECT; OFF by default) is one setting for everything timed
   on the keys: recording, live playing, the arpeggiator's start, and PERFORM's keys. Its lines are the click's: 1 BAR,
   1/2, 1/4, 1/8, 1/16, 1/32 and the triplets 1/4T, 1/8T, 1/16T; 1/8, 1/16 and 1/32 swing with GLOBAL's SWING.
@@ -521,6 +521,9 @@ by the keys, with what each key is in Skiff.
   the MENU opens
 - Hold FX, GLO, SEL, EDIT, ARP or SEQ for its layer; **SHIFT + the button** (or the button held, then HOME) keeps it open (the header says
   LOCKED), the button closes it. A locked FX layer latches its effects
+- **SMK-37: KNOB BANK (SHIFT) + the bottom row of pads** is the tape's transport: PLAY, PAUSE, REC (the selected track,
+  again to punch out), a bar back, a bar on, the top, the last bar (stopped only), UNDO. **<** and **>** are the bar
+  back and on. The pads show it while KNOB BANK is held
 - **SAVE** tapped: its pages (PRESETS, USER, PROJECT); **held**: undo. **SHIFT + SAVE**: TAKE, or
   (2.5) stopped, after playing: FREE TAKE
 - **REC** arms the selected track the moment it is pressed; on an armed track it disarms every track (its light is on

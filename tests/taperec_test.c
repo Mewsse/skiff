@@ -650,6 +650,40 @@ static int test_steprec_not_doubled(void)
     return bad;
 }
 
+/* a chord step strummed: its notes sound blocks after the sequencer's door closed, and are still the sequencer's */
+static int test_strum_not_doubled(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0, strummed = 0, blk;
+    fresh(1, 0);
+    t->p[P_SLEN] = 16;
+    t->p[P_STRUM] = 100;
+    put_step(t, 3, 3, (const uint8_t[]){60, 64, 67}, ST_NOTE, 0);
+    song.rec = 1;
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    for (blk = 0; blk < 4u * (uint32_t)FS / CTL; blk++) {
+        block();
+        strummed += sq[0].n != 0u;
+    }
+    bad += check("SEQ REC + tape REC, a strummed chord step: the strum waits in the queue, the tape records none of it",
+                 strummed && !list(0) && !tp_open_n);
+    song.rec = 0;
+    stop();
+    fresh(1, 0);
+    t->p[P_SLEN] = 16;
+    t->p[P_STRUM] = 100;
+    put_step(t, 3, 3, (const uint8_t[]){60, 64, 67}, ST_NOTE, 0);
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    run_to(TAPE_BAR - 50u);
+    bad += check("  SEQ REC off: the same strummed chord is recorded by the tape, once", list(0) == 3u);
+    stop();
+    return bad;
+}
+
 /* REC with the tape running: punch in, punch out; a note held over the punch out keeps its end */
 static int test_punch(void)
 {
@@ -702,6 +736,7 @@ int main(void)
     fails += test_seq_stopped_not_recorded();
     fails += test_punch();
     fails += test_steprec_not_doubled();
+    fails += test_strum_not_doubled();
     printf(fails ? "taperec: %u FAILED\n" : "taperec: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

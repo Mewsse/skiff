@@ -241,6 +241,7 @@ static void con_status(void)
     con_puts("\r\n");
     con_kv("bpm", song.g[G_BPM]);
     con_kv("playing", song.playing);
+    con_kv("tape", (int32_t)(tape_go | tape_recording << 1));
     con_kv("boots", (int32_t)felucca_dbg.boots);
 #if FELUCCA_CON_FULL
     con_kv("usb_resets", (int32_t)usb.resets);

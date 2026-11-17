@@ -1775,12 +1775,12 @@ static uint32_t graph_signature(void)
     }
     if (pg->graph == GR_TAPE) {                      /* the head's pixel, the notes (a track's count; a take going in), mutes */
         h = (h ^ (tape_head_px() + 1u) * 40503u ^ tape_length() * 2654435761u ^ ui.tsrc * 7919u ^ tp_target * 131u) * 16777619u;
-        h = (h ^ (tape_reel_phase() >> 4 | (uint32_t)tape_band_off() << 8 | (uint32_t)song.playing << 12 | (song.rec != 0u) << 13 |
+        h = (h ^ (tape_reel_phase() >> 4 | (uint32_t)tape_band_off() << 8 | (uint32_t)tape_go << 12 | (uint32_t)tape_recording << 13 | (tape_pending() >> 1) << 14 |
                   ui_grid_idx() << 16 | (ui.hot_t != 0u) << 20 | (ui.hot_col & 3u) << 21 | (uint32_t)tape_act_ready() << 23 |
                   (uint32_t)(ui_prefs & PREF_LARGE) << 19)) * 16777619u;
         for (i = 0; i < TAPE_TRACKS; i++)
             h = (h ^ ((uint32_t)tp_trk[i].count << 4 | tp_trk[i].mute << 2 | (tp_trk[i].first == TAPE_END))) * 16777619u;
-        if (song.playing && song.rec)
+        if (tape_go && tape_recording)
             h ^= (ui.frame / 4u + 1u) * 2246822519u;
     }
     if (pg->scope == SC_ENGINE && (ENGINES[t->eng_req % NENGINES] == &ENG_WHEEL || t->eng_req % NENGINES == ENGI_FM6 ||
@@ -2080,19 +2080,21 @@ static void tape_run(uint32_t pos, uint32_t len)
 static void tape_sign(void)
 {
     int32_t row, half;
-    uint16_t edge = song.rec ? T_REC : T_THEME;
+    uint32_t pending = tape_pending();
+    int recording = tape_recording && tape_go, armed = (pending & JOIN_TAPE_REC) != 0u;
+    uint16_t edge = recording || armed ? T_REC : T_THEME;
     cv_rect(TPS_CX - 16, TPR_CY - 16, 32, 32, T_BG);
     cv_frame(TPS_CX - 16, TPR_CY - 16, 32, 32, edge);
-    if (song.rec && song.playing) {
+    if (recording) {
         tape_disc(TPS_CX, TPR_CY, (ui.frame / 8u) % 2u == 0u ? 9 : 3, T_REC);
-    } else if (song.rec) {
+    } else if (armed) {
         tape_disc(TPS_CX, TPR_CY, 9, T_REC);
         tape_disc(TPS_CX, TPR_CY, 6, T_BG);
         tape_disc(TPS_CX, TPR_CY, 3, T_REC);
-    } else if (song.playing) {
+    } else if (tape_go || pending) {
         for (row = -10; row <= 10; row++) {
             half = 10 - (row < 0 ? -row : row);
-            cv_rect(TPS_CX - 6, TPR_CY + row, half * 3 / 2 + 1, 1, T_THEME);
+            cv_rect(TPS_CX - 6, TPR_CY + row, half * 3 / 2 + 1, 1, tape_go ? T_THEME : T_MID);
         }
     } else {
         cv_rect(TPS_CX - 8, TPR_CY - 8, 16, 16, T_MID);

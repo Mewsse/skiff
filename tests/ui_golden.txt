@@ -22,7 +22,7 @@ db84eca9ff089210 CRYPT_batt_3
 9bf0f005bb8638a2 CRYPT_chance
 54f20deedd64f858 CRYPT_chance_flam
 b2acfed903e426e5 CRYPT_chord
-e3e467316329e486 CRYPT_chord_kit
+f4441a668aec93da CRYPT_chord_kit
 120b76d4342201e4 CRYPT_chord_off
 861694dbec962b58 CRYPT_chord_strum
 259890f0e8d4ae99 CRYPT_chord_strum_alt
@@ -210,8 +210,8 @@ b55eb7bb5fc0ea08 CRYPT_roll_ties
 4f38024da27c1ef5 CRYPT_roll_wide
 8666abb7ed3fda55 CRYPT_samples
 316c56c71559fd3b CRYPT_scl
-c915575e30cced42 CRYPT_shift_env
-cbc0f552f3610adc CRYPT_shift_home
+8a38c93707b50790 CRYPT_shift_env
+c2789a772dce91b2 CRYPT_shift_home
 55a5742a1fcfc955 CRYPT_shift_step
 b6ba44eb5bcd5dc8 CRYPT_six_edit
 25b1d76ffe9aa4c4 CRYPT_six_edit_said
@@ -232,6 +232,7 @@ e77e22a6e0b6ada7 CRYPT_splash
 f1dfd7d55cbe1aea CRYPT_step_tiles_drum
 55bf559f93ef898d CRYPT_take_box
 e0ec149f981bccd7 CRYPT_take_partial
+ae627a45b8b1ba27 CRYPT_tape_armed
 0e494af8f314b793 CRYPT_tape_clear
 d74d69c7ef20db97 CRYPT_tape_empty
 9e9d75fb7a7690e3 CRYPT_tape_long
@@ -241,7 +242,7 @@ d74d69c7ef20db97 CRYPT_tape_empty
 ee162dfb2c0b8cee CRYPT_tape_notes
 54d25f276dcfc9bc CRYPT_tape_pick
 d0d4333401d58b94 CRYPT_tape_play
-dce3a02568f6fce9 CRYPT_tape_rec
+37002fc9e96487b6 CRYPT_tape_rec
 6db32e8311fcec94 CRYPT_uboot
 b19faf7f38bddc73 CRYPT_undo_box
 357c1cad3eee6b6f CRYPT_user
@@ -270,7 +271,7 @@ c1e1e4d70decd8db CUSTOM_CRYPT_auto_list_drum
 96645654386662c3 CUSTOM_CRYPT_chance
 f1794cbc8e267261 CUSTOM_CRYPT_chance_flam
 f6ba6585649de26f CUSTOM_CRYPT_chord
-5af0ba30661f9269 CUSTOM_CRYPT_chord_kit
+62ebc007c9441cfd CUSTOM_CRYPT_chord_kit
 4ca0d63b69ce143b CUSTOM_CRYPT_chord_off
 5e0c13d6318851ee CUSTOM_CRYPT_chord_strum
 9573e0a1e498ff8e CUSTOM_CRYPT_chord_strum_alt
@@ -458,8 +459,8 @@ fb4970b2251f1714 CUSTOM_CRYPT_roll_playing
 398ca7493d88a087 CUSTOM_CRYPT_roll_wide
 9b1c11c5eb71cc43 CUSTOM_CRYPT_samples
 ca3a2d772c7f2692 CUSTOM_CRYPT_scl
-d897073b58244846 CUSTOM_CRYPT_shift_env
-90b80ffe32bd06f9 CUSTOM_CRYPT_shift_home
+1d7adf8aed5e4509 CUSTOM_CRYPT_shift_env
+0e1ceeccc698ef5a CUSTOM_CRYPT_shift_home
 b6c51599f36e653b CUSTOM_CRYPT_shift_step
 f39891592b654834 CUSTOM_CRYPT_six_edit
 695b2ee760930628 CUSTOM_CRYPT_six_edit_said
@@ -480,6 +481,7 @@ e83e8ab6441166b1 CUSTOM_CRYPT_step_tiles_bar2
 ac628ed3caeaca10 CUSTOM_CRYPT_step_tiles_drum
 c63dc691912c84be CUSTOM_CRYPT_take_box
 08aad0e7517df9b8 CUSTOM_CRYPT_take_partial
+d2e3186d365cb6c8 CUSTOM_CRYPT_tape_armed
 fea887979934bd4e CUSTOM_CRYPT_tape_clear
 1dacffa832c8f6b0 CUSTOM_CRYPT_tape_empty
 d49ee9fb917ae664 CUSTOM_CRYPT_tape_long
@@ -489,7 +491,7 @@ c8d1d3b5ee8404d9 CUSTOM_CRYPT_tape_muted
 211b43ebf5307271 CUSTOM_CRYPT_tape_notes
 9086b9739b2aee86 CUSTOM_CRYPT_tape_pick
 699ee5f9d9961342 CUSTOM_CRYPT_tape_play
-47e12d770e103a7f CUSTOM_CRYPT_tape_rec
+86d7b70d1048342c CUSTOM_CRYPT_tape_rec
 62096859cf879d74 CUSTOM_CRYPT_uboot
 6b002f531861d77c CUSTOM_CRYPT_undo_box
 100664170e35aeb6 CUSTOM_CRYPT_user
@@ -518,7 +520,7 @@ fb517c8600ec708a CUSTOM_NEON_batt_3
 648b48906c3d2897 CUSTOM_NEON_chance
 82e1903b3eeb810a CUSTOM_NEON_chance_flam
 dc0de82ed0d0b307 CUSTOM_NEON_chord
-284d590a1611dbf3 CUSTOM_NEON_chord_kit
+6c9725daba33654b CUSTOM_NEON_chord_kit
 0131fa72fdf00a80 CUSTOM_NEON_chord_off
 067683549596d2ab CUSTOM_NEON_chord_strum
 0e40ad8f85cdc25a CUSTOM_NEON_chord_strum_alt
@@ -706,8 +708,8 @@ dcbb8e19b0f085e7 CUSTOM_NEON_roll_locks
 d3bb17497791d367 CUSTOM_NEON_roll_wide
 1d93124b19e33343 CUSTOM_NEON_samples
 b6c0e0d99deb51bb CUSTOM_NEON_scl
-372c375db0fd52e5 CUSTOM_NEON_shift_env
-505d49ff8d66ab87 CUSTOM_NEON_shift_home
+d6c5aea5651b7268 CUSTOM_NEON_shift_env
+a8fec676d600e6a6 CUSTOM_NEON_shift_home
 326dc6788db405fa CUSTOM_NEON_shift_step
 1de6763ad860efe1 CUSTOM_NEON_six_edit
 2854918bdb470df5 CUSTOM_NEON_six_edit_said
@@ -728,6 +730,7 @@ dbc1bbe7b60ec6a7 CUSTOM_NEON_step_tiles
 8879bef166448cba CUSTOM_NEON_step_tiles_drum
 4c6f38ec43865a34 CUSTOM_NEON_take_box
 4589afb2ab621e36 CUSTOM_NEON_take_partial
+2b68feda7b81206a CUSTOM_NEON_tape_armed
 a43fb724eca454e7 CUSTOM_NEON_tape_clear
 68bb9ca1afabd33a CUSTOM_NEON_tape_empty
 40bd0b8568dc4785 CUSTOM_NEON_tape_long
@@ -737,7 +740,7 @@ c77181be63ad507b CUSTOM_NEON_tape_muted
 806e5c076c4055cf CUSTOM_NEON_tape_notes
 b218fdc7f5653412 CUSTOM_NEON_tape_pick
 abd3c7580a5805f4 CUSTOM_NEON_tape_play
-f9d357ce10e7d886 CUSTOM_NEON_tape_rec
+e8da59b719ca7698 CUSTOM_NEON_tape_rec
 715f06dcbc453ee0 CUSTOM_NEON_uboot
 b9bf47f6e14e401a CUSTOM_NEON_undo_box
 0e793d34a87d5f6c CUSTOM_NEON_user
@@ -766,7 +769,7 @@ ff57be56ce1902f4 CUSTOM_QUARK_calibration
 b2ab822a310b5c44 CUSTOM_QUARK_chance
 1afd91581ef49e8b CUSTOM_QUARK_chance_flam
 4b57019ee5876841 CUSTOM_QUARK_chord
-107d93c584f3487f CUSTOM_QUARK_chord_kit
+1846315b73e24fc3 CUSTOM_QUARK_chord_kit
 66ef0933c99cc9da CUSTOM_QUARK_chord_off
 e9ebe25bb2ad6a9f CUSTOM_QUARK_chord_strum
 4fc3bb98fa882688 CUSTOM_QUARK_chord_strum_alt
@@ -954,8 +957,8 @@ dabb4bf21f131bc2 CUSTOM_QUARK_roll_playing
 87eb8cd4c9b2172b CUSTOM_QUARK_roll_wide
 6755a721b5695d58 CUSTOM_QUARK_samples
 e25cb74de78386d4 CUSTOM_QUARK_scl
-c52a9dfec17bd6c5 CUSTOM_QUARK_shift_env
-2ae652d21482b8fc CUSTOM_QUARK_shift_home
+4d831a6e8d3de8fe CUSTOM_QUARK_shift_env
+fba3a14a86fb4757 CUSTOM_QUARK_shift_home
 224f7192a092fc29 CUSTOM_QUARK_shift_step
 b19d819a4fce0c09 CUSTOM_QUARK_six_edit
 f7f3d9b67d25c853 CUSTOM_QUARK_six_edit_said
@@ -976,6 +979,7 @@ be7c0b34e9889e8d CUSTOM_QUARK_splash
 4754a739c480064b CUSTOM_QUARK_step_tiles_drum
 f4f444b8096efb04 CUSTOM_QUARK_take_box
 6b7ced928a06f4f0 CUSTOM_QUARK_take_partial
+6c53179e7130bbfd CUSTOM_QUARK_tape_armed
 e824d8d900770367 CUSTOM_QUARK_tape_clear
 e59613168f9ac85a CUSTOM_QUARK_tape_empty
 30aba3a45041a110 CUSTOM_QUARK_tape_long
@@ -985,7 +989,7 @@ e59613168f9ac85a CUSTOM_QUARK_tape_empty
 b9a130ff51a969c4 CUSTOM_QUARK_tape_notes
 c43b1a54b2af8e98 CUSTOM_QUARK_tape_pick
 f42138078d423304 CUSTOM_QUARK_tape_play
-b1743423f807262d CUSTOM_QUARK_tape_rec
+331d30e3165eec3a CUSTOM_QUARK_tape_rec
 fa9470cba86e4aeb CUSTOM_QUARK_uboot
 9a3a1f07f68be088 CUSTOM_QUARK_undo_box
 516ff8be5493a051 CUSTOM_QUARK_user
@@ -1014,7 +1018,7 @@ ff57be56ce1902f4 CUSTOM_SKIFF_calibration
 3fb1288534b76cea CUSTOM_SKIFF_chance
 b53c545d07e0be5e CUSTOM_SKIFF_chance_flam
 906110b3eb0c98f8 CUSTOM_SKIFF_chord
-06059c764dd7aa9f CUSTOM_SKIFF_chord_kit
+af4946c725fda523 CUSTOM_SKIFF_chord_kit
 066691fdf6425a8f CUSTOM_SKIFF_chord_off
 b1f409a9689f534c CUSTOM_SKIFF_chord_strum
 aa50284e2dc611d4 CUSTOM_SKIFF_chord_strum_alt
@@ -1202,8 +1206,8 @@ bcb59d568281b51f CUSTOM_SKIFF_roll_ties
 d50c484164840045 CUSTOM_SKIFF_roll_wide
 da3f51292bbb2b6d CUSTOM_SKIFF_samples
 07f18d7eee3a914a CUSTOM_SKIFF_scl
-19a173048267c301 CUSTOM_SKIFF_shift_env
-4320217e0bf85b32 CUSTOM_SKIFF_shift_home
+2cabc11b31390d42 CUSTOM_SKIFF_shift_env
+d4b0e1f95bf1272d CUSTOM_SKIFF_shift_home
 f77bd147e45d4179 CUSTOM_SKIFF_shift_step
 0cb656b2b03fcf09 CUSTOM_SKIFF_six_edit
 87c02b7f8fa7c0b7 CUSTOM_SKIFF_six_edit_said
@@ -1224,6 +1228,7 @@ f32803ee97394f1f CUSTOM_SKIFF_step_tiles
 bc55a1eeb4fb80aa CUSTOM_SKIFF_step_tiles_drum
 f1e56c36c40e81f9 CUSTOM_SKIFF_take_box
 e117ae183fdf8da9 CUSTOM_SKIFF_take_partial
+7860dc5f3162f9bd CUSTOM_SKIFF_tape_armed
 e9c9bf71542a1ccc CUSTOM_SKIFF_tape_clear
 0f14f7f138982c5a CUSTOM_SKIFF_tape_empty
 d385b3d0ddf8d7f0 CUSTOM_SKIFF_tape_long
@@ -1233,7 +1238,7 @@ a9969a4f838914f2 CUSTOM_SKIFF_tape_merge
 a8a5cf6b09905ae4 CUSTOM_SKIFF_tape_notes
 0cee2b2089d4d958 CUSTOM_SKIFF_tape_pick
 e9033ae2fe166a04 CUSTOM_SKIFF_tape_play
-49c65a66bf74db01 CUSTOM_SKIFF_tape_rec
+af75fc81dda8809d CUSTOM_SKIFF_tape_rec
 765a29dbde56b61b CUSTOM_SKIFF_uboot
 57527f604f57718d CUSTOM_SKIFF_undo_box
 c2fa8c06185b0e7a CUSTOM_SKIFF_user
@@ -1262,7 +1267,7 @@ af695591d5f30543 HI-CON_batt_usb
 fb50c99db19e7f07 HI-CON_chance
 ac0857e93ecafe1c HI-CON_chance_flam
 24ac55a987851a52 HI-CON_chord
-8ca0680ace9fcbf4 HI-CON_chord_kit
+4408d4d8989146b0 HI-CON_chord_kit
 1841b6b752882406 HI-CON_chord_off
 37af4ace81143cab HI-CON_chord_strum
 5bbd5f5793e572db HI-CON_chord_strum_alt
@@ -1450,8 +1455,8 @@ af56f311a4a94e67 HI-CON_roll_locks
 6c7034030e7615c9 HI-CON_roll_wide
 f716258f504d3251 HI-CON_samples
 96a7203d8706e62b HI-CON_scl
-a9472a596246d6a2 HI-CON_shift_env
-e79c7c174164dd4e HI-CON_shift_home
+b968b909464e4957 HI-CON_shift_env
+d671de0a0e06f7e7 HI-CON_shift_home
 ea8f3715f10f29b5 HI-CON_shift_step
 c1f26ec66bb6ec7f HI-CON_six_edit
 06191e662096e03e HI-CON_six_edit_said
@@ -1472,6 +1477,7 @@ bc3e3f34d43b0c61 HI-CON_step_tiles_bar2
 7e49f524e161aa40 HI-CON_step_tiles_drum
 50ba1c0d30c7b609 HI-CON_take_box
 1df8231fba86e121 HI-CON_take_partial
+18ba008ff3a919d9 HI-CON_tape_armed
 0b4ed4d35371caad HI-CON_tape_clear
 56f8238754cdc8a6 HI-CON_tape_empty
 ed8472784ff28b5a HI-CON_tape_long
@@ -1481,7 +1487,7 @@ ed8472784ff28b5a HI-CON_tape_long
 1c306878f156fb3c HI-CON_tape_notes
 d72afbe61c3bda88 HI-CON_tape_pick
 259aa85bf1891133 HI-CON_tape_play
-9bc455d8b8c8c3f6 HI-CON_tape_rec
+56e5e12995d76d1a HI-CON_tape_rec
 2f717c925d068be4 HI-CON_uboot
 56611d0cffb6d543 HI-CON_undo_box
 5316c15386bbdea0 HI-CON_user
@@ -1510,7 +1516,7 @@ c3bdb64db11582cf LARGE_CRYPT_auto_list
 b76d99d890084144 LARGE_CRYPT_chance
 4e5a3f40a1bbb13a LARGE_CRYPT_chance_flam
 946a51e8c07c3794 LARGE_CRYPT_chord
-01c1a59c073a06a6 LARGE_CRYPT_chord_kit
+280e1b529f98ff9a LARGE_CRYPT_chord_kit
 33b44f1726580d15 LARGE_CRYPT_chord_off
 8e45e2abefb17a80 LARGE_CRYPT_chord_strum
 e6d51770d169c2fc LARGE_CRYPT_chord_strum_alt
@@ -1698,8 +1704,8 @@ f1bb8798f2bf5678 LARGE_CRYPT_roll_playing
 85acf40ee194da13 LARGE_CRYPT_roll_wide
 b0ca063078ad9eb6 LARGE_CRYPT_samples
 97525c8eb2fdaa0d LARGE_CRYPT_scl
-62a5692688ef87be LARGE_CRYPT_shift_env
-22a5357448fc4e6a LARGE_CRYPT_shift_home
+9052a46f448361fc LARGE_CRYPT_shift_env
+ac79048fb52894dc LARGE_CRYPT_shift_home
 bfe1978f19799127 LARGE_CRYPT_shift_step
 5dc77129ed89b4db LARGE_CRYPT_six_edit
 865189d44b376bc7 LARGE_CRYPT_six_edit_said
@@ -1720,6 +1726,7 @@ cff9ac80de7e0c24 LARGE_CRYPT_step_tiles
 c49f6f62840e0350 LARGE_CRYPT_step_tiles_drum
 2e1bdbcfee5c71ac LARGE_CRYPT_take_box
 2e1bdbcfee5c71ac LARGE_CRYPT_take_partial
+ba1ffb1f4310e397 LARGE_CRYPT_tape_armed
 2b4c2934d6372f7f LARGE_CRYPT_tape_clear
 d30a5c9041fe5d7f LARGE_CRYPT_tape_empty
 9fa66a9cdb745482 LARGE_CRYPT_tape_long
@@ -1729,7 +1736,7 @@ b1a0b5d865dc207f LARGE_CRYPT_tape_mute_turn
 67a3834c5243836e LARGE_CRYPT_tape_notes
 45a3eaa9035773a5 LARGE_CRYPT_tape_pick
 fef1f9e5022ac4d4 LARGE_CRYPT_tape_play
-8ba4633f578c0789 LARGE_CRYPT_tape_rec
+59b845749da0c536 LARGE_CRYPT_tape_rec
 6db32e8311fcec94 LARGE_CRYPT_uboot
 2e1bdbcfee5c71ac LARGE_CRYPT_undo_box
 f14c9e02ba4d1098 LARGE_CRYPT_user
@@ -1758,7 +1765,7 @@ fc5d6f95f4bd215b LARGE_NEON_calibration
 5d611d5a689e9759 LARGE_NEON_chance
 48e5be8991ec6aa7 LARGE_NEON_chance_flam
 c4f8952458873c5e LARGE_NEON_chord
-be35f93fe38ade4e LARGE_NEON_chord_kit
+65b14cfb170915ca LARGE_NEON_chord_kit
 b7b801c198bff5b3 LARGE_NEON_chord_off
 5ba6f19eadf8ae58 LARGE_NEON_chord_strum
 8d77bcef5cddf3d5 LARGE_NEON_chord_strum_alt
@@ -1946,8 +1953,8 @@ e7b860312b602b09 LARGE_NEON_roll_ties
 9fefc5cc35e34f9a LARGE_NEON_roll_wide
 fc6ffa7173c499c7 LARGE_NEON_samples
 633953bbf5883f0f LARGE_NEON_scl
-c8ab5f02f07c217c LARGE_NEON_shift_env
-1e23e362a17314e7 LARGE_NEON_shift_home
+bfe82f4a9422f352 LARGE_NEON_shift_env
+d3e95e43d5e02471 LARGE_NEON_shift_home
 826167bf655cb431 LARGE_NEON_shift_step
 66a3a0645070775e LARGE_NEON_six_edit
 265d022e20b0d392 LARGE_NEON_six_edit_said
@@ -1968,6 +1975,7 @@ f10ba83f499b193d LARGE_NEON_step_tiles
 b1a7f130333deca9 LARGE_NEON_step_tiles_drum
 e2677d2434553afd LARGE_NEON_take_box
 e2677d2434553afd LARGE_NEON_take_partial
+2449edfb8e6440e9 LARGE_NEON_tape_armed
 7f03eb2020dd7747 LARGE_NEON_tape_clear
 fe2ba02a10f67c82 LARGE_NEON_tape_empty
 d2e67d7089ce4f32 LARGE_NEON_tape_long
@@ -1977,7 +1985,7 @@ c0a1a49778629643 LARGE_NEON_tape_merge
 d5c51b3df3e156b0 LARGE_NEON_tape_notes
 56034cbe8b0ba5f7 LARGE_NEON_tape_pick
 c5f0d19634001895 LARGE_NEON_tape_play
-3b645450ce2506db LARGE_NEON_tape_rec
+156bb0e2963298c1 LARGE_NEON_tape_rec
 00b30677b58a29a4 LARGE_NEON_uboot
 e2677d2434553afd LARGE_NEON_undo_box
 875e0c6c51e0a66a LARGE_NEON_user
@@ -2006,7 +2014,7 @@ eb3f5132acb8cebf LARGE_QUARK_calibration
 3fe86a7cfedf4708 LARGE_QUARK_chance
 efea4621d822b3f2 LARGE_QUARK_chance_flam
 df38397a023cb0dc LARGE_QUARK_chord
-255353ffc5bb2c3f LARGE_QUARK_chord_kit
+295777eacc69a3cf LARGE_QUARK_chord_kit
 bb6862ef71fa53a7 LARGE_QUARK_chord_off
 82f7f5a4d4e2b2a1 LARGE_QUARK_chord_strum
 1f2c5dbf91e20d9b LARGE_QUARK_chord_strum_alt
@@ -2194,8 +2202,8 @@ b69d2c0c9bde7f60 LARGE_QUARK_roll_ties
 00e5ef282b97b6d2 LARGE_QUARK_roll_wide
 bf2ab5fe8e561d9d LARGE_QUARK_samples
 efd41706b09a3c7f LARGE_QUARK_scl
-4dfaed47a15f1aab LARGE_QUARK_shift_env
-9601105c006fc52c LARGE_QUARK_shift_home
+cd2b5cb464ac6afd LARGE_QUARK_shift_env
+dac0ffb81df1292e LARGE_QUARK_shift_home
 042d44cb18131ed7 LARGE_QUARK_shift_step
 6617dc1a6b298524 LARGE_QUARK_six_edit
 8d5e90669c3fc603 LARGE_QUARK_six_edit_said
@@ -2216,6 +2224,7 @@ a71aadd883b5016b LARGE_QUARK_step_tiles_bar2
 547d0fe9c360fec6 LARGE_QUARK_step_tiles_drum
 6e02f30e23c80aef LARGE_QUARK_take_box
 6e02f30e23c80aef LARGE_QUARK_take_partial
+d6462661060ea9ee LARGE_QUARK_tape_armed
 4cc1c71dd3be9db2 LARGE_QUARK_tape_clear
 8579c680f2baf98f LARGE_QUARK_tape_empty
 afa7788c467f9a08 LARGE_QUARK_tape_long
@@ -2225,7 +2234,7 @@ bb0f2922edbe142e LARGE_QUARK_tape_merge
 89c1918cf9e0f7c3 LARGE_QUARK_tape_notes
 a83859ca024214d6 LARGE_QUARK_tape_pick
 433c63a8dde2d386 LARGE_QUARK_tape_play
-03d8ac45814554cb LARGE_QUARK_tape_rec
+1101db9896e9dbc4 LARGE_QUARK_tape_rec
 46ee8bbddf9448ce LARGE_QUARK_uboot
 6e02f30e23c80aef LARGE_QUARK_undo_box
 dfed910ba909d6c8 LARGE_QUARK_user
@@ -2254,7 +2263,7 @@ cc25781e47d28780 LARGE_SKIFF_calibration
 6713604072cc30ce LARGE_SKIFF_chance
 66d913f6051a0d51 LARGE_SKIFF_chance_flam
 4e49f79b3064822f LARGE_SKIFF_chord
-1251a10b1fd3b15a LARGE_SKIFF_chord_kit
+e50501c78ef82392 LARGE_SKIFF_chord_kit
 291afb0a69d3c6c6 LARGE_SKIFF_chord_off
 7d98592546faf461 LARGE_SKIFF_chord_strum
 7731954bf591c438 LARGE_SKIFF_chord_strum_alt
@@ -2442,8 +2451,8 @@ a7d1d01512a34359 LARGE_SKIFF_roll_locks
 c266029fed96e9b1 LARGE_SKIFF_roll_wide
 6d9858c551a8cabf LARGE_SKIFF_samples
 7781727e0f9c424a LARGE_SKIFF_scl
-8ca75b4f62f48b07 LARGE_SKIFF_shift_env
-6d0c0a3a15080ba9 LARGE_SKIFF_shift_home
+fff0a15299e7ccbd LARGE_SKIFF_shift_env
+d8c7c84b2003c4d3 LARGE_SKIFF_shift_home
 c8774417ed0062d4 LARGE_SKIFF_shift_step
 b17188a85bb69571 LARGE_SKIFF_six_edit
 6fa7fbfb56a74890 LARGE_SKIFF_six_edit_said
@@ -2464,6 +2473,7 @@ aad38866b8e5ea33 LARGE_SKIFF_step_tiles_bar2
 1fbf6006e92bbb2a LARGE_SKIFF_step_tiles_drum
 746ee42987eaf9de LARGE_SKIFF_take_box
 746ee42987eaf9de LARGE_SKIFF_take_partial
+a0b8cf571fe6acdd LARGE_SKIFF_tape_armed
 78d138f881dce52f LARGE_SKIFF_tape_clear
 73fdbb402f78e2cf LARGE_SKIFF_tape_empty
 acab40224479e98c LARGE_SKIFF_tape_long
@@ -2473,7 +2483,7 @@ aca388b042bba1be LARGE_SKIFF_tape_muted
 bfe2a91da768847c LARGE_SKIFF_tape_notes
 7a461e8eef33bdc8 LARGE_SKIFF_tape_pick
 b7c5f637d818f8ef LARGE_SKIFF_tape_play
-74ba19b02a91ab9e LARGE_SKIFF_tape_rec
+45fafa7acaa799f2 LARGE_SKIFF_tape_rec
 11470830f75229c2 LARGE_SKIFF_uboot
 746ee42987eaf9de LARGE_SKIFF_undo_box
 3a3c3ac52b48b59e LARGE_SKIFF_user
@@ -2504,7 +2514,7 @@ fc5d6f95f4bd215b NEON_calibration
 0331253afa4b510b NEON_chance
 5f60eda23cbd830e NEON_chance_flam
 60122d1514335e3f NEON_chord
-835deca19c883792 NEON_chord_kit
+df469e04e5efacbe NEON_chord_kit
 de68f59784f74e41 NEON_chord_off
 3da68d3b4972acfd NEON_chord_strum
 08eb2dea3d642c64 NEON_chord_strum_alt
@@ -2692,8 +2702,8 @@ f09e935c8650832f NEON_roll_low
 489f6d42d3ee573e NEON_roll_wide
 4651f29955400aef NEON_samples
 1164e1ed3c0a395a NEON_scl
-2e42a5ee64c87108 NEON_shift_env
-746debd2de4788d2 NEON_shift_home
+54019f3c2fc39096 NEON_shift_env
+ead38747dce22ef4 NEON_shift_home
 533ec536a4499729 NEON_shift_step
 2e8bb9726cafca47 NEON_six_edit
 24c0ff78aa4f20d3 NEON_six_edit_said
@@ -2714,6 +2724,7 @@ ed8ba6d4d65836ed NEON_step_tiles_bar2
 e8ba89ff4dfd065b NEON_step_tiles_drum
 2c28f47a91b579ff NEON_take_box
 3651915c1afa4f41 NEON_take_partial
+294ef00756d27aa5 NEON_tape_armed
 769f4e02f447c503 NEON_tape_clear
 89c2abe4fc81f806 NEON_tape_empty
 1030be2485d1028c NEON_tape_long
@@ -2723,7 +2734,7 @@ b9aa877a919575cc NEON_tape_mute_turn
 7c58f2f155d67fc4 NEON_tape_notes
 7fdc91adb5d4a710 NEON_tape_pick
 77b49f59e876b861 NEON_tape_play
-dc7fab3ec8b356cf NEON_tape_rec
+7b4258cb564d831d NEON_tape_rec
 00b30677b58a29a4 NEON_uboot
 f11db6b4b6a4d609 NEON_undo_box
 1159fdb4a84790e2 NEON_user
@@ -2752,7 +2763,7 @@ d905a78054dcd307 PAPER_batt_3
 4e91b08dd068d870 PAPER_chance
 1bc2141385f9ffc2 PAPER_chance_flam
 237903fafae2eb2d PAPER_chord
-80766261c1612034 PAPER_chord_kit
+ed6856ebffae8434 PAPER_chord_kit
 fab0f4fb94ce6793 PAPER_chord_off
 b36c4c26a3c21164 PAPER_chord_strum
 2791a53b094b52a3 PAPER_chord_strum_alt
@@ -2940,8 +2951,8 @@ e6bc2e02e85de810 PAPER_roll_ties
 dc4c5f20cfc5b54b PAPER_roll_wide
 0d768a45f8934700 PAPER_samples
 12e042f62d24f55e PAPER_scl
-e1092b18d47afa55 PAPER_shift_env
-6c4bded1ac132932 PAPER_shift_home
+2be19574e7cb2c63 PAPER_shift_env
+0474305f75c0e8a8 PAPER_shift_home
 26d41efe0b0eaedb PAPER_shift_step
 9398d2560194e1d1 PAPER_six_edit
 2a4ae2cf977464e6 PAPER_six_edit_said
@@ -2962,6 +2973,7 @@ f0485ee6711cb695 PAPER_step
 401114e763a026b9 PAPER_step_tiles_drum
 27ac8422888a2ee1 PAPER_take_box
 8aa1f550042ede8b PAPER_take_partial
+c78e5b338dc0e908 PAPER_tape_armed
 107d3f6ede2c0903 PAPER_tape_clear
 ffed070cfa931e19 PAPER_tape_empty
 a8aff7aeaa3df5a8 PAPER_tape_long
@@ -2971,7 +2983,7 @@ c47f97d509b49dd3 PAPER_tape_merge
 4edc7d2ed7f96656 PAPER_tape_notes
 50730f8f3bb388a0 PAPER_tape_pick
 5c285381992b735b PAPER_tape_play
-f0ceaa2ff272fbb1 PAPER_tape_rec
+fb88f05412bf4ad9 PAPER_tape_rec
 c1125f5b99f630a9 PAPER_uboot
 156a1a794a51c221 PAPER_undo_box
 f3e500c67d7b6045 PAPER_user
@@ -3008,7 +3020,7 @@ eb3f5132acb8cebf QUARK_calibration
 dde302ff4423a26c QUARK_chance
 015fd46095c8ec36 QUARK_chance_flam
 74ccd43d0024b0e8 QUARK_chord
-d0fd8991bdbe0190 QUARK_chord_kit
+6ae774a16cdf2b60 QUARK_chord_kit
 3c11eadcbfe67b20 QUARK_chord_off
 57a211f235d8f1ed QUARK_chord_strum
 b2b67c918f4c28c0 QUARK_chord_strum_alt
@@ -3196,8 +3208,8 @@ b472b67fbe167d84 QUARK_roll_ties
 f78f9d5e0d43be76 QUARK_roll_wide
 e262ae3579d94034 QUARK_samples
 6dbbe37749aae813 QUARK_scl
-e9d63e9e0fe9c474 QUARK_shift_env
-94605a83404302e3 QUARK_shift_home
+dc2558d276331316 QUARK_shift_env
+86596052f77c6545 QUARK_shift_home
 8159445560939d1f QUARK_shift_step
 7ee9d8bdde3c6db8 QUARK_six_edit
 fcc11747dcfbdc27 QUARK_six_edit_said
@@ -3218,6 +3230,7 @@ c0be1833500cb399 QUARK_step_tiles_bar2
 df59961273fac4ce QUARK_step_tiles_drum
 42ae2f02525e26be QUARK_take_box
 ad6bad156c092931 QUARK_take_partial
+4e2607353687e779 QUARK_tape_armed
 cfb54505de337c9c QUARK_tape_clear
 1a4f99ae306e78ac QUARK_tape_empty
 4b82ac6c611c39bc QUARK_tape_long
@@ -3227,7 +3240,7 @@ ca4ef32be36f4246 QUARK_tape_muted
 e328e734f99476c8 QUARK_tape_notes
 5c67c4b33583e8cf QUARK_tape_pick
 5f887adf31ce20d9 QUARK_tape_play
-3e12c880bd110448 QUARK_tape_rec
+9afb0d163d8adc53 QUARK_tape_rec
 46ee8bbddf9448ce QUARK_uboot
 891bed2f227ea188 QUARK_undo_box
 aaa4deeca763e3cf QUARK_user
@@ -3258,7 +3271,7 @@ cc25781e47d28780 SKIFF_calibration
 99973d18b795b446 SKIFF_chance
 e481fc21faf2d7c5 SKIFF_chance_flam
 8d0006ae2654fe5a SKIFF_chord
-934e955f608beb16 SKIFF_chord_kit
+cd469f31562c03ee SKIFF_chord_kit
 c275e2756db26aec SKIFF_chord_off
 11c9d97566ef4d4a SKIFF_chord_strum
 8029d11b02e060ea SKIFF_chord_strum_alt
@@ -3446,8 +3459,8 @@ e201ec1072f64911 SKIFF_roll_playing
 acdd51bd6a35abc9 SKIFF_roll_wide
 db6f99e225d746ea SKIFF_samples
 24c2fbf8254df780 SKIFF_scl
-62a252b19bd364ea SKIFF_shift_env
-6f5bb4fc2bb69f92 SKIFF_shift_home
+24475725972cb9ac SKIFF_shift_env
+639c86e926174328 SKIFF_shift_home
 939e0b969c89c4dc SKIFF_shift_step
 480f03aff8e6dce5 SKIFF_six_edit
 bf792663bbe1a298 SKIFF_six_edit_said
@@ -3468,6 +3481,7 @@ a7ed33334c0ce4d6 SKIFF_step
 a9a390bc015b1282 SKIFF_step_tiles_drum
 3a0849c4261a62b2 SKIFF_take_box
 87493d8eab47da63 SKIFF_take_partial
+7f52dd66f8677b4a SKIFF_tape_armed
 c7f81bdb79ecdcfb SKIFF_tape_clear
 8c39648793ca5d60 SKIFF_tape_empty
 8fc61f808b8f2b7f SKIFF_tape_long
@@ -3477,7 +3491,7 @@ f168afdefea2b7c5 SKIFF_tape_muted
 43989cd87f6c9787 SKIFF_tape_notes
 156bfdaea29a1697 SKIFF_tape_pick
 b2df09ae91c8804c SKIFF_tape_play
-80a2b19c9eb12d11 SKIFF_tape_rec
+efe93a62d9a9d7d5 SKIFF_tape_rec
 11470830f75229c2 SKIFF_uboot
 af63a26f5c3ac4f7 SKIFF_undo_box
 3cb552065dbeaf8d SKIFF_user

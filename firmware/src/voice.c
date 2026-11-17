@@ -451,12 +451,15 @@ static void trk_sound_on(track_t *t, uint32_t note, uint32_t vel);
  * first and times the others; strum_tick, at the next blocks' start, starts each as its time comes. A note let go
  * before its time never starts; a panic forgets them. One note, a kit, MONO / LEGATO / UNISON, STRUM OFF: at once */
 static uint8_t tape_playing;                       /* 1 while the tape sounds a note: the record hooks skip it (tape.c) */
+static uint8_t seq_src;                            /* 1 while a sequencer's note (seq.c seq_out) sounds: SEQ REC's steps are not the tape's to copy */
 #define TAPE_HAVE_PLAYING
 static void tape_rec(const track_t *t, uint32_t note, uint32_t vel);   /* (seq.c: REC onto the tape; vel 0 an end) */
 
 #define SQ_N 8u
 static struct { uint8_t n, fresh, alt, note[SQ_N], vel[SQ_N]; uint16_t due[SQ_N]; } sq[NTRK];   /* fresh: the last
-                                                         * ones, this block's, not yet timed */
+                                                         * ones, this block's, not yet timed; vel's bit 7: a sequencer's
+                                                         * note (seq_src when it was kept) */
+#define SQ_SRC 0x80u
 static uint8_t sq_in;
 static int chord_kit(const track_t *t);
 static void trk_note_go(track_t *t, uint32_t note, uint32_t vel);
@@ -471,9 +474,11 @@ static void sq_take(uint32_t k, uint32_t j)             /* entry j of track k's 
 }
 static void sq_go(uint32_t k, uint32_t j)               /* .. and started */
 {
-    uint32_t note = sq[k].note[j], vel = sq[k].vel[j];
+    uint32_t note = sq[k].note[j], vel = sq[k].vel[j] & ~SQ_SRC, kept = seq_src;
+    seq_src = (sq[k].vel[j] & SQ_SRC) != 0u;
     sq_take(k, j);
     trk_note_go(&trk[k], note, vel);
+    seq_src = (uint8_t)kept;
 }
 static __attribute__((noinline)) void strum_tick(uint32_t n)   /* n samples on: those whose time came, started */
 {
@@ -523,7 +528,7 @@ static int strum_add(track_t *t, uint32_t note, uint32_t vel)   /* kept for stru
     if (!sq_in || tape_playing || !t->p[P_STRUM] || trk_vmode(t) != V_POLY || chord_kit(t) || sq[k].n >= SQ_N)
         return 0;                                       /* (the tape's own: recorded strummed already, at once) */
     sq[k].note[sq[k].n] = (uint8_t)note;
-    sq[k].vel[sq[k].n] = (uint8_t)vel;
+    sq[k].vel[sq[k].n] = (uint8_t)(vel | (seq_src ? SQ_SRC : 0u));
     sq[k].due[sq[k].n++] = 0;
     sq[k].fresh++;
     return 1;

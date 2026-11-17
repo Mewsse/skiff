@@ -48,7 +48,7 @@ static const char *head_title(const char *pn)
 static void draw_head_blocks(void)
 {
     const track_t *t = TSEL;
-    uint32_t rec = (song.rec >> song.sel) & 1u ? 2u : song.rec != 0u, id, sig;
+    uint32_t rec = (song.rec >> song.sel) & 1u || tape_recording ? 2u : song.rec != 0u, id, sig;
     int msg = ui.msg_t || ui.layer;
     char pos[12] = "1.1", b[8], pn[16], mk[16];      /* (stopped: PLAY starts from the top) */
     int32_t x, lx;
@@ -63,6 +63,10 @@ static void draw_head_blocks(void)
         fmt_int(pos, (int32_t)(seq_at(t) / 16u) + 1);
         str_cpy(pos + str_len(pos), ".", 2);
         fmt_int(pos + str_len(pos), (int32_t)(seq_at(t) % 16u / 4u) + 1);
+    } else if (tape_go) {                            /* (only the tape runs: its head) */
+        fmt_int(pos, (int32_t)(tape_head / TAPE_BAR) + 1);
+        str_cpy(pos + str_len(pos), ".", 2);
+        fmt_int(pos + str_len(pos), (int32_t)(tape_head % TAPE_BAR / TAPE_TPQ) + 1);
     }
     fmt_int(b, song.g[G_BPM]);
     if (seq_counting())
@@ -70,7 +74,7 @@ static void draw_head_blocks(void)
     else if (rec)
         id = rec == 2u ? ICON_X_REC : ICON_X_REC_O, ic = T_REC;
     else
-        id = song.playing ? ICON_X_PLAY : ICON_X_STOP, ic = song.playing ? T_THEME : T_MID;
+        id = clock_run() ? ICON_X_PLAY : ICON_X_STOP, ic = clock_run() ? T_THEME : T_MID;
     sig = str_hash(str_hash(id * 31u + ic, pos), b) + (ui.msg_t ? str_hash(7u, ui.msg) : ui.layer * 7919u +
           (uint32_t)layer_locked() * 3u) + (ui.bpm_t != 0) * 31u +
           (uint32_t)(song.octave + 8) * 11u +
@@ -99,7 +103,7 @@ static void draw_head_blocks(void)
     if (ux.quark)                                     /* (Skiff Q2) QUARK: a dotted rule */
         qk_rule(H_HEAD - 2);
     GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
-    cv_text(HB_POS_X, HEAD_MY, &AF_M, pos, song.playing ? T_TEXT : T_MID);
+    cv_text(HB_POS_X, HEAD_MY, &AF_M, pos, clock_run() ? T_TEXT : T_MID);
     GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
     if (ux.neon)                                      /* ((Skiff N2) NEON: slanted) */
         cv_fx_on(HEAD_MY, &AF_M, 0);

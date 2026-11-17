@@ -448,18 +448,9 @@ static void fm1__frame(void)
 
 static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or release (0): see the tables */
 {
-    uint32_t how = vel ? (smk_pad_steps ? SMK_PAD_TAP : SMK_WHITE_NOTE[pad] + 1u) : smk_pad_note[pad], n, bit;
+    uint32_t how = smk_pad_event(pad, vel, (fm1_in.buttons >> SMK_BTN_KNOB_BANK) & 1u), n, bit;
     if (!how)
         return;
-    smk_pad_note[pad] = vel ? (uint8_t)how : 0u;
-    if (how == SMK_PAD_TAP) {                        /* a step tap: the UI's (smk_ui.c) */
-        uint8_t w = smk_padq_w;
-        if ((uint8_t)((w + 1u) % SMK_PADQ) != smk_padq_r) {
-            smk_padq[w] = (uint16_t)(pad << 8 | vel);
-            smk_padq_w = (uint8_t)((w + 1u) % SMK_PADQ);
-        }
-        return;
-    }
     n = how - 1u;                                    /* the white key it pressed, whatever the mode is now */
     bit = 1u << n;
     if (vel) {

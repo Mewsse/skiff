@@ -10,7 +10,10 @@
  *            taking over once it reaches the value;
  *   wheels A, the pedal: as MIDI in on the selected track's channel (bend, CC1: the MOD matrix's MODW; CC64 sustain);
  *            the pedal holds the track's keys too (seq.c);
- *   < >      the tape's head a bar back / on, stopped (playing: STOP FIRST);
+ *   KNOB BANK + the bottom row of pads: the tape's transport, pads 1..8 PLAY PAUSE REC BAR BACK BAR ON TOP END UNDO
+ *            (TOP and END only stopped: STOP FIRST), their LEDs while it is held (smk_pads_tape); a press routed so is
+ *            never a step or a note, nor its release (smk_pads.h smk_pad_event);
+ *   < >      the tape's head a bar back / on, as pads 4 and 5 (playing too);
  *   MASTER   K1, kept with the settings; KEY VELOCITY (MENU > CONTROL).
  * KNOB BANK is SHIFT (ui_input.c); the button LEDs on or off (ui_input.c smk_leds_out). Main loop only. */
 
@@ -64,6 +67,36 @@ static uint32_t smk_breath(uint32_t c)               /* a breathing pad: dark ..
     return o;
 }
 
+/* KNOB BANK held (SHIFT) where a pad press would be the tape's: the pads are its transport (smk_tape_pad) */
+static int smk_tape_pads_on(void)
+{
+    return ((fm1_in.buttons >> SMK_BTN_KNOB_BANK) & 1u) && !ui.menu && !ui.confirm && !name_on();
+}
+
+/* the bottom row, pads 1..8 as the tape's transport: PLAY green while it runs (breathing: it waits for its line), PAUSE
+ * white while it is stopped, REC red (breathing: waiting, or counting in), the bar steps faint, TOP and END faint while
+ * stopped (dark: STOP FIRST), UNDO lit when there is something to undo. The top row dark */
+#define SMK_PAD_GREEN (SMK_PAD_FULL << 8)
+#define SMK_PAD_RED (SMK_PAD_FULL << 16)
+#define SMK_PAD_GREEN_FAINT 0x001400u
+#define SMK_PAD_RED_FAINT 0x140000u
+#define SMK_PAD_WHITE_FULL (SMK_PAD_WHITE << 16 | SMK_PAD_WHITE << 8 | SMK_PAD_WHITE)
+static void smk_pad_rgb(uint32_t pad, uint32_t rgb) { padled_set(pad, (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb); }
+static void smk_pads_tape(void)
+{
+    uint32_t pad, waiting = join_want | cin_starts | tape_cued, still = !tape_go;
+    for (pad = 0; pad < SMK_NPAD / 2u; pad++)
+        smk_pad_rgb(pad, 0u);
+    smk_pad_rgb(8u, tape_go ? SMK_PAD_GREEN : waiting & JOIN_TAPE ? smk_breath(SMK_PAD_GREEN) : SMK_PAD_GREEN_FAINT);
+    smk_pad_rgb(9u, still ? SMK_PAD_WHITE_FULL : SMK_PAD_FAINT);
+    smk_pad_rgb(10u, tape_recording ? SMK_PAD_RED : waiting & JOIN_TAPE_REC ? smk_breath(SMK_PAD_RED) : SMK_PAD_RED_FAINT);
+    smk_pad_rgb(11u, SMK_PAD_FAINT);
+    smk_pad_rgb(12u, SMK_PAD_FAINT);
+    smk_pad_rgb(13u, still ? SMK_PAD_FAINT : 0u);
+    smk_pad_rgb(14u, still ? SMK_PAD_FAINT : 0u);
+    smk_pad_rgb(15u, 0u);
+}
+
 /* the selected track's steps of the page shown as pads (colours A): the DRUM grid's selected lane, or the notes */
 static void smk_pads_steps(void)
 {
@@ -96,6 +129,10 @@ static void smk_pads_steps(void)
 static void smk_pads_out(const uint8_t *nl, const uint8_t *nd, const uint8_t *nb, const uint8_t *nm)
 {
     uint32_t w, k, col = smk_rgb(T_TRK(song.sel), SMK_PAD_FULL);
+    if (smk_tape_pads_on()) {
+        smk_pads_tape();
+        return;
+    }
     if (!smk_pads_keys() || grid_on()) {
         smk_pads_steps();
         return;
@@ -140,13 +177,38 @@ static void smk_pad_tap(uint32_t p, uint32_t vel)
     ui.force = 1;
 }
 
+/* KNOB BANK + a bottom-row pad (pad 8..15 of the scan): the tape's transport as a request for the audio ISR (tape_ask).
+ * REC arms the selected track first (tape_arm: what it records) unless it is recording, a punch out */
+static void smk_tape_pad(uint32_t pad)
+{
+    static const uint8_t OPS[SMK_NPAD / 2u] = {TQ_PLAY, TQ_PAUSE, TQ_REC, TQ_BAR_BACK, TQ_BAR_ON, TQ_TOP, TQ_END, TQ_NONE};
+    uint32_t op;
+    if (pad < SMK_NPAD / 2u || pad >= SMK_NPAD)
+        return;
+    op = OPS[pad - SMK_NPAD / 2u];
+    if (op == TQ_NONE)
+        return;
+    if ((op == TQ_TOP || op == TQ_END) && tape_go) {
+        ui_message("STOP FIRST");
+        return;
+    }
+    if (op == TQ_REC && !tape_recording)
+        tape_arm = (uint8_t)(1u << song.sel);
+    (void)tape_ask(op);
+}
+
 static void smk_pads(void)
 {
     int32_t e;
     smk_pad_steps = (uint8_t)!smk_pads_keys();
     while ((e = smk_padq_take()) >= 0) {
         CAST(cast_rec('D', (uint32_t)e, 0u));        /* (Skiff Studio: the tap as taken) */
-        if (e & 0xFF)
+        if (e & SMK_PADQ_XPORT) {
+            if (!ui.menu && !ui.confirm && !name_on()) {
+                shift_mark();                        /* (a combo of SHIFT: no HOME tap, no MENU after) */
+                smk_tape_pad(((uint32_t)e >> 8) & 15u);
+            }
+        } else if (e & 0xFF)
             smk_pad_tap(((uint32_t)e >> 8) & 15u, (uint32_t)e & 0xFFu);
     }
 }
@@ -282,10 +344,8 @@ static void smk_buttons(void)
     prev = now;
     if (ui.menu || ui.confirm || name_on() || ui.layer)
         return;
-    if (pr & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {
-        if (!tape_bar_step((pr >> SMK_BTN_RIGHT) & 1u ? 1 : -1))
-            ui_message("STOP FIRST");
-    }
+    if (pr & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT))
+        (void)tape_ask((pr >> SMK_BTN_RIGHT) & 1u ? TQ_BAR_ON : TQ_BAR_BACK);
     if ((pr >> SMK_BTN_FADER_BANK) & 1u) {
         smk_fbank = (uint8_t)((smk_fbank + 1u) % 4u);
         ui_say("FADERS ", SMK_FB_N[smk_fbank]);

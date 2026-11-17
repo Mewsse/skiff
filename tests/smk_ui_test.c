@@ -393,7 +393,7 @@ static int test_pad_colours(void)
 
 static int test_faders(void)
 {
-    int bad = 0;
+    int bad = 0, ok;
     smk_power_on();
     trk[1].p[P_LEVEL] = 100;
     fm1_in.fader[1] = 20;
@@ -427,15 +427,22 @@ static int test_faders(void)
     bad += check("SMK FADER BANK: round to LEVEL, its LED off", smk_fbank == 0u && !host_led[SMK_BTN_FADER_BANK]);
     tape_head = 0;
     press_id(SMK_BTN_RIGHT);
-    bad += check("SMK >: stopped, the tape's head a bar on", tape_head == TAPE_BAR);
+    ok = tape_req == TQ_BAR_ON;
+    events_block(CTL);
+    bad += check("SMK >: stopped, a tape request for a bar on (as pad 5): the head a bar on", ok && tape_head == TAPE_BAR);
     press_id(SMK_BTN_LEFT);
+    events_block(CTL);
     press_id(SMK_BTN_LEFT);
+    events_block(CTL);
     bad += check("SMK <: a bar back, from the first bar round to the last (4 bars)", tape_head == 3u * TAPE_BAR);
+    tape_head = TAPE_BAR;
+    clock_set(TAPE_BAR);
     tape_go = 1;
-    ui.msg_t = 0;
     press_id(SMK_BTN_RIGHT);
+    events_block(CTL);
+    ok = tape_head / TAPE_BAR == 2u && !(ui.msg_t && msg_is("STOP FIRST"));
     tape_go = 0;
-    bad += check("SMK >: playing, the head stays, STOP FIRST said", tape_head == 3u * TAPE_BAR && msg_is("STOP FIRST"));
+    bad += check("SMK >: playing, a bar on too (the pads' 4 and 5 and < > alike), no STOP FIRST", ok);
     tape_head = 0;
     sel_set(5);                                 /* T6: the window T3..T6 */
     fm1_in.fader[0] = 0;
@@ -852,6 +859,239 @@ static int test_clock_out(void)
     return bad;
 }
 
+/* ------------------------------------------------------------------ KNOB BANK + the bottom row: the tape --- */
+static uint32_t host_pad_keys;                    /* the white keys the pads hold (what smk__padq presses in the scan) */
+static void pad_event(uint32_t pad, uint32_t vel)   /* a pad hit or release as the scan sees it, then a UI frame */
+{
+    uint32_t how = smk_pad_event(pad, vel, (fm1_in.buttons >> SMK_BTN_KNOB_BANK) & 1u);
+    if (how)
+        host_pad_keys = vel ? host_pad_keys | 1u << (how - 1u) : host_pad_keys & ~(1u << (how - 1u));
+    frame();
+}
+static void shift_hold(int on)
+{
+    if (on)
+        fm1_in.buttons |= 1u << SMK_BTN_KNOB_BANK;
+    else
+        fm1_in.buttons &= ~(1u << SMK_BTN_KNOB_BANK);
+    frames(48);
+}
+static uint32_t steps_set(const track_t *t)
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < NSTEP; i++)
+        n += step_on(&t->step[i]) != 0u;
+    return n;
+}
+static int tape_pad(uint32_t pad, uint32_t *req)    /* SHIFT held: a press of the pad, its release; the request it left */
+{
+    tape_req = 0;
+    pad_event(pad, 100);
+    *req = tape_req;
+    pad_event(pad, 0);
+    return tape_req == *req;
+}
+static int test_tape_pads(void)
+{
+    int bad = 0, ok;
+    uint32_t req, pad;
+    track_t *t;
+    smk_power_on();
+    t = TSEL;
+    frame();
+    tape_go = tape_recording = tape_arm = 0;
+    tape_req = transport_req = 0;
+    sel_set(2);
+    shift_hold(1);
+    bad += check("SMK KNOB BANK + pad 9 (the bottom row's first): the tape's PLAY, no step, no note",
+                 tape_pad(8, &req) && req == TQ_PLAY && !steps_set(t) && !host_pad_keys && !undo_n);
+    events_block(CTL);
+    bad += check("  the audio ISR takes it: the tape runs, the sequencers do not", tape_go && !song.playing);
+    bad += check("SMK pad 10: PAUSE", tape_pad(9, &req) && req == TQ_PAUSE);
+    events_block(CTL);
+    bad += check("  the tape stops, the clock with it", !tape_go && !clock_run());
+    bad += check("SMK pad 11: REC arms the selected track (T3) first", tape_pad(10, &req) && req == TQ_REC && tape_arm == 4u);
+    events_block(CTL);
+    bad += check("  the tape runs recording (no COUNT-IN)", tape_go && tape_recording);
+    sel_set(4);
+    bad += check("SMK pad 11 again, another track selected: a punch out, the armed track stays T3",
+                 tape_pad(10, &req) && req == TQ_REC && tape_arm == 4u);
+    events_block(CTL);
+    bad += check("  recording off, the tape runs on", tape_go && !tape_recording);
+    tape_head = 0;
+    clock_set(0);
+    bad += check("SMK pad 12 / 13: a bar back / on, the tape running", tape_pad(11, &req) && req == TQ_BAR_BACK);
+    events_block(CTL);
+    ok = tape_head / TAPE_BAR == 3u;
+    ok &= tape_pad(12, &req) && req == TQ_BAR_ON;
+    events_block(CTL);
+    bad += check("  the head a bar back (from the first, round to the last), then on", ok && tape_head / TAPE_BAR == 0u);
+    ui.msg_t = 0;
+    bad += check("SMK pads 14 / 15 (TOP, END) while it runs: STOP FIRST, no request",
+                 tape_pad(13, &req) && !req && tape_pad(14, &req) && !req && msg_is("STOP FIRST"));
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    bad += check("SMK pads 14 / 15 stopped: TOP and END (the last bar)",
+                 tape_pad(14, &req) && req == TQ_END && (events_block(CTL), tape_head == 3u * TAPE_BAR) &&
+                 tape_pad(13, &req) && req == TQ_TOP && (events_block(CTL), tape_head == 0u));
+    bad += check("SMK pad 16 (UNDO, not yet): nothing", tape_pad(15, &req) && !req && !steps_set(t) && !host_pad_keys);
+    bad += check("SMK KNOB BANK + a top-row pad: still a step", (pad_event(2, 100), pad_event(2, 0), steps_set(TSEL) == 1u) &&
+                 !tape_req);
+    shift_hold(0);
+    bad += check("SMK pads without SHIFT: the steps again (the bottom row too)",
+                 (pad_event(9, 100), pad_event(9, 0), steps_set(TSEL) == 2u) && !tape_req);
+
+    /* a press routed as transport never releases as a key or a tap; a key held before SHIFT lets go as that key */
+    for (pad = 0; pad < SMK_NPAD; pad++)
+        smk_pad_note[pad] = 0;
+    smk_pad_steps = 0;                             /* (the DRUM grid, a layer, NAME: the pads are white keys) */
+    host_pad_keys = 0;
+    pad_event(9, 100);
+    ok = host_pad_keys == 1u << (SMK_WHITE_NOTE[9]);
+    shift_hold(1);
+    tape_req = 0;
+    pad_event(10, 100);
+    ok &= tape_req == TQ_REC && host_pad_keys == 1u << SMK_WHITE_NOTE[9];
+    pad_event(9, 0);
+    ok &= !host_pad_keys && tape_req == TQ_REC;
+    shift_hold(0);
+    pad_event(10, 0);
+    bad += check("SMK pads as white keys: SHIFT + a bottom pad is the tape, no key; a key held across SHIFT lets go as the key",
+                 ok && !host_pad_keys && smk_padq_r == smk_padq_w);
+    tape_req = 0;
+    shift_hold(1);
+    pad_event(12, 100);
+    shift_hold(0);
+    pad_event(12, 0);
+    bad += check("SMK pad pressed with SHIFT, SHIFT let go first: its release is nothing, not a key or a tap",
+                 !host_pad_keys && smk_pad_note[12] == 0u);
+    tape_req = 0;
+    ui.menu = 1;
+    shift_hold(1);
+    pad_event(8, 100);
+    pad_event(8, 0);
+    ok = !tape_req;
+    ui.menu = 0;
+    shift_hold(0);
+    bad += check("SMK KNOB BANK + a pad in the MENU: nothing", ok);
+    return bad;
+}
+
+static int test_tape_pad_leds(void)
+{
+    int bad = 0;
+    uint32_t green = SMK_PAD_FULL << 8, red = SMK_PAD_FULL << 16;
+    smk_power_on();
+    frame();
+    tape_go = tape_recording = 0;
+    shift_hold(1);
+    bad += check("SMK pad LEDs, KNOB BANK held, stopped: PLAY and REC faint, PAUSE white, TOP and END faint, UNDO and the top row dark",
+                 host_pad[8] == SMK_PAD_GREEN_FAINT && host_pad[9] == SMK_PAD_WHITE_FULL && host_pad[10] == SMK_PAD_RED_FAINT &&
+                 host_pad[11] == SMK_PAD_FAINT && host_pad[12] == SMK_PAD_FAINT && host_pad[13] == SMK_PAD_FAINT &&
+                 host_pad[14] == SMK_PAD_FAINT && !host_pad[15] && !host_pad[0] && !host_pad[7]);
+    tape_go = 1;
+    frame();
+    bad += check("  the tape running: PLAY green, PAUSE faint, TOP and END dark", host_pad[8] == green &&
+                 host_pad[9] == SMK_PAD_FAINT && !host_pad[13] && !host_pad[14] && host_pad[11] == SMK_PAD_FAINT);
+    tape_recording = 1;
+    frame();
+    bad += check("  recording: REC red", host_pad[10] == red);
+    tape_recording = 0;
+    tape_go = 0;
+    cin_starts = JOIN_TAPE | JOIN_TAPE_REC;
+    frames(480);
+    {
+        uint32_t seen_dim = 0, seen_bright = 0, i;
+        for (i = 0; i < 70u; i++) {
+            frame();
+            seen_dim |= host_pad[10] < red && host_pad[10] != SMK_PAD_RED_FAINT;
+            seen_bright |= host_pad[10] >= (red >> 1) && host_pad[8] != green;
+        }
+        bad += check("  a REC and PLAY waiting (count-in): both breathe", seen_dim && seen_bright);
+    }
+    cin_starts = 0;
+    shift_hold(0);
+    bad += check("  KNOB BANK let go: the steps' colours again", host_pad[8] != SMK_PAD_GREEN_FAINT && host_pad[10] != SMK_PAD_RED_FAINT);
+    return bad;
+}
+
+/* the header's bar.beat: the tape's head when only the tape runs, the selected track's step when the sequencers do */
+static int test_header_counter(void)
+{
+    int bad = 0, ok;
+    uint32_t before;
+    smk_power_on();
+    ui.home = 1;
+    frame();
+    tape_go = 1;
+    frame();
+    before = ui.head_sig;
+    tape_head += TAPE_TPQ;
+    frame();
+    ok = ui.head_sig != before;
+    bad += check("SMK header, only the tape running (HOME): the counter follows the tape's head", ok);
+    song.playing = 1;
+    TSEL->seq_idx = 3;
+    frame();
+    before = ui.head_sig;
+    tape_head += TAPE_TPQ;
+    frame();
+    ok = ui.head_sig == before;
+    TSEL->seq_idx = 7;
+    frame();
+    ok &= ui.head_sig != before;
+    song.playing = 0;
+    tape_go = 0;
+    bad += check("SMK header, the sequencers running: the counter is the selected track's step, not the tape's head", ok);
+    return bad;
+}
+
+/* SEQ PLAY and the tape's count-in: the sequencers join what it starts, the tape's PLAY and REC stay its own */
+static int test_play_with_tape_count_in(void)
+{
+    int bad = 0, ok;
+    uint32_t i, lit;
+    smk_power_on();
+    frame();
+    song.g[G_CLOCK] = 0;
+    song.g[G_BPM] = 120;
+    rp_put(RP_COUNTIN, 1);
+    tape_go = tape_recording = 0;
+    shift_hold(1);
+    pad_event(10, 100);
+    pad_event(10, 0);
+    shift_hold(0);
+    events_block(CTL);
+    ok = seq_counting() && cin_starts == (JOIN_TAPE | JOIN_TAPE_REC);
+    for (i = 0, lit = 0; i < 40u; i++) {
+        frame();
+        lit |= host_led[LED_PLAY_GREEN];
+    }
+    bad += check("SMK tape REC with COUNT-IN: it counts in; SEQ PLAY's LED stays dark (the beat is the tape's)", ok && !lit);
+    press(B_PLAY);
+    ok = transport_req == 1u;
+    events_block(CTL);
+    bad += check("  SEQ PLAY then adds the sequencers to what the count-in starts, it does not cancel it",
+                 ok && seq_counting() && (cin_starts & JOIN_SEQ) && (cin_starts & JOIN_TAPE_REC));
+    for (i = 0, lit = 0; i < 40u; i++) {
+        frame();
+        lit |= host_led[LED_PLAY_GREEN];
+    }
+    bad += check("  now SEQ PLAY's LED beats with the count-in", lit);
+    press(B_PLAY);
+    ok = transport_req == 2u;
+    events_block(CTL);
+    bad += check("  SEQ PLAY again takes the sequencers off it: the tape's count-in goes on",
+                 ok && seq_counting() && cin_starts == (JOIN_TAPE | JOIN_TAPE_REC));
+    for (i = 0; i < 4u * (uint32_t)FS / CTL && seq_counting(); i++)
+        events_block(CTL);
+    bad += check("  its end: the tape runs recording, the sequencers stopped", tape_go && tape_recording && !song.playing);
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    rp_put(RP_COUNTIN, 0);
+    return bad;
+}
+
 int main(void)
 {
     int bad = 0;
@@ -866,6 +1106,10 @@ int main(void)
     bad += test_pedal();
     bad += test_solo();
     bad += test_shift();
+    bad += test_tape_pads();
+    bad += test_tape_pad_leds();
+    bad += test_play_with_tape_count_in();
+    bad += test_header_counter();
     bad += test_master();
     bad += test_clock_out();
     printf("%s\n", bad ? "SMK UI TEST FAILED" : "smk ui test passed");

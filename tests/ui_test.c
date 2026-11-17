@@ -4444,8 +4444,13 @@ static int test_bughunt_ui2(void)
         press(B_REC); frame();
         ok &= !song.rec && !transport_req;
         press(B_PLAY); frame();
-        ok &= transport_req == 2u && name_on();                       /* PLAY stops it, NAME stays */
+        ok &= transport_req == 4u && name_on();                       /* PLAY stops it (all of it), NAME stays */
         stop_transport();
+        tape_go = 1;                                                  /* the tape alone running: PLAY stops it too */
+        press(B_PLAY); frame();
+        ok &= transport_req == 4u && name_on();
+        tape_go = 0;
+        transport_req = 0;
         press(B_OCTUP);
         ok &= !name_on() && up_used(3);
         bad += check("NAME: PLAY stops a running transport (never starts), REC ignored, then OCT+ saves", ok);
@@ -8954,6 +8959,13 @@ static int test_perform(void)
     ok = trk[1].p[P_MUTE] == 1 && arm[1].op == ARM_NONE && !(m & 1u << key_at(1, 1)) && (br & 1u << key_at(1, 1));
     ly_tap(key_at(1, 1));
     bad += check("  stopped, black key 2: T2 muted at once (its key breathes), again: back", ok && !trk[1].p[P_MUTE]);
+    tape_go = 1;                                      /* (only the tape runs: the clock does, so it lands on its line) */
+    ly_tap(white(3));
+    ok = seq_running(3) && arm[3].op == ARM_RUN_OFF && msg_is("T4 RUN OFF NEXT STEP");
+    ly_tap(white(3));
+    ok &= arm[3].op == ARM_NONE && seq_running(3);
+    tape_go = 0;
+    bad += check("  only the tape running: T4's RUN OFF armed, not applied at once (the clock runs); again: cancelled", ok);
     song.playing = 1;
     ly_tap(white(2));
     ok = seq_running(2) && arm[2].op == ARM_RUN_OFF && msg_is("T3 RUN OFF NEXT STEP");

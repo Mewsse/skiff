@@ -304,7 +304,11 @@ static int test_phase_invariant(void)
     ran &= tape_go;
     transport_req = 4;
     events_block(CTL);
-    ran &= tape_bar_step(1) && tape_bar_step(1);
+    tape_req = TQ_BAR_ON;
+    events_block(CTL);
+    tape_req = TQ_BAR_ON;
+    events_block(CTL);
+    ran &= !tape_go && tape_head % TAPE_BAR == 0u;
     tape_req = TQ_PLAY;
     phase_blocks(3000);
     ran &= tape_go;
