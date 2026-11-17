@@ -305,7 +305,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/tail_test" tests/tail_test.c -lm
     run "(2.5, #110) TAIL: a fading note keeps its shape to the DAC (24 bits) and USB (dithered 16), MASTER 100 % and 25 %" "$OUT/tail_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/click_test" tests/click_test.c -lm
-    run "metronome and count-in: beats sample for sample (internal and external clock), accent, level, MASTER, not in USB, count-in timing, its notes onto the tape" "$OUT/click_test"
+    run "metronome and count-in: beats sample for sample (internal and external clock), accent, level, MASTER, not in USB, count-in timing, its notes onto step 1 (SEQ REC) or the tape" "$OUT/click_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test" tests/persistence_test.c -lm
     run "persistence: deferred settings, retry and failed-save rollback; (2.0) a FUN5 slot OLD FORMAT" "$OUT/persistence_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_legacy" tests/persistence_test.c -lm
@@ -350,7 +350,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O2 -w -o "$OUT/tape_test" tests/tape_test.c
     run "TAPE core: lists vs a reference (ISR inside the walks), cursor rules, merge, dedupe, replace, codec" "$OUT/tape_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/taperec_test" tests/taperec_test.c -lm
-    run "TAPE recording: live notes at the head or on the GRID, the sequencer and ARP once over passes, replace, held over the wrap, queue overflow, count-in, MUTE, STOP / panic / engine switch" "$OUT/taperec_test"
+    run "TAPE recording: live notes at the head or on the GRID, the sequencer and ARP once over passes, replace, held over the wrap, queue overflow, count-in, MUTE, SEQ REC's steps not recorded again, STOP / panic / engine switch" "$OUT/taperec_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/drift_test" tests/drift_test.c -lm
     run "(2.5, #107) DRIFT: the quarter x24, every DIV a share; 5 DIVs and the click together for 30 min" "$OUT/drift_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/grid_test" tests/grid_test.c -lm

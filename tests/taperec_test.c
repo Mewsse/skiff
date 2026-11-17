@@ -2,7 +2,7 @@
 /* REC onto the note tape (voice.c's hooks, seq.c tape_rec, tape.c tape_poll) through the same sources as the firmware
  * (hostsim.c): live notes stamped at the head with the GRID OFF, on its lines with the GRID on; the sequencer's and the
  * ARP's notes recorded once over overdub passes; replace mode; a note held over the loop's end; the record queue's
- * overflow; the count-in's kept notes at the start; a MUTE instrument records nothing; no note left open or sounding
+ * overflow; the count-in's kept notes at the start; SEQ REC's steps not recorded again; a MUTE instrument records nothing; no note left open or sounding
  * after STOP, a panic or an engine switch while recording */
 #define main hostsim_main
 #include "hostsim.c"
@@ -22,6 +22,7 @@ static void fresh(uint32_t bars, uint32_t grid)
 {
     memset(trk, 0, sizeof trk);
     memset(&song, 0, sizeof song);
+    memset(rec_live, 0, sizeof rec_live);
     memset(&midi_clock, 0, sizeof midi_clock);
     host_tracks_init();
     song.g[G_BPM] = 120;
@@ -608,6 +609,47 @@ static int test_seq_stopped_not_recorded(void)
     return bad;
 }
 
+/* SEQ REC and tape REC on one track: a live note goes into the step and onto the tape; on the next passes the step's
+ * note, played by the sequencer off the live note's time, is not recorded again (seq_out's notes, an instrument SEQ REC
+ * records, are not the tape's); with SEQ REC off the sequencer's note is recorded again as before */
+static int test_steprec_not_doubled(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0, live_at, once, passes;
+    fresh(1, 0);
+    t->p[P_SLEN] = 16;
+    song.rec = 1;
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    run_to(3u * 120u + 48u);
+    live_at = tape_head;
+    input_on(t, 60, 100);
+    run_to(3u * 120u + 60u);
+    input_off(t, 60);
+    block();
+    once = list(0);
+    bad += check("SEQ REC + tape REC, a live note 0.4 step into step 4: in the step and on the tape once",
+                 once == 1u && nodes[0].note == 60u && nodes[0].at == live_at && t->step[3].n == 1u && t->step[3].note[0] == 60u &&
+                 t->step[3].time == ST_NOTE);
+    run_to(4u * TAPE_BAR + 200u);
+    passes = list(0);
+    bad += check("  the next 3 passes: the sequencer plays the step, the tape does not record it again", passes == 1u &&
+                 nodes[0].at == live_at && !nodes[0].held && !tp_open_n);
+    song.rec = 0;
+    stop();
+    fresh(1, 0);
+    t->p[P_SLEN] = 16;
+    put_step(t, 3, 1, (const uint8_t[]){60}, ST_NOTE, 0);
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    run_to(2u * TAPE_BAR + 200u);
+    bad += check("  SEQ REC off: the same step is recorded by the tape, once", list(0) == 1u && near_at(nodes[0].at, 360, 2));
+    stop();
+    return bad;
+}
+
 /* REC with the tape running: punch in, punch out; a note held over the punch out keeps its end */
 static int test_punch(void)
 {
@@ -659,6 +701,7 @@ int main(void)
     fails += test_engine_switch_voices();
     fails += test_seq_stopped_not_recorded();
     fails += test_punch();
+    fails += test_steprec_not_doubled();
     printf(fails ? "taperec: %u FAILED\n" : "taperec: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

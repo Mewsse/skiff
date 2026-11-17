@@ -315,19 +315,17 @@ static int rec_stop(void)
     sel_set(0);
     song.rec = 1u;                                      /* T1 armed */
     play();
-    tape_arm = 1u; tape_go = tape_recording = 1;        /* (tape REC) */
     run_to(IN(1));
     key_down(K(60));
     ok = sounds(F, 65);
     run_to(IN(1) + L / 4u);
     key_up(K(60));
     song.rec = 0;
-    tape_go = tape_recording = 0;
-    for (s = 0; s < 4u; s++)
-        moved |= F->step[s].n != 0u;
-    got = on_tape(F - trk, 60);
-    bad += check("REC: C4 pressed on the armed follower sounds F4, the tape keeps C4 (playback follows again)",
-                 ok && got == 1u && !on_tape(F - trk, 65) && !moved);
+    for (s = 0; s < 4u; s++) {
+        got |= F->step[s].n && F->step[s].note[0] == 60;
+        moved |= F->step[s].n && F->step[s].note[0] == 65;
+    }
+    bad += check("REC: C4 pressed on the armed follower sounds F4, its step keeps C4", ok && got && !moved && !on_tape(F - trk, 128));
     seq_stop();
     events_block(CTL);
     key_down(K(60));

@@ -106,7 +106,7 @@ nothing. A project saved before (Skiff's SKF2 to SKF4: its steps were pool patte
 OLD FORMAT in SAVE › PROJECT and keeps its bytes; Felucca's and the oldest Skiff projects the editor's Restore still
 converts, steps into the tape store. Sounds, user sounds and settings stay as they were. Take the editor's backup
 first: a restore of an archive from before brings the projects back as OLD FORMAT and drops the pool's patterns.
-Playing the sequencers live is PERFORM's RUN and MUTE keys now, and REC records to the tape.
+Playing the sequencers live is PERFORM's RUN and MUTE keys now, and REC records into the steps.
 
 **Updating to 2.5:** nothing is converted.
 - Every FM-1 moves to MENU › SYSTEM › CPU 2 CORES once: up to 16 voices. One whose second core doesn't start says
@@ -141,7 +141,7 @@ Edge, over USB MIDI).
 | **Tracks** | 6, each with its own engine, sound, sequence and mix; (2.5) up to 16 voices a track, 16 shared between them on two cores (MENU › CPU 2 CORES, the FM-1's default), 8 on one (T5 and T6 play every engine but PHYS and GRAIN) |
 | **Engines** | 14: ANALOG, FM6, PHASE, LOFI, SAMPLE, VOICE, TRIO, WHEEL, GRAIN, PHYS, NOISE, SLICE, DRUM, DRUM-X; 148 factory sounds, at least 8 an engine, each a BASS, LEAD, PAD, KEYS, PLUCK, DRUM or FX sound that SAVE › PRESETS lists by type; presets for all nine of DRUM's kits and eight DRUM-X kits among them; every value of an FM6 patch (6 operators, 32 algorithms) editable on the unit |
 | **Sequencer** | 64 steps a track; LENGTH 1–64; 1/1 to 1/32, triplets, 2 and 4 bars a step; chords of up to 4 notes, each note its own length (1–99 % of a step, or 1 to 128 steps) and free to overlap the next; velocity, accent, slide; per-step chance, ratchet ×1–4 or FLAM, 12 trig conditions (FILL, !FILL, 1:2 … 4:4), NUDGE (−32 to +31 64ths of a step); swing, gate; FWD, RVRS, PING or RAND; ranges of steps edited as one, copy, paste and delete |
-| **Recording** | REC writes every note an armed track sounds (keys, MIDI, its sequencer, the arpeggiator) to the tape, on a GRID if you like; count-in and click; FEEL (a take keeps where you played); step entry; TAKE keeps the last loop you played, after the fact; (2.5) FREE TAKE: play with the transport stopped, and Skiff finds the tempo, the bars and the first beat |
+| **Recording** | REC writes the notes you play (keys, MIDI, the arpeggiator's as heard) into the armed track's steps, quantised and tied as held; the tape records on its own (what an instrument sounds, on a GRID if you like); count-in and click; FEEL (a take keeps where you played); step entry; TAKE keeps the last loop you played, after the fact; (2.5) FREE TAKE: play with the transport stopped, and Skiff finds the tempo, the bars and the first beat |
 | **Automation** | knob moves and parameter locks (hold a step, turn a knob), 64 records, listed and edited on SEQ › AUTOMATION |
 | **Note tape** | 4 tracks of notes (not audio), 1–256 bars, 1,440 notes a project, merged without loss; overdub; one GRID (1 bar to 1/32, triplets) for recording, playing live, the arpeggiator's start and PERFORM's keys; each track's own step sequencer, run and muted live |
 | **Performance** | PERFORM: turn each track's sequencer on and off (RUN) and mute tracks on the GRID; throws (CUTOFF, REVERB, DELAY, DIST) that glide back, or stay; one mute a track on the black keys of GLO, FX and PERFORM (a tap latches it, held it cuts); the FX layer: repeat, reverse, filter sweeps, tape stop, freeze, harmonizer, gate, dub echo, flanger, vinyl |
@@ -364,7 +364,7 @@ the page follows the unit and draws what it draws, and the USB audio stays on (t
   CHANCE (OFF, 1–100 %, then the trig conditions), RATCHET (×1–4, FLAM), NUDGE and TYPE (accent, slide) on every
   selected step. A new note is 1 STEP long (PATTERN's GATE 100 %); PATTERN's PRESETS turns the direction. (2.5) With a
   note in the selection, NOTES' footer says SHIFT + EDIT: DELETE
-- **The note tape** (SEQ › TAPE): REC writes the notes of the armed tracks to a tape of 4 tracks, not audio: what you
+- **The note tape** (SEQ › TAPE): the tape's own REC writes the notes of its armed tracks to a tape of 4 tracks, not audio: what you
   play on the keys and over MIDI, and what the track's own sequencer and arpeggiator sound. Overdub by default (a note
   the sequencer plays again each pass is kept once), or replace (the editor's Tape tab: each pass takes the place of the
   one before); the tape is 1 to 256 bars long (KNOB 2) and holds 1,440 notes in all, kept with each project and with
@@ -481,9 +481,10 @@ scenes and no LAUNCH point: what a track plays is what is on its steps, and the 
   1 to 256 bars long, 1,440 notes in all (TAPE FULL when it is). It holds neither knob moves nor audio. PLAY plays
   it with the sequencers, and a note it plays is sounded by its own track, so followers, MIDI OUT and the engines
   treat it as a key played.
-- **REC** arms tracks as before; with the transport playing (or a count-in), every note an armed track sounds goes onto
-  the tape's target track: keys, MIDI IN, its sequencer, its arpeggiator, strummed chords (each note as it sounds; chord
-  follow is applied again on playback). Overdub keeps what is there; a note played again within a few ticks of the same note is
+- **REC** arms tracks for step recording: with the sequencers playing (or a count-in), the keys, MIDI IN and the
+  arpeggiator's notes as heard go into the armed track's steps, nothing onto the tape. The **tape's REC** is its own: every
+  note an instrument it records sounds goes onto the tape: keys, MIDI IN, its sequencer, its arpeggiator, strummed chords
+  (each note as it sounds; chord follow is applied again on playback); a track that SEQ REC records is not copied. Overdub keeps what is there; a note played again within a few ticks of the same note is
   kept once, so a sequencer left running over four passes leaves one pass. A key held when the loop ends keeps its
   whole length. Turn RUN off after a pass to keep only the tape's copy. A muted track records nothing.
 - **The tape screen** draws two reels and the tape between them past a head block; the reels turn a bar of tape a turn and the band's marks pass a beat each, so they stand still when stopped. Under them the four tracks' lanes

@@ -410,6 +410,64 @@ static void count_in_notes(void)
     check("a note into an instrument tape REC does not record: not recorded", tp_trk[0].first == TAPE_END && trk[0].step[0].time == ST_REST);
 }
 
+/* SEQ REC counted in: its notes in the last eighth onto step 1 (held on: ties; let go: one step); earlier ones not
+ * recorded; nothing onto the tape */
+static void count_in_steps(void)
+{
+    uint32_t start = ceil_div(4u * QB, CTL), last = ceil_div(3u * QB, CTL), half = ceil_div(3u * QB + QB / 2u, CTL);
+    uint32_t ka = key_of(60), kb = key_of(64);
+    int ok;
+    /* held from the last eighth over the start: step 1 its note, then ties while held */
+    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
+    run(half + 20u);
+    fm1_in.notes = 1u << ka;
+    run(1);
+    ok = voice_on(60);                                 /* (it sounds at once) */
+    run(start - nb + 300u);                            /* held ~2 steps past the start */
+    fm1_in.notes = 0;
+    run(400);
+    ok &= trk[0].step[0].time == ST_NOTE && trk[0].step[0].n == 1u && trk[0].step[0].note[0] == 60u &&
+          trk[0].step[1].time == ST_TIE && trk[0].step[2].time == ST_REST;
+    tape_poll();
+    check("SEQ REC: a note held from the count-in's last eighth: on step 1, then tied while held (it sounded at once), the tape empty",
+          ok && tp_trk[0].first == TAPE_END);
+    /* let go before the start: one step */
+    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
+    run(half + 20u);
+    fm1_in.notes = 1u << kb;
+    run(60);
+    fm1_in.notes = 0;
+    run(start - nb + 400u);
+    ok = trk[0].step[0].time == ST_NOTE && trk[0].step[0].note[0] == 64u && trk[0].step[1].time == ST_REST;
+    check("SEQ REC: a note let go before step 1 (in the last eighth): step 1 alone", ok);
+    /* earlier in the last beat (its first half) or before: not recorded */
+    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
+    run(last + 50u);
+    fm1_in.notes = 1u << ka;
+    run(60);
+    fm1_in.notes = 0;
+    run(start - nb + 400u);
+    ok = trk[0].step[0].time == ST_REST && trk[0].step[0].n == 0u;
+    check("SEQ REC: a note before the last eighth: played, not recorded", ok);
+    /* a track not armed: nothing */
+    fresh(); grid_track(); cin_bars = 1; song.rec = 2u; transport_req = 1;
+    run(half + 20u);
+    fm1_in.notes = 1u << ka;
+    run(30);
+    fm1_in.notes = 0;
+    run(start - nb + 100u);
+    check("SEQ REC: a note into a track not armed: not recorded", trk[0].step[0].time == ST_REST && trk[1].step[0].time == ST_REST);
+    /* both RECs armed on the track, the count-in the tape's: the note goes to the tape, the sequencers do not run for it */
+    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; tape_arm = 1u; tape_req = TQ_REC;
+    run(half + 20u);
+    fm1_in.notes = 1u << ka;
+    run(30);
+    fm1_in.notes = 0;
+    run(start - nb + 400u);
+    ok = !song.playing && trk[0].step[0].time == ST_REST && tape_is(60, 0, 0, 0);
+    check("tape REC's count-in: the note onto the tape at its start, SEQ REC's step 1 untouched (the sequencers stay stopped)", ok);
+}
+
 /* tape REC from stop counts in too, onto its head's bar line; the clock started, a transport joining restarts no click */
 static void tape_count_in(void)
 {
@@ -495,6 +553,7 @@ int main(void)
     usb_clean();
     count_in();
     count_in_notes();
+    count_in_steps();
     tape_count_in();
     ext_clock();
     printf(bad ? "click: %d FAILED\n" : "click: all passed\n", bad);

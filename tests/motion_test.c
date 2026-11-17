@@ -375,23 +375,21 @@ static int arp_new_modes(void)
     t->p[P_AMODE] = AM_REPEAT;
     ok &= arp_plays(t, (const uint8_t[]){67}, 1);      /* (CHORD's other notes ended) */
     bad += check("ARP REPEAT switched to THUMB and back, CHORD to REPEAT: each plays its own", ok);
-    /* recording: CHORD's notes onto the tape, the pattern untouched */
+    /* recording: CHORD writes its notes into one step, as the keys' chords (POLY) */
     sel_set(0); song.rec = 1;
     t->p[P_VOICE] = V_POLY;
     for (i = 0; i < NSTEP; i++)
         t->step[i] = (step_t){0};
     seq_start();
-    tape_arm = song.rec; tape_go = tape_recording = 1;  /* (tape REC) */
     seq_tick(t, CTL);
     arp_fresh(t, AM_CHORD, 1, CEG, 3);
     t->arp_pos = 0xFFFFFFF;
     arp_tick(t, CTL);
     for (i = 0, k = 0; i < NSTEP; i++)
-        k += t->step[i].n;
-    k = !k && on_tape(t - trk, 128) == 3u && on_tape(t - trk, 60) && on_tape(t - trk, 64) && on_tape(t - trk, 67);
+        k += t->step[i].n == 3u && t->step[i].note[0] == 60 && t->step[i].note[1] == 64 && t->step[i].note[2] == 67;
     seq_stop();
     song.rec = 0;
-    bad += check("ARP CHORD recorded: C E G onto the tape, the pattern untouched", k == 1u);
+    bad += check("ARP CHORD recorded: C E G into one step", k == 1u);
     arp_fresh(t, AM_OFF, 1, CEG, 0);
     return bad;
 }
@@ -997,10 +995,8 @@ static int takes(void)
     t = tk_track();
     song.rec = 1;
     seq_start(); seq_tick(t, CTL);
-    tape_arm = song.rec; tape_go = tape_recording = 1;  /* (tape REC) */
     input_on(t, 62, 100); input_off(t, 62);
-    bad += check("takes:   an armed track: REC records it onto the tape, nothing logged", take_ev_n == 0u &&
-                 on_tape(t - trk, 62) == 1u && !tk_has(t, 62));
+    bad += check("takes:   an armed track: REC records it, nothing logged", take_ev_n == 0u && tk_has(t, 62));
     seq_stop();
 
     t = tk_track();
@@ -1172,6 +1168,21 @@ static int direction(void)
     }
     seq_stop();
     bad += check("direction:   REV, 1:2 on step 4 (each pass's first): passes 1 and 3", ok);
+    t = dir_track(DIR_REV);
+    song.rec = 1;
+    dir_next(t);                                      /* step 3 */
+    dir_late(t);
+    input_on(t, 64, 100); input_off(t, 64);
+    ok = tk_has(t, 64) && t->step[1].note[0] == 64;
+    seq_stop();
+    t = dir_track(DIR_RAND);
+    song.rec = 1;
+    dir_late(t);
+    i = t->seq_idx;
+    input_on(t, 65, 100); input_off(t, 65);
+    seq_stop();
+    bad += check("direction:   REC late in a step: REV the step before it (3 -> 2), RAND the playing one",
+                 ok && t->step[i].note[0] == 65);
     t = dir_track(DIR_REV);                           /* TAKES: the pass, in REV order */
     dir_next(t);                                      /* step 3 */
     input_on(t, 60, 100); input_off(t, 60);
@@ -1189,7 +1200,7 @@ static int direction(void)
     return bad;
 }
 
-/* Skiff FEEL (the REC layer's KNOB 4, seq.c feel_of): TAKES keep where a note was played as the NUDGE of the
+/* Skiff FEEL (the REC layer's KNOB 4, seq.c feel_of): REC and TAKES keep where a note was played as the NUDGE of the
  * empty step it goes in (64ths of the step; a note past the middle early for the next one); a step with notes keeps
  * its own; OFF: on the grid */
 static void at_64th(track_t *t, uint32_t f)          /* on to f 64ths into the playing step */
@@ -1217,9 +1228,28 @@ static int feel_take(uint32_t on)                     /* LEN 4: notes 10/64 into
 }
 static int feel(void)
 {
-    int bad = 0;
+    int bad = 0, ok;
+    track_t *t;
     bad += check("FEEL: a take keeps where its notes were played (+10 in step 2, -12 before step 4)", feel_take(1));
     bad += check("FEEL:   OFF: the take on the grid, as before", feel_take(0));
+    t = dir_track(DIR_FWD);
+    ui_rec_prefs = REC_FEEL;
+    rp_apply();
+    song.rec = 1;
+    t->p[P_VOICE] = V_POLY;                           /* (a chord: REC keeps one note a step on a MONO part) */
+    t->step[1] = (step_t){{67}, 1, ST_NOTE, 0, 100};
+    t->step[1].nudge = 5;
+    dir_next(t);
+    at_64th(t, 20);
+    input_on(t, 60, 100); input_off(t, 60);          /* into step 2, which has a note: a chord, its nudge kept */
+    dir_next(t);
+    at_64th(t, 20);
+    input_on(t, 62, 100); input_off(t, 62);          /* into empty step 3 */
+    ok = t->step[1].n == 2u && t->step[1].nudge == 5 && t->step[2].note[0] == 62 && t->step[2].nudge == 20;
+    seq_stop();
+    ui_rec_prefs = 0;
+    rp_apply();
+    bad += check("FEEL:   REC: a note into an empty step +20; into a step with notes, its nudge kept", ok);
     return bad;
 }
 

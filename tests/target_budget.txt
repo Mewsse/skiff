@@ -91,6 +91,9 @@ join_take 0
 seqs_join 52
 seq_skip 22
 arm_tick 15
+rec_hold 3
+rec_hold_mix 74
+rec_untie 71
 strum_tick 139
 strum_flush 531
 mix_spread 151

@@ -246,26 +246,25 @@ static int arp_rec(void)
     t->p[P_AMODE] = 0;
     for (i = 0; i < NSTEP; i++) t->step[i] = (step_t){{0}, 0, ST_REST, 0, 0};
     t->p[P_CHRD] = CH_DIA3;
-    song.rec = 1; song.playing = tape_go = tape_recording = 1; tape_arm = song.rec;
+    song.rec = 1; song.playing = 1;
     t->seq_idx = 0; t->seq_pos = 0;
     key_down(K_D4);
-    bad += check("live recording: the chord onto the tape (D F A), the pattern untouched", on_tape(0, 128) == 3u &&
-                 on_tape(0, 62) && on_tape(0, 65) && on_tape(0, 69) && !t->step[0].n);
+    bad += check("live recording: the chord into one step (D F A), nothing onto the tape", t->step[0].n == 3u &&
+                 t->step[0].time == ST_NOTE && t->step[0].note[0] == 62 && t->step[0].note[1] == 65 &&
+                 t->step[0].note[2] == 69 && !on_tape(0, 128));
     key_up(K_D4);
-    tape_init();
     t->p[P_CHRD] = CH_MAJ7; t->p[P_VOIC] = VC_BASS;
     t->seq_idx = 4;
     key_down(K_C4);
-    bad += check("  a 4-note voicing: its 4 notes onto the tape", on_tape(0, 128) == 4u && on_tape(0, 48));
+    bad += check("  a 4-note voicing: 4 notes in the step (the most a step holds)", t->step[4].n == 4u && t->step[4].note[0] == 48);
     key_up(K_C4);
-    tape_init();
-    song.rec = 0; song.playing = tape_go = tape_recording = 0;
+    song.rec = 0; song.playing = 0;
     t->p[P_VOICE] = V_MONO; t->p[P_CHRD] = CH_DIA3; t->p[P_VOIC] = VC_CLOSE;
-    song.rec = 1; song.playing = tape_go = tape_recording = 1; tape_arm = song.rec; t->seq_idx = 8;
+    song.rec = 1; song.playing = 1; t->seq_idx = 8;
     key_down(K_E4);
-    bad += check("  MONO: what it plays recorded (the chord's notes go to the voice, the root sounds)", on_tape(0, 64) == 1u);
+    bad += check("  MONO records its root alone", t->step[8].n == 1u && t->step[8].note[0] == 64);
     key_up(K_E4);
-    song.rec = 0; song.playing = tape_go = tape_recording = 0;
+    song.rec = 0; song.playing = 0;
     return bad;
 }
 
