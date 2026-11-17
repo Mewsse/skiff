@@ -2515,6 +2515,18 @@ static void tape_play(uint32_t rec, uint32_t clock_mode, uint32_t was_running)
         transports_start(want);
 }
 
+/* the tape stops (PAUSE; PLAY while it runs or waits adds the head home) */
+static __attribute__((noinline)) void tape_stop(void)
+{
+    cin_starts &= (uint8_t)~(JOIN_TAPE | JOIN_TAPE_REC);
+    if (cin_left && !cin_starts)
+        seq_stop();                                 /* (a count-in for the tape alone: cancelled) */
+    else if (tape_go && !song.playing)
+        seq_stop();                                 /* (the last one running: the clock stops, what waits is dropped) */
+    else
+        tape_halt();
+}
+
 /* the tape's request (tape_req) */
 static void tape_take(uint32_t op, uint32_t clock_mode, uint32_t was_running)
 {
@@ -2530,14 +2542,10 @@ static void tape_take(uint32_t op, uint32_t clock_mode, uint32_t was_running)
             tape_cued |= (uint8_t)(tape_cued & JOIN_TAPE ? JOIN_TAPE_REC : 0u);
         } else
             tape_play(JOIN_TAPE_REC, clock_mode, was_running);
-    } else if (op == TQ_PAUSE) {
-        cin_starts &= (uint8_t)~(JOIN_TAPE | JOIN_TAPE_REC);
-        if (cin_left && !cin_starts)
-            seq_stop();                             /* (a count-in for the tape alone: cancelled) */
-        else if (tape_go && !song.playing)
-            seq_stop();                             /* (the last one running: the clock stops, what waits is dropped) */
-        else
-            tape_halt();
+    } else if (op == TQ_PLAY || op == TQ_PAUSE) {
+        tape_stop();
+        if (op == TQ_PLAY)
+            tape_head = 0;
     } else if ((op == TQ_BAR_BACK || op == TQ_BAR_ON) && tape_go) {
         tape_voices_end(-1, 1);                     /* (a bar exactly: the head keeps the clock's place in it) */
         tape_head = (tape_head + (op == TQ_BAR_BACK ? len - TAPE_BAR : TAPE_BAR)) % len;

@@ -1106,7 +1106,9 @@ async function editorTape() {
   ok(!s.rc && s.head === 3 * E.TAPE.BAR && (await ask(E.TAPE_OP.LOCATE, 9, 0)).rc === 1, "tape: LOCATE a bar, refused past the end");
   s = await ask(E.TAPE_OP.PLAY);
   ok(!s.rc && s.running && !s.recording && (await ask(E.TAPE_OP.LOCATE, 1, 0)).rc === 1, "tape: PLAY runs the tape, LOCATE refused while it runs");
-  ok((await ask(E.TAPE_OP.PLAY)).rc === 1, "tape: PLAY again refused (it runs)");
+  s = await ask(E.TAPE_OP.PLAY);
+  ok(!s.rc && !s.running && !s.recording && s.head === 0 && (await ask(E.TAPE_OP.PLAY)).running,
+     "tape: PLAY while it runs stops it, the head back at the start; PLAY again runs it");
   s = await ask(E.TAPE_OP.REC);
   ok(s.recording && s.running && !s.undo && (await ask(E.TAPE_OP.UNDO)).rc === 1, "tape: REC while it runs: recording, UNDO refused meanwhile");
   s = await ask(E.TAPE_OP.REC);

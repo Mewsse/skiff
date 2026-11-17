@@ -2888,7 +2888,7 @@ function makeMockDevice(opt = {}) {
         else if (a[0] === 6) tp.target = a[1];
         else if (a[0] === 7) tp.run = a[2] ? tp.run | 1 << a[1] : tp.run & ~(1 << a[1]);
         else if (a[0] === 8) tp.overdub = a[1];
-        else if (a[0] === 9) { if (tp.go) rc = 1; else tp.go = 1; }
+        else if (a[0] === 9) { if (tp.go) { tp.go = 0; tp.rec = 0; tp.head = 0; } else tp.go = 1; }   /* (PLAY while it runs: it stops, back to the start) */
         else if (a[0] === 10) { tp.go = 0; tp.rec = 0; }
         else if (a[0] === 11) { if (tp.go && tp.rec) { tp.rec = 0; tp.undo = 1; } else { tp.go = 1; tp.rec = 1; tp.undo = 0; } }
         else if (a[0] === 12) { if (tp.rec || !tp.undo) rc = 1; else tp.undo = 0; }

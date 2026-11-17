@@ -981,6 +981,55 @@ static int test_arm_tape_only(void)
                  !trk[0].p[P_MUTE] && !arm[0].op);
 }
 
+/* tape PLAY while the tape runs or waits stops it, as PAUSE */
+static int test_play_toggle(void)
+{
+    int bad = 0;
+    uint32_t head;
+    fresh(120);
+    tape_req = TQ_PLAY;
+    run_to(2000);
+    head = tape_head;
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    bad += check("tape PLAY while it plays: stops, the head back at the start, the clock stops with it",
+                 head > 0u && !tape_go && !clock_run() && tape_head == 0u);
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    bad += check("tape PLAY again: runs", tape_go);
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    fresh(120);
+    tape_arm = 1u;
+    tape_req = TQ_REC;
+    run_to(1000);
+    head = tape_recording;
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    bad += check("tape PLAY while it records: punched out and stopped", head && !tape_go && !tape_recording && !clock_run() && !tape_head);
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 3;
+    transport_req = 1;
+    run_to(1000);
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    bad += check("tape PLAY with the sequencers running: waits for its line", !tape_go && (join_want & JOIN_TAPE));
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    bad += check("tape PLAY while it waits: cancelled, the head at the start, the sequencers and the clock go on",
+                 !join_want && !tape_go && !tape_head && song.playing && clock_run());
+    tape_req = TQ_PLAY;
+    run_to(1000u + 4u * TAPE_BAR);
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    bad += check("tape PLAY while it plays with the sequencers running: stops, at the start, they go on",
+                 !tape_go && !tape_head && song.playing && clock_run());
+    unit_settings[32 * 15 + 26] = 0;
+    transport_req = 4;
+    events_block(CTL);
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
@@ -1011,6 +1060,7 @@ int main(void)
     fails += test_arm_tape_only();
     fails += test_tape_play();
     fails += test_tape_stop();
+    fails += test_play_toggle();
     printf(fails ? "grid: %u FAILED\n" : "grid: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

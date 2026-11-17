@@ -521,7 +521,7 @@ by the keys, with what each key is in Skiff.
   the MENU opens
 - Hold FX, GLO, SEL, EDIT, ARP or SEQ for its layer; **SHIFT + the button** (or the button held, then HOME) keeps it open (the header says
   LOCKED), the button closes it. A locked FX layer latches its effects
-- **SMK-37: KNOB BANK (SHIFT) + the bottom row of pads** is the tape's transport: PLAY, PAUSE, REC (the selected track,
+- **SMK-37: KNOB BANK (SHIFT) + the bottom row of pads** is the tape's transport: PLAY (again while the tape runs or waits: it stops, back to the start; PAUSE keeps the head), PAUSE, REC (the selected track,
   again to punch out), a bar back, a bar on, the top, the last bar (stopped only), UNDO. **<** and **>** are the bar
   back and on. UNDO takes back the last recording pass (its new notes go, the notes a replace pass ghosted come back); not
   while recording, and the next REC, a save or a merge makes the pass final. The pads show it while KNOB BANK is held

@@ -116,7 +116,7 @@ Sizes (Pro, with the note tape and the editor's Tape tab; `./build.sh`): app 581
 - **The extra buttons:** KNOB BANK is SHIFT, as HOME held but on a button of its own: the map, + BT for TAKE, and
   + a layer's button to lock that layer. Let go, it does nothing (HOME still taps home, and held opens MENU).
   FADER BANK steps the faders' bank. < and > move the note tape's head a bar back and on, playing too.
-- **The tape's transport:** KNOB BANK held + the bottom row of pads, pads 9..16 of the scan, 1..8 here: PLAY, PAUSE,
+- **The tape's transport:** KNOB BANK held + the bottom row of pads, pads 9..16 of the scan, 1..8 here: PLAY (pressed again while the tape runs or waits: it stops, back to the start; PAUSE keeps the head), PAUSE,
   REC (the selected track; pressed again while it records: punch out), a bar back, a bar on, the top, the last bar
   (these two stopped only: STOP FIRST) and UNDO. Such a press is never a step or a note, nor its release; a pad held as
   a key before SHIFT lets go as that key. The pads show the transport while KNOB BANK is held, the top row dark.
