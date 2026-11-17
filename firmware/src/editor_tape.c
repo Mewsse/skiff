@@ -1,17 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* (Skiff P11) the note tape for the editor (EDITOR_PROTOCOL.md "Tape"); INFO 5A 01 caps (1). Included by editor.c.
+/* (Skiff P11) the note tape for the editor (EDITOR_PROTOCOL.md "Tape"); INFO 5A 01 caps (1 the tape, 2 its transport). Included by editor.c.
  * Every edit is the unit's own (tape.c, the main loop), as SEQ > TAPE does it.
  *   TAPE: [op, ...] -> op, rc (0 done, 1 refused), then the state. No op: the state. Ops: 1 MERGE [into, from] (a track
  *     with notes, never itself), 2 CLEAR [track], 3 MUTE [track, 0/1], 4 LENGTH [bars lo, hi] (1..256), 5 LOCATE [bar
  *     lo, hi] (the head to a bar line, stopped only), 6 TARGET [track], 7 RUN [instrument, 0/1] (the step sequencer's
- *     RUN, armed as PERFORM's key while playing), 8 OVERDUB [0/1] (0: replace)
+ *     RUN, armed as PERFORM's key while playing), 8 OVERDUB [0/1] (0: replace), 9 PLAY, 10 PAUSE, 11 REC (the
+ *     selected track; again: punch out), 12 UNDO (the last recording pass; refused while recording): the tape's own
+ *     transport, as the pads' (smk_ui.c smk_tape_pad), a request for the audio ISR (tape_ask; refused when the last has
+ *     not been taken yet)
  *   state: bars lo, hi, the head's ticks (3 bytes), target, overdub, mutes (a bit a track), run (a bit an instrument),
- *     the notes the tape holds at most (lo, hi), then each track's notes (lo, hi)
+ *     the notes the tape holds at most (lo, hi), then each track's notes (lo, hi), then
+ *     the tape's state: bit 0 runs, 1 records, 2 waits (cued, a join, a count-in), 3 an undo is ready
  *   TAPE_GET: [track, first lo, hi, count 1..32] -> track, first lo, hi, notes in the track (lo, hi), n, then n x
  *     (at 3 bytes, length 3 bytes, note, instrument, velocity): the notes in tick order, a note being recorded not
  *     among them; the ones past the tape's length are (they stay, unplayed) */
 enum { ED_TAPE = 84, ED_TAPE_GET };
-enum { EDT_MERGE = 1, EDT_CLEAR, EDT_MUTE, EDT_LENGTH, EDT_LOCATE, EDT_TARGET, EDT_RUN, EDT_OVERDUB };
+enum { EDT_MERGE = 1, EDT_CLEAR, EDT_MUTE, EDT_LENGTH, EDT_LOCATE, EDT_TARGET, EDT_RUN, EDT_OVERDUB, EDT_PLAY, EDT_PAUSE, EDT_REC, EDT_UNDO };
 #define ED_TAPE_PAGE 32u
 
 static int ed_tape_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
@@ -29,6 +33,10 @@ static int ed_tape_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
     case EDT_LOCATE:   return n == 3u;
     case EDT_RUN:      return n == 3u && a[1] < NTRK && a[2] <= 1u;
     case EDT_OVERDUB:  return n == 2u && a[1] <= 1u;
+    case EDT_PLAY:
+    case EDT_PAUSE:
+    case EDT_REC:
+    case EDT_UNDO:     return n == 1u;
     default:           return 0;
     }
 }
@@ -107,6 +115,16 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
                 ui.tsrc = 0;
         } else if (op == EDT_RUN) {
             ed_tape_run(track, a[2]);
+        } else if (op == EDT_PLAY || op == EDT_PAUSE) {
+            rc = !tape_ask(op == EDT_PLAY ? TQ_PLAY : TQ_PAUSE);
+        } else if (op == EDT_REC) {
+            if (!tape_recording) {
+                tape_commit();
+                tape_arm = (uint8_t)(1u << song.sel);
+            }
+            rc = !tape_ask(TQ_REC);
+        } else if (op == EDT_UNDO) {
+            rc = tape_undo() != UNDO_DONE;
         } else {
             tp_overdub = (uint8_t)a[1];
         }
@@ -130,5 +148,7 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         ed_b(tp_notes(track));
         ed_b(tp_notes(track) >> 7);
     }
+    ed_b((uint32_t)tape_go | (uint32_t)tape_recording << 1 | (uint32_t)(tape_pending() != 0u) << 2 |
+         (uint32_t)tape_undo_ready() << 3);
     return 1;
 }

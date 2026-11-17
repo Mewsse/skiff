@@ -563,7 +563,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             0x59, 1, 3u,     /* (Skiff Studio) the cast, cmd 83 (cast.c); bit 1: the SMK-37's
                                                          * layout (its copy: felucca_cast_smk.wasm) */
 #endif
-            0x5A, 1, 1,                                 /* (Skiff P11) the note tape: TAPE, TAPE_GET (editor_tape.c) */
+            0x5A, 1, 3,                                 /* (Skiff P11) the note tape: TAPE, TAPE_GET (1), its transport (2) (editor_tape.c) */
         };
         ed_str("FELUCCA " FELUCCA_VERSION, 24);
         ed_b(NENGINES);

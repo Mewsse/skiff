@@ -2,7 +2,7 @@
 /* (Skiff W3) the editor's transport and the projects' names (EDITOR_PROTOCOL.md "Transport, project names"); INFO
  * 57 01 caps (bit 0 TRANSPORT, bit 1 PROJ_NAME; bit 2, the pattern pool's POOL: gone with it, Skiff P10). Included by
  * editor.c.
- *   TRANSPORT: [op] 1 PLAY (playing: nothing), 2 STOP, 3 RESTART (from the top), 4 REC (the selected track armed or not,
+ *   TRANSPORT (the step sequencers only; the tape's is editor_tape.c): [op] 1 PLAY (playing: nothing), 2 STOP, 3 RESTART (from the top), 4 REC (the selected track armed or not,
  *     as its button: ui_input.c rec_tap) -> rc, playing, counting in, the request the audio has yet to take (seq.c
  *     transport_req: 1 start, 2 stop, 3 restart), the armed tracks, the selected track. No op: the state.
  *   PROJ_NAME: [op 1 SAVE AS / 2 RENAME, slot, name (0..12 of 32..126, upper-cased; its 0 optional)] -> op, rc (0 done,

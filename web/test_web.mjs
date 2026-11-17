@@ -1082,7 +1082,7 @@ async function editorTape() {
   const C = E.CMD;
   const { rq, done } = attachMock({});
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(C.TAPE === 84 && C.TAPE_GET === 85 && info.tape === 1 && info.skiff === 99, "tape: INFO 5A 01 caps 1 after the others; commands 84, 85");
+  ok(C.TAPE === 84 && C.TAPE_GET === 85 && info.tape === 3 && info.skiff === 99, "tape: INFO 5A 01 caps 3 (tape, its transport) after the others; commands 84, 85");
   const ask = async (op = 0, ...args) => E.parse[C.TAPE](await rq(E.req.tape(op, ...args)));
   let s = await ask();
   ok(s.op === 0 && !s.rc && s.bars === 4 && s.head === 0 && s.target === 0 && s.overdub && s.mutes === 0 && s.run === 63 && s.cap === 1440 &&
@@ -1104,9 +1104,17 @@ async function editorTape() {
   ok(s.bars === 256 && (await ask(E.TAPE_OP.LENGTH, 8, 0)).bars === 8, "tape: LENGTH 1..256 (two 7-bit bytes)");
   s = await ask(E.TAPE_OP.LOCATE, 3, 0);
   ok(!s.rc && s.head === 3 * E.TAPE.BAR && (await ask(E.TAPE_OP.LOCATE, 9, 0)).rc === 1, "tape: LOCATE a bar, refused past the end");
-  await rq(E.req.transport(1));
-  ok((await ask(E.TAPE_OP.LOCATE, 1, 0)).rc === 1, "tape: LOCATE refused while playing");
-  await rq(E.req.transport(2));
+  s = await ask(E.TAPE_OP.PLAY);
+  ok(!s.rc && s.running && !s.recording && (await ask(E.TAPE_OP.LOCATE, 1, 0)).rc === 1, "tape: PLAY runs the tape, LOCATE refused while it runs");
+  ok((await ask(E.TAPE_OP.PLAY)).rc === 1, "tape: PLAY again refused (it runs)");
+  s = await ask(E.TAPE_OP.REC);
+  ok(s.recording && s.running && !s.undo && (await ask(E.TAPE_OP.UNDO)).rc === 1, "tape: REC while it runs: recording, UNDO refused meanwhile");
+  s = await ask(E.TAPE_OP.REC);
+  ok(!s.recording && s.running && s.undo, "tape: REC again: punch out, an undo ready");
+  s = await ask(E.TAPE_OP.UNDO);
+  ok(!s.rc && !s.undo && (await ask(E.TAPE_OP.UNDO)).rc === 1, "tape: UNDO takes the pass back; again: nothing to undo");
+  s = await ask(E.TAPE_OP.PAUSE);
+  ok(!s.running && !s.recording && !s.rc, "tape: PAUSE stops it");
   ok((await ask(E.TAPE_OP.MERGE, 2, 3)).rc === 1 && (await ask(E.TAPE_OP.MERGE, 2, 1)).counts.join() === "8,0,4,0",
      "tape: MERGE an empty source refused; track 2 into 3 in order, the source emptied");
   ok((await ask(E.TAPE_OP.MERGE, 0, 2)).counts.join() === "12,0,0,0" && (await page(0, 0, 32)).notes.every((n, i, all) => !i || all[i - 1].at <= n.at),
@@ -1114,12 +1122,12 @@ async function editorTape() {
   s = await ask(E.TAPE_OP.CLEAR, 0);
   ok(s.counts.join() === "0,0,0,0", "tape: CLEAR");
   for (const bad of [[E.TAPE_OP.MERGE, 1, 1], [E.TAPE_OP.CLEAR, 4], [E.TAPE_OP.MUTE, 0, 2], [E.TAPE_OP.LENGTH, 0, 0], [E.TAPE_OP.LENGTH, 1, 2],
-                     [E.TAPE_OP.RUN, 6, 1], [E.TAPE_OP.OVERDUB, 2], [9], [E.TAPE_OP.CLEAR]]) {
+                     [E.TAPE_OP.RUN, 6, 1], [E.TAPE_OP.OVERDUB, 2], [13], [E.TAPE_OP.PLAY, 1], [E.TAPE_OP.CLEAR]]) {
     let err = null;
     try { E.req.tape(...bad); } catch (e) { err = e; }
     ok(err, `tape: a bad request is not built (${bad.join(" ")})`);
   }
-  for (const frame of [[C.TAPE, [9]], [C.TAPE, [2, 4]], [C.TAPE_GET, [0, 0, 0, 33]], [C.TAPE_GET, [4, 0, 0, 1]], [C.TAPE_GET, [0, 0, 0, 0]]]) {
+  for (const frame of [[C.TAPE, [13]], [C.TAPE, [9, 1]], [C.TAPE, [2, 4]], [C.TAPE_GET, [0, 0, 0, 33]], [C.TAPE_GET, [4, 0, 0, 1]], [C.TAPE_GET, [0, 0, 0, 0]]]) {
     const err = await rq(frame, { timeout: 100, retries: 0 }).then(() => null, (e) => e.message);
     ok(/^timeout/.test(err || ""), `tape: the device answers no bad frame (${frame[0]}: ${frame[1].join(" ")})`);
   }

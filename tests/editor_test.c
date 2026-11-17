@@ -191,8 +191,8 @@ static int preferences(void)
     uint8_t a[4] = {0, 3, 0, 0};                          /* (THEME: 3, CRYPT) */
     reset();
     uint32_t n = request(ED_INFO, a, 0);
-    bad += check("INFO (P11) the tape last: 5A 01 caps 1 (TAPE, TAPE_GET)",
-        host_wire[n - 4] == 0x5A && host_wire[n - 3] == 1 && host_wire[n - 2] == 1);
+    bad += check("INFO (P11) the tape last: 5A 01 caps 3 (TAPE, TAPE_GET, its transport)",
+        host_wire[n - 4] == 0x5A && host_wire[n - 3] == 1 && host_wire[n - 2] == 3);
     n -= 3u;                                              /* (the tags before it, as they were) */
     bad += check("INFO (1.3) wide ids ((Skiff P10) the pool's 58 01 gone with it): 49 01, P_COUNT and P_E0 in two 7-bit bytes each; the plain bytes at most 127",
         host_wire[n - 7] == 0x49 && host_wire[n - 6] == 1 && host_wire[n - 5] == (P_COUNT & 127u) &&
@@ -1313,7 +1313,7 @@ static int tape_cmds(void)
     static const uint8_t merge[] = {1, 0, 1}, merge_self[] = {1, 2, 2}, merge_empty[] = {1, 0, 3}, clear[] = {2, 0}, clear_big[] = {2, 4},
         mute[] = {3, 2, 1}, unmute[] = {3, 2, 0}, mute_big[] = {3, 4, 1}, len8[] = {4, 8, 0}, len256[] = {4, 0, 2}, len0[] = {4, 0, 0},
         len257[] = {4, 1, 2}, locate[] = {5, 3, 0}, far[] = {5, 9, 0}, target[] = {6, 2}, run_off[] = {7, 4, 0}, run_on[] = {7, 4, 1},
-        over_off[] = {8, 0}, over_on[] = {8, 1}, op9[] = {9}, get0[] = {0, 0, 0, 2}, get1[] = {0, 1, 0, 2}, get_big[] = {0, 0, 0, 33},
+        over_off[] = {8, 0}, over_on[] = {8, 1}, op13[] = {13}, op_play[] = {9}, op_pause[] = {10}, op_rec[] = {11}, op_undo[] = {12}, play_arg[] = {9, 1}, get0[] = {0, 0, 0, 2}, get1[] = {0, 1, 0, 2}, get_big[] = {0, 0, 0, 33},
         get_zero[] = {0, 0, 0, 0}, get_trk[] = {4, 0, 0, 1};
     int bad = 0, ok;
     reset();
@@ -1324,37 +1324,67 @@ static int tape_cmds(void)
     tape_put(0, 960, 62, 2, 480, 80);
     tape_put(0, 6000, 64, 0, 10, 70);
     tape_put(1, 5, 40, 3, 20, 100);
-    ok = request(ED_TAPE, 0, 0) == 27u && !host_wire[5] && !host_wire[6] && host_wire[7] == 4 && !host_wire[8] && !host_wire[9] &&
+    ok = request(ED_TAPE, 0, 0) == 28u && !host_wire[5] && !host_wire[6] && host_wire[7] == 4 && !host_wire[8] && !host_wire[9] &&
          !host_wire[12] && host_wire[13] == 1 && !host_wire[14] && host_wire[15] == 63 && host_wire[16] == (TAPE_N & 127u) &&
          host_wire[17] == TAPE_N >> 7 && host_wire[18] == 3 && host_wire[20] == 1 && !host_wire[22] && !host_wire[24];
     bad += check("TAPE: the state (4 bars, head 0, target 0, overdub, RUN of 6, capacity, notes a track)", ok);
-    ok = !request(ED_TAPE, merge_self, 3) && !request(ED_TAPE, len0, 3) && !request(ED_TAPE, len257, 3) && !request(ED_TAPE, op9, 1) &&
+    ok = !request(ED_TAPE, merge_self, 3) && !request(ED_TAPE, len0, 3) && !request(ED_TAPE, len257, 3) && !request(ED_TAPE, op13, 1) && !request(ED_TAPE, play_arg, 2) &&
          !request(ED_TAPE, mute_big, 3) && !request(ED_TAPE, clear_big, 2) && !request(ED_TAPE, over_off, 1) && !request(ED_TAPE, far, 2);
     bad += check("TAPE: bad ops, tracks, lengths and sizes unanswered", ok);
-    ok = request(ED_TAPE, merge_empty, 3) == 27u && host_wire[5] == 1 && host_wire[6] == 1 && tp_trk[0].count == 3u;
-    ok &= request(ED_TAPE, merge, 3) == 27u && !host_wire[6] && host_wire[18] == 4 && !host_wire[20] && tp_trk[0].count == 4u && !tp_trk[1].count;
+    ok = request(ED_TAPE, merge_empty, 3) == 28u && host_wire[5] == 1 && host_wire[6] == 1 && tp_trk[0].count == 3u;
+    ok &= request(ED_TAPE, merge, 3) == 28u && !host_wire[6] && host_wire[18] == 4 && !host_wire[20] && tp_trk[0].count == 4u && !tp_trk[1].count;
     bad += check("TAPE: MERGE (an empty source refused), the counts", ok);
-    ok = request(ED_TAPE, mute, 3) == 27u && host_wire[14] == 4 && tp_trk[2].mute;
-    ok &= request(ED_TAPE, unmute, 3) == 27u && !host_wire[14] && !tp_trk[2].mute;
-    ok &= request(ED_TAPE, target, 2) == 27u && host_wire[12] == 2 && tp_target == 2u;
-    ok &= request(ED_TAPE, run_off, 3) == 27u && host_wire[15] == 47 && !seq_running(4);
-    ok &= request(ED_TAPE, run_on, 3) == 27u && host_wire[15] == 63 && seq_running(4);
-    ok &= request(ED_TAPE, over_off, 2) == 27u && !host_wire[13] && !tp_overdub;
-    ok &= request(ED_TAPE, over_on, 2) == 27u && host_wire[13] == 1 && tp_overdub;
+    ok = request(ED_TAPE, mute, 3) == 28u && host_wire[14] == 4 && tp_trk[2].mute;
+    ok &= request(ED_TAPE, unmute, 3) == 28u && !host_wire[14] && !tp_trk[2].mute;
+    ok &= request(ED_TAPE, target, 2) == 28u && host_wire[12] == 2 && tp_target == 2u;
+    ok &= request(ED_TAPE, run_off, 3) == 28u && host_wire[15] == 47 && !seq_running(4);
+    ok &= request(ED_TAPE, run_on, 3) == 28u && host_wire[15] == 63 && seq_running(4);
+    ok &= request(ED_TAPE, over_off, 2) == 28u && !host_wire[13] && !tp_overdub;
+    ok &= request(ED_TAPE, over_on, 2) == 28u && host_wire[13] == 1 && tp_overdub;
     bad += check("TAPE: MUTE, TARGET, RUN (stopped: at once), OVERDUB", ok);
-    ok = request(ED_TAPE, len8, 3) == 27u && host_wire[7] == 8 && tape_length() == 8u * TAPE_BAR;
-    ok &= request(ED_TAPE, len256, 3) == 27u && !host_wire[7] && host_wire[8] == 2 && tape_length() == 256u * TAPE_BAR;
-    ok &= request(ED_TAPE, len8, 3) == 27u;
-    ok &= request(ED_TAPE, locate, 3) == 27u && !host_wire[6] && tape_head == 3u * TAPE_BAR;
-    ok &= request(ED_TAPE, far, 3) == 27u && host_wire[6] == 1 && tape_head == 3u * TAPE_BAR;
+    ok = request(ED_TAPE, len8, 3) == 28u && host_wire[7] == 8 && tape_length() == 8u * TAPE_BAR;
+    ok &= request(ED_TAPE, len256, 3) == 28u && !host_wire[7] && host_wire[8] == 2 && tape_length() == 256u * TAPE_BAR;
+    ok &= request(ED_TAPE, len8, 3) == 28u;
+    ok &= request(ED_TAPE, locate, 3) == 28u && !host_wire[6] && tape_head == 3u * TAPE_BAR;
+    ok &= request(ED_TAPE, far, 3) == 28u && host_wire[6] == 1 && tape_head == 3u * TAPE_BAR;
     song.playing = 1;
-    ok &= request(ED_TAPE, locate, 3) == 27u && !host_wire[6];
+    ok &= request(ED_TAPE, locate, 3) == 28u && !host_wire[6];
     tape_go = 1;
-    ok &= request(ED_TAPE, locate, 3) == 27u && host_wire[6] == 1;
-    ok &= request(ED_TAPE, run_off, 3) == 27u && seq_running(4) && arm[4].op == ARM_RUN_OFF;
-    ok &= request(ED_TAPE, run_on, 3) == 27u && seq_running(4) && arm[4].op == ARM_NONE;
+    ok &= request(ED_TAPE, locate, 3) == 28u && host_wire[6] == 1;
+    ok &= request(ED_TAPE, run_off, 3) == 28u && seq_running(4) && arm[4].op == ARM_RUN_OFF;
+    ok &= request(ED_TAPE, run_on, 3) == 28u && seq_running(4) && arm[4].op == ARM_NONE;
     song.playing = tape_go = 0;
     bad += check("TAPE: LENGTH (1..256), LOCATE (the sequencers playing: yes; the tape: refused; past the end), RUN armed while playing, taken back", ok);
+    {   /* the tape's transport: requests for the audio ISR, the state byte (bit 0 runs, 1 records, 2 waits, 3 undo ready) */
+        uint32_t req;
+        tape_req = 0;
+        tape_recording = tape_go = 0;
+        sel_set(2);
+        ok = request(ED_TAPE, op_play, 1) == 28u && !host_wire[6] && tape_req == TQ_PLAY;
+        ok &= request(ED_TAPE, op_play, 1) == 28u && host_wire[6] == 1;          /* (the last not taken yet) */
+        tape_req = 0;
+        ok &= request(ED_TAPE, op_pause, 1) == 28u && tape_req == TQ_PAUSE;
+        tape_req = 0;
+        ok &= request(ED_TAPE, op_rec, 1) == 28u && !host_wire[6] && tape_req == TQ_REC && tape_arm == 4u;
+        tape_req = 0;
+        tape_go = 1;
+        ok &= request(ED_TAPE, 0, 0) == 28u && host_wire[26] == 1;
+        tape_recording = 1;
+        ok &= request(ED_TAPE, 0, 0) == 28u && host_wire[26] == 3;
+        ok &= request(ED_TAPE, op_undo, 1) == 28u && host_wire[6] == 1;           /* (not while recording) */
+        tape_recording = tape_go = 0;
+        cin_starts = JOIN_TAPE;
+        ok &= request(ED_TAPE, 0, 0) == 28u && host_wire[26] == 4;
+        cin_starts = 0;
+        (void)tape_insert(3, 700u | 61u << 20 | TP_NEW, 50u | 90u << 20, TAPE_ANY_PASS);
+        tp_undoable = 1;
+        req = request(ED_TAPE, 0, 0);
+        ok &= req == 28u && host_wire[26] == 8;
+        ok &= request(ED_TAPE, op_undo, 1) == 28u && !host_wire[6] && host_wire[26] == 0;
+        ok &= request(ED_TAPE, op_undo, 1) == 28u && host_wire[6] == 1;           /* (nothing to undo) */
+        tape_req = 0;
+        bad += check("TAPE: PLAY, PAUSE, REC (the selected track), UNDO as requests, the tape's state byte", ok);
+    }
     ok = request(ED_TAPE_GET, get0, 4) == 30u && !host_wire[5] && host_wire[8] == 4 && host_wire[10] == 2 &&
          host_wire[11] == 5 && host_wire[14] == 20 && host_wire[17] == 40 && host_wire[18] == 3 && host_wire[19] == 100 &&
          host_wire[20] == 100 && host_wire[23] == 50 && host_wire[26] == 60 && host_wire[27] == 1 && host_wire[28] == 90;
@@ -1369,7 +1399,7 @@ static int tape_cmds(void)
     ok = !request(ED_TAPE_GET, get_big, 4) && !request(ED_TAPE_GET, get_zero, 4) && !request(ED_TAPE_GET, get_trk, 4) &&
          !request(ED_TAPE_GET, get0, 3);
     bad += check("TAPE_GET: a page of 1..32 of a track 0..3; bad ones unanswered", ok);
-    ok = request(ED_TAPE, clear, 2) == 27u && !host_wire[18] && !tp_trk[0].count && request(ED_TAPE_GET, get0, 4) == 12u && !host_wire[10];
+    ok = request(ED_TAPE, clear, 2) == 28u && !host_wire[18] && !tp_trk[0].count && request(ED_TAPE_GET, get0, 4) == 12u && !host_wire[10];
     bad += check("TAPE: CLEAR (an empty track's page: none)", ok);
     return bad;
 }
