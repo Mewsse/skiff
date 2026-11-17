@@ -394,7 +394,7 @@ static int ts_save_from(uint32_t slot, const step_t *const *steps, int tape)
         src.steps[k] = steps ? steps[k] : trk[k].step;
     src.tape = tape;
     if (tape) {
-        tape_sweep();                              /* (the ghosts replace mode left: gone) */
+        tape_commit();                             /* (the ghosts replace mode left: gone; the last pass is final) */
         ts_meta_now(&m);
     } else {
         ts_meta_empty(&m);

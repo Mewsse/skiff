@@ -395,6 +395,18 @@ static int wear_and_wrap(void)
     ok &= ts_save(TS_MUSIC) == 0 && ts_has(TS_MUSIC) && !ts_music_lost();
     bad += check("  the store full (the music's set too): a project's save takes the music's, written again after", ok);
     fresh();
+    {   /* a save commits the last recording pass: ghosts gone, the new notes final (no undo after) */
+        uint16_t kept = tape_insert(0, 100u | 60u << 20, 50u | 100u << 20, TAPE_ANY_PASS);
+        (void)tape_insert(0, 300u | 62u << 20 | TP_NEW, 50u | 100u << 20, TAPE_ANY_PASS);
+        tp_w0[kept] |= TP_GHOST;
+        tp_ghosts = 1;
+        tape_poll();
+        ok = tp_trk[0].count == 2u && tp_notes(0) == 1u && tape_undo_ready();
+        ok &= ts_save(TS_MUSIC) == 0 && tp_trk[0].count == 1u && tp_notes(0) == 1u && !tape_undo_ready() &&
+              !(tp_w0[tp_trk[0].first] & (TP_NEW | TP_GHOST)) && tape_undo() == UNDO_NONE;
+        bad += check("a save commits the last recording pass: the ghost swept, the new note final, nothing to undo", ok);
+    }
+    fresh();
     tst.top = 0xFFFFFFF0u;                        /* the generation about to wrap */
     for (i = 0; i < 30u; i++) {
         rich(0, i);

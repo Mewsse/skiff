@@ -523,7 +523,8 @@ by the keys, with what each key is in Skiff.
   LOCKED), the button closes it. A locked FX layer latches its effects
 - **SMK-37: KNOB BANK (SHIFT) + the bottom row of pads** is the tape's transport: PLAY, PAUSE, REC (the selected track,
   again to punch out), a bar back, a bar on, the top, the last bar (stopped only), UNDO. **<** and **>** are the bar
-  back and on. The pads show it while KNOB BANK is held
+  back and on. UNDO takes back the last recording pass (its new notes go, the notes a replace pass ghosted come back); not
+  while recording, and the next REC, a save or a merge makes the pass final. The pads show it while KNOB BANK is held
 - **SAVE** tapped: its pages (PRESETS, USER, PROJECT); **held**: undo. **SHIFT + SAVE**: TAKE, or
   (2.5) stopped, after playing: FREE TAKE
 - **REC** arms the selected track the moment it is pressed; on an armed track it disarms every track (its light is on

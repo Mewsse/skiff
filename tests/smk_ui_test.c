@@ -1015,6 +1015,48 @@ static int test_tape_pad_leds(void)
     return bad;
 }
 
+/* pad 16: UNDO the last recording pass; pad 11 (REC) makes the pass before final */
+static int test_tape_undo_pad(void)
+{
+    int bad = 0, ok;
+    uint32_t req;
+    smk_power_on();
+    frame();
+    tape_go = tape_recording = 0;
+    tape_req = 0;
+    tape_init();
+    shift_hold(1);
+    bad += check("SMK pad 16, nothing recorded: NO UNDO, the pad dark", tape_pad(15, &req) && msg_is("NO UNDO") && !host_pad[15]);
+    (void)tape_insert(0, 100u | 60u << 20 | TP_NEW, 50u | 100u << 20, TAPE_ANY_PASS);
+    tp_undoable = 1;
+    frame();
+    bad += check("SMK pad 16: lit when a pass can be undone", host_pad[15] == SMK_PAD_WHITE_FULL);
+    tape_recording = 1;
+    tape_go = 1;
+    frame();
+    ok = !host_pad[15];
+    ui.msg_t = 0;
+    tape_pad(15, &req);
+    ok &= msg_is("STOP FIRST") && tp_trk[0].count == 1u;
+    tape_recording = 0;
+    tape_go = 0;
+    bad += check("  recording: dark, UNDO refused (STOP FIRST), the note kept", ok);
+    tape_pad(15, &req);
+    bad += check("  stopped: UNDO said, the new note gone, nothing left to undo", msg_is("UNDO") && !tp_trk[0].count && !tape_undo_ready());
+    (void)tape_insert(0, 100u | 60u << 20 | TP_NEW, 50u | 100u << 20, TAPE_ANY_PASS);
+    tp_undoable = 1;
+    tape_pad(10, &req);
+    events_block(CTL);
+    tape_req = TQ_REC;                                 /* (punch out) */
+    events_block(CTL);
+    ok = !(tp_w0[tp_trk[0].first] & TP_NEW) && !tape_undo_ready();
+    tape_pad(15, &req);
+    bad += check("SMK pad 11 (REC): commits the pass before: it is final, UNDO has nothing", ok && tp_trk[0].count == 1u && msg_is("NO UNDO"));
+    shift_hold(0);
+    tape_init();
+    return bad;
+}
+
 /* the header's bar.beat: the tape's head when only the tape runs, the selected track's step when the sequencers do */
 static int test_header_counter(void)
 {
@@ -1108,6 +1150,7 @@ int main(void)
     bad += test_shift();
     bad += test_tape_pads();
     bad += test_tape_pad_leds();
+    bad += test_tape_undo_pad();
     bad += test_play_with_tape_count_in();
     bad += test_header_counter();
     bad += test_master();

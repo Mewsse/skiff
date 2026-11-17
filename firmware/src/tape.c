@@ -47,12 +47,14 @@ static void tp_irq_restore(uint32_t flags) { (void)flags; fm1_irq_on(); }
 #define TP_INST(w) (((w) >> 27) & 7u)
 #define TP_KEY(w) ((w) & (0x3FFu << 20))        /* note + inst, in w0, a voice and a record event alike */
 #define TP_GHOST (1u << 30)
+#define TP_NEW (1u << 31)              /* recorded by the pass UNDO takes back, until tape_commit */
 #define TP_LEN(w) ((w) & 0xFFFFFu)
 #define TP_VEL(w) (((w) >> 20) & 0x7Fu)
 #define TP_HELD (1u << 27)
 #define TP_VTRK(v) ((v) >> 30)
 
-/* w0: at:20 | note:7 | inst:3 | ghost:1 | spare:1. Main loop writes it before linking; after that only the ISR sets ghost */
+/* w0: at:20 | note:7 | inst:3 | ghost:1 | new:1. Main loop writes it before linking; after that the ISR sets ghost and the
+ * main loop clears ghost and new, each in an irq-off section of one store */
 static uint32_t tp_w0[TAPE_N] __attribute__((section(".pool")));
 /* w1: len:20 (>= 1) | vel:7 | held:1 | spare:4. Main loop only, one 32-bit store. Held: len holds the pass it began */
 static uint32_t tp_w1[TAPE_N] __attribute__((section(".pool")));
@@ -63,6 +65,7 @@ typedef struct {
     uint16_t first;                    /* main loop, irq-off */
     volatile uint16_t cur;             /* next node to play: ISR advances; main loop writes only irq-off */
     uint16_t count;
+    uint16_t ghosts;                   /* main loop: ghosted nodes on the list (tp_count_ghosts, after the ISR set tp_ghosts) */
     uint8_t mute;
     volatile uint8_t kill;             /* main sets: ISR ends this track's voices next block */
 } tape_track_t;
@@ -81,8 +84,9 @@ static uint8_t tp_open_n __attribute__((section(".pool")));
 static uint8_t tp_target __attribute__((section(".pool"))), tp_overdub __attribute__((section(".pool")));   /* tape_init: 0, 1 */
 static uint8_t tp_full __attribute__((section(".pool")));                /* main: a note was refused (TAPE FULL) */
 static volatile uint8_t tp_seek_req __attribute__((section(".pool")));   /* main: the ISR seeks before it plays */
-static volatile uint8_t tp_ghosts __attribute__((section(".pool")));     /* ISR: replace mode ghosted a node (main sweeps
-                                                                          * them once stopped) */
+static volatile uint8_t tp_ghosts __attribute__((section(".pool")));     /* ISR (and main): a ghost came or went; main
+                                                                          * clears it and recounts the ghosts */
+static uint8_t tp_undoable __attribute__((section(".pool")));            /* main loop only: a recording pass can be taken back */
 static uint32_t tp_seen_ticks __attribute__((section(".pool")));         /* ISR: song_ticks, tape_pass of its last block */
 static uint16_t tp_seen_pass __attribute__((section(".pool")));
 
@@ -103,7 +107,7 @@ static void tape_init(void)
     }
     for (k = 0; k < TAPE_TRACKS; k++) {
         tp_trk[k].first = tp_trk[k].cur = TAPE_END;
-        tp_trk[k].count = 0;
+        tp_trk[k].count = tp_trk[k].ghosts = 0;
         tp_trk[k].mute = tp_trk[k].kill = 0;
     }
     for (k = 0; k < TAPE_VOICES; k++)
@@ -123,7 +127,11 @@ static void tape_init(void)
     tp_seen_ticks = song_ticks;
     tp_seen_pass = tape_pass;
     tp_ghosts = 0;
+    tp_undoable = 0;
 }
+
+/* the notes of a track as the screen and a save count them: the ghosts are not */
+static uint32_t tp_notes(uint32_t track) { return (uint32_t)(tp_trk[track].count - tp_trk[track].ghosts); }
 
 /* ------------------------------------------------------------------ ISR side --- */
 
@@ -362,6 +370,8 @@ static void tp_unlink(uint32_t track, uint16_t prev, uint16_t node)
         tt->cur = tp_nx[node];
     tp_irq_restore(irq);
     tt->count--;
+    if (tp_w0[node] & TP_GHOST)
+        tp_ghosts = 1;
     tp_open_drop(node);
     tp_to_limbo(node, node);
 }
@@ -381,7 +391,7 @@ static int tape_delete(uint32_t track, uint16_t node)
     return 1;
 }
 
-/* the nodes replace mode ghosted leave (idle, before a save or TAPE_GET) */
+/* the nodes replace mode ghosted leave (tape_commit) */
 static void tape_sweep(void)
 {
     uint32_t k;
@@ -396,6 +406,7 @@ static void tape_sweep(void)
             node = next;
             TAPE_YIELD();
         }
+        tp_trk[k].ghosts = 0;
     }
 }
 
@@ -408,7 +419,7 @@ static void tape_clear(uint32_t track)
     tt->first = tt->cur = TAPE_END;
     tt->kill = 1;
     tp_irq_restore(irq);
-    tt->count = 0;
+    tt->count = tt->ghosts = 0;
     if (chain == TAPE_END)
         return;
     for (tail = chain;; tail = tp_nx[tail]) {
@@ -420,14 +431,20 @@ static void tape_clear(uint32_t track)
     tp_to_limbo(chain, tail);
 }
 
+static void tape_commit(void);
+
 /* every node of src into dst, in order (dst's first on equal ticks), no allocation. A src node not played yet this
  * pass (src's cur) stays not played in dst; one played already stays behind dst's cur */
 static void tape_merge(uint32_t dst, uint32_t src)
 {
-    tape_track_t *td = &tp_trk[dst], *ts = &tp_trk[src];
-    uint16_t prev = TAPE_END, next = td->first, node;
+    tape_track_t *td, *ts = &tp_trk[src];
+    uint16_t prev = TAPE_END, next, node;
     if (dst == src || dst >= TAPE_TRACKS || src >= TAPE_TRACKS)
         return;
+    tape_commit();                                  /* (a ghost or an undoable note must not move to another track) */
+    td = &tp_trk[dst];
+    prev = TAPE_END;
+    next = td->first;
     while ((node = ts->first) != TAPE_END) {
         uint32_t at = TP_AT(tp_w0[node]), irq, unplayed;
         while (next != TAPE_END && TP_AT(tp_w0[next]) <= at) {
@@ -539,10 +556,83 @@ static void tp_rec_on(uint32_t ev0, uint32_t ev1)
             w1 = (w1 & ~0xFFFFFu) | ((pass - 1u) & 0xFFFFu);
         tp_w1[node] = w1;
     } else
-        node = tape_insert(tp_target, at | key, w1, pass);
-    if (node != TAPE_END)
+        node = tape_insert(tp_target, at | key | TP_NEW, w1, pass);
+    if (node != TAPE_END) {
         tp_open_add(node);
+        tp_undoable = 1;
+    }
 }
+
+static void tp_count_ghosts(void)
+{
+    uint32_t track;
+    for (track = 0; track < TAPE_TRACKS; track++) {
+        uint16_t node;
+        uint32_t ghosts = 0;
+        for (node = tp_trk[track].first; node != TAPE_END; node = tp_nx[node]) {
+            ghosts += (tp_w0[node] & TP_GHOST) != 0u;
+            TAPE_YIELD();
+        }
+        tp_trk[track].ghosts = (uint16_t)ghosts;
+        tp_undoable |= ghosts != 0u;
+    }
+}
+
+/* what a recording pass did is final: the ghosts it left go and the new notes stop being undoable. Before the next
+ * REC, a save, TAPE_GET, a merge */
+static void tape_commit(void)
+{
+    uint32_t track;
+    tape_sweep();
+    for (track = 0; track < TAPE_TRACKS; track++) {
+        uint16_t node;
+        for (node = tp_trk[track].first; node != TAPE_END; node = tp_nx[node]) {
+            if (tp_w0[node] & TP_NEW) {
+                uint32_t irq = tp_irq_save();
+                tp_w0[node] &= ~TP_NEW;
+                tp_irq_restore(irq);
+            }
+            TAPE_YIELD();
+        }
+    }
+    tp_undoable = 0;
+}
+
+enum { UNDO_NONE, UNDO_DONE, UNDO_BUSY };
+/* the last recording pass taken back: its new notes leave, the notes it replaced (ghosts) play again. Not while
+ * recording. A note an overdub merged into an old one (dedup) is not undone */
+static uint32_t tape_undo(void)
+{
+    uint32_t track, changed = 0;
+    if (tape_recording)
+        return UNDO_BUSY;
+    for (track = 0; track < TAPE_TRACKS; track++) {
+        uint16_t prev = TAPE_END, node = tp_trk[track].first;
+        while (node != TAPE_END) {
+            uint16_t next = tp_nx[node];
+            uint32_t w0 = tp_w0[node];
+            if (w0 & TP_NEW) {
+                tp_unlink(track, prev, node);
+                changed = 1;
+            } else {
+                if (w0 & TP_GHOST) {
+                    uint32_t irq = tp_irq_save();
+                    tp_w0[node] &= ~TP_GHOST;
+                    tp_irq_restore(irq);
+                    changed = 1;
+                }
+                prev = node;
+            }
+            node = next;
+            TAPE_YIELD();
+        }
+        tp_trk[track].ghosts = 0;
+    }
+    tp_ghosts = 0;
+    tp_undoable = 0;
+    return changed ? UNDO_DONE : UNDO_NONE;
+}
+static int tape_undo_ready(void) { return tp_undoable && !tape_recording; }
 
 /* main loop: the record queue in, the notes it opened and closed */
 static void tape_poll(void)
@@ -574,9 +664,9 @@ static void tape_poll(void)
         if (lost)
             tp_close_open(0, 0, tape_head, tape_pass);
     }
-    if (tp_ghosts && !tape_go) {                  /* stopped: the ghosts go, the counts are the notes (the TAPE page) */
+    if (tp_ghosts) {                              /* a ghost came or went: the counts are the notes (the TAPE page) */
         tp_ghosts = 0;
-        tape_sweep();
+        tp_count_ghosts();
     }
 }
 
@@ -641,7 +731,7 @@ static void tape_load_begin(const uint16_t *counts)
         tp_trk[k].first = tp_trk[k].cur = TAPE_END;
         tp_trk[k].kill = 1;
         tp_irq_restore(irq);
-        tp_trk[k].count = 0;
+        tp_trk[k].count = tp_trk[k].ghosts = 0;
         tp_ld.left[k] = counts[k];
         tp_ld.head[k] = tp_ld.tail[k] = TAPE_END;
     }
@@ -660,6 +750,7 @@ static void tape_load_begin(const uint16_t *counts)
     tp_free = 0;
     tp_limbo = tp_limbo_tail = TAPE_END;
     tp_open_n = 0;
+    tp_undoable = 0;
 }
 
 /* a page in: bad or out of order records are dropped (they still count for their track) */

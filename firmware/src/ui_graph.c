@@ -1779,7 +1779,7 @@ static uint32_t graph_signature(void)
                   ui_grid_idx() << 16 | (ui.hot_t != 0u) << 20 | (ui.hot_col & 3u) << 21 | (uint32_t)tape_act_ready() << 23 |
                   (uint32_t)(ui_prefs & PREF_LARGE) << 19)) * 16777619u;
         for (i = 0; i < TAPE_TRACKS; i++)
-            h = (h ^ ((uint32_t)tp_trk[i].count << 4 | tp_trk[i].mute << 2 | (tp_trk[i].first == TAPE_END))) * 16777619u;
+            h = (h ^ ((uint32_t)tp_trk[i].ghosts << 16 | (uint32_t)tp_trk[i].count << 4 | tp_trk[i].mute << 2 | (tp_trk[i].first == TAPE_END))) * 16777619u;
         if (tape_go && tape_recording)
             h ^= (ui.frame / 4u + 1u) * 2246822519u;
     }
@@ -2265,7 +2265,7 @@ static void graph_tape(void)
 {
     uint32_t len = tape_length(), pos = tape_head % len, lane, notes = 0;
     for (lane = 0; lane < TAPE_TRACKS; lane++)
-        notes += tp_trk[lane].count;
+        notes += tp_notes(lane);
     cv_begin(240, TPS_SEAM, T_BG);
     cv_oy = 0;
     graph_tape_machine(pos, len, notes);

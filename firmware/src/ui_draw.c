@@ -1323,15 +1323,15 @@ static void confirm_text(char *a, char *b)
     case CF_TAPE_CLEAR:                                 /* SEQ > TAPE: "CLEAR TAPE TRACK 2?", its notes */
         str_cpy(a, "CLEAR TAPE TRACK 1?", 24);
         a[17] = (char)('1' + (k & 3u));
-        fmt_int(b, (int32_t)tp_trk[k & 3u].count);
-        str_cpy(b + str_len(b), tp_trk[k & 3u].count == 1u ? " note" : " notes", 40 - str_len(b));
+        fmt_int(b, (int32_t)tp_notes(k & 3u));
+        str_cpy(b + str_len(b), tp_notes(k & 3u) == 1u ? " note" : " notes", 40 - str_len(b));
         break;
     case CF_TAPE_MERGE:                                 /* "MERGE TRACK 3 INTO 1?", the notes that move */
         str_cpy(a, "MERGE TRACK 1 INTO 1?", 24);
         a[12] = (char)('1' + ((k >> 4) & 3u));
         a[19] = (char)('1' + (k & 3u));
-        fmt_int(b, (int32_t)tp_trk[(k >> 4) & 3u].count);
-        str_cpy(b + str_len(b), tp_trk[(k >> 4) & 3u].count == 1u ? " note moves" : " notes move", 40 - str_len(b));
+        fmt_int(b, (int32_t)tp_notes((k >> 4) & 3u));
+        str_cpy(b + str_len(b), tp_notes((k >> 4) & 3u) == 1u ? " note moves" : " notes move", 40 - str_len(b));
         break;
     default:
         str_cpy(a, "CLEAR T1 SEQUENCE?", 24);     /* the header (T1..T4) is hidden */

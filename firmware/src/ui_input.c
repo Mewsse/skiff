@@ -1523,13 +1523,13 @@ static void act_do(void)
 #endif
     if (cur_page()->graph == GR_TAPE) {                   /* CLEAR the target track, or a track merged into it: asks first */
         uint32_t target = tp_target % TAPE_TRACKS;
-        if (!ui.tsrc && !tp_trk[target].count)
+        if (!ui.tsrc && !tp_notes(target))
             ui_message("NOTHING TO CLEAR");
         else if (!ui.tsrc)
             confirm_open(CF_TAPE_CLEAR, target);
         else if (!tape_src_ok())
             ui_message("PICK ANOTHER TRACK");
-        else if (!tp_trk[ui.tsrc - 1u].count)
+        else if (!tp_notes(ui.tsrc - 1u))
             ui_message("THAT TRACK IS EMPTY");
         else
             confirm_open(CF_TAPE_MERGE, target | ((uint32_t)ui.tsrc - 1u) << 4);

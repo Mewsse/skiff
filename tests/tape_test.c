@@ -226,17 +226,21 @@ static void ref_insert(uint32_t track, uint32_t tag)
 }
 
 /* pass: the event's (tape_pass: recorded now) */
-static int tag_insert(uint32_t track, uint32_t at, uint32_t len, uint32_t pass)
+static int tag_insert_flags(uint32_t track, uint32_t at, uint32_t len, uint32_t pass, uint32_t flags)
 {
     uint32_t tag = tag_new();
     int32_t never = pass == tape_pass ? (int32_t)pass : -1;
-    uint16_t node = tape_insert(track, tag_w0(tag, at), len | tag_vel(tag) << 20, pass);
+    uint16_t node = tape_insert(track, tag_w0(tag, at) | flags, len | tag_vel(tag) << 20, pass);
     if (node == TAPE_END)
         return 0;
     tags[tag] = (tag_t){node, 1, (int32_t)tape_pass + 1, never, {0xFFFFFFFFu, 0xFFFFFFFFu}};
     node_tag[node] = tag;
     ref_insert(track, tag);
     return 1;
+}
+static int tag_insert(uint32_t track, uint32_t at, uint32_t len, uint32_t pass)
+{
+    return tag_insert_flags(track, at, len, pass, 0u);
 }
 
 static void tag_delete(uint32_t track, uint32_t pos)
@@ -544,6 +548,90 @@ static void test_replace(void)
     check("replace mode: one pass replaced, the new ones play", old == 16 && new_fires == 16 && !consistent(0));
 }
 
+/* UNDO against the reference: a recording pass (replace mode: the ISR ghosts what the head passes) adds NEW notes; the
+ * undo leaves exactly the notes from before it, none ghosted, whatever the ISR did inside the walks */
+static void test_undo(uint32_t rounds)
+{
+    static uint32_t snap[TAPE_TRACKS][TAPE_N], snap_n[TAPE_TRACKS];
+    uint32_t round, k, j, bad = 0, committed = 0;
+    for (round = 0; round < rounds && !bad; round++) {
+        uint32_t base = 5u + rnd(60), added = 5u + rnd(40), track, before_free;
+        reset();
+        yield_every = 1u << rnd(4);
+        start();
+        for (k = 0; k < base; k++)
+            tag_insert(rnd(TAPE_TRACKS), rnd(tape_length()), 1u + rnd(300), TAPE_ANY_PASS);
+        for (track = 0; track < TAPE_TRACKS; track++) {
+            snap_n[track] = ref_n[track];
+            memcpy(snap[track], ref[track], ref_n[track] * sizeof ref[0][0]);
+        }
+        tape_recording = 1;
+        tp_overdub = 0;
+        tp_target = rnd(TAPE_TRACKS);
+        for (k = 0; k < added; k++) {
+            host_block(1u + rnd(400));
+            tag_insert_flags(tp_target, rnd(tape_length()), 1u + rnd(200), TAPE_ANY_PASS, TP_NEW);
+            tp_undoable = 1;
+        }
+        host_block(tape_length());
+        tp_ghosts = 1;
+        tape_poll();
+        before_free = 0;
+        for (track = 0; track < TAPE_TRACKS; track++)
+            before_free += tp_trk[track].ghosts;
+        if (tape_undo() != UNDO_BUSY)
+            bad = 1;
+        tape_recording = 0;
+        if (rnd(4) == 0) {
+            for (track = 0; track < TAPE_TRACKS; track++)
+                for (j = 0; j < ref_n[track];)
+                    if (tp_w0[tags[ref[track][j]].node] & TP_GHOST) {
+                        tags[ref[track][j]].live = 0;
+                        memmove(&ref[track][j], &ref[track][j + 1u], (ref_n[track] - j - 1u) * sizeof ref[0][0]);
+                        ref_n[track]--;
+                    } else
+                        j++;
+            tape_commit();
+            committed++;
+            if (tape_undo() != UNDO_NONE || tape_undo_ready() || consistent(1))
+                bad = 2;
+            for (track = 0; track < TAPE_TRACKS && !bad; track++)
+                for (j = 0; j < ref_n[track]; j++)
+                    if (tp_w0[tags[ref[track][j]].node] & (TP_NEW | TP_GHOST))
+                        bad = 3;
+            continue;
+        }
+        for (track = 0; track < TAPE_TRACKS; track++)
+            for (j = 0; j < ref_n[track];)
+                if (tp_w0[tags[ref[track][j]].node] & TP_NEW) {
+                    tags[ref[track][j]].live = 0;
+                    memmove(&ref[track][j], &ref[track][j + 1u], (ref_n[track] - j - 1u) * sizeof ref[0][0]);
+                    ref_n[track]--;
+                } else
+                    j++;
+        if (tape_undo() != UNDO_DONE)
+            bad = 4;
+        for (track = 0; track < TAPE_TRACKS && !bad; track++) {
+            if (ref_n[track] != snap_n[track] || memcmp(ref[track], snap[track], snap_n[track] * sizeof snap[0][0]))
+                bad = 5;
+            if (tp_trk[track].ghosts)
+                bad = 6;
+        }
+        if (!bad && (tape_undo_ready() || consistent(1)))
+            bad = 7;
+        for (track = 0; track < TAPE_TRACKS && !bad; track++)
+            for (j = 0; j < ref_n[track]; j++)
+                if (tp_w0[tags[ref[track][j]].node] & (TP_NEW | TP_GHOST))
+                    bad = 8;
+    }
+    {
+        char what[96];
+        snprintf(what, sizeof what, "undo: %u rounds (%u committed) against the reference, ISR inside the walks (code %u)",
+                 (unsigned)rounds, (unsigned)committed, (unsigned)bad);
+        check(what, !bad);
+    }
+}
+
 static void test_dedup(void)
 {
     uint32_t pass, k, ok = 1, per[8] = {0};
@@ -818,6 +906,7 @@ int main(int argc, char **argv)
     test_held_wrap();
     test_replace();
     test_dedup();
+    test_undo(2000);
     test_merge();
     test_overlap();
     test_all_end();

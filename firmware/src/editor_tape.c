@@ -64,7 +64,7 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         uint32_t first = a[1] | a[2] << 7, total = 0, want, sent = 0, guard;
         uint16_t node;
         track = a[0];
-        tape_sweep();
+        tape_commit();
         for (guard = 0, node = tp_trk[track].first; node < TAPE_N && guard < TAPE_N; guard++, node = tp_nx[node])
             total += tp_saved(node);
         ed_b(track); ed_b(first); ed_b(first >> 7); ed_b(total); ed_b(total >> 7);
@@ -91,7 +91,7 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         uint32_t op = a[0];
         track = a[1];
         if (op == EDT_MERGE) {
-            if (tp_trk[a[2]].count) { tape_merge(track, a[2]); ui.force = 1; } else rc = 1;
+            if (tp_notes(a[2] % TAPE_TRACKS)) { tape_merge(track, a[2]); ui.force = 1; } else rc = 1;
         } else if (op == EDT_CLEAR) {
             tape_clear(track);
         } else if (op == EDT_MUTE) {
@@ -127,8 +127,8 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
     ed_b(run);
     ed_b(TAPE_N); ed_b(TAPE_N >> 7);
     for (track = 0; track < TAPE_TRACKS; track++) {
-        ed_b(tp_trk[track].count);
-        ed_b(tp_trk[track].count >> 7);
+        ed_b(tp_notes(track));
+        ed_b(tp_notes(track) >> 7);
     }
     return 1;
 }

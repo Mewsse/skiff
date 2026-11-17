@@ -230,9 +230,9 @@ static int test_replace(void)
     tape_req = TQ_REC;                                  /* (punch out) */
     run_to(3u * TAPE_BAR);
     stop();
-    bad += check("replace mode: STOP sweeps the ghosts (the main loop's tape_poll): the count is the notes",
-                 tp_trk[0].count == 1u && list(0) == 1u && !tp_ghosts);
-    tape_sweep();
+    bad += check("replace mode: STOP leaves the ghost (UNDO's), the count is the notes",
+                 tp_trk[0].count == 2u && tp_notes(0) == 1u && tape_undo_ready());
+    tape_commit();
     list(0);
     bad += check("replace mode: the second pass replaces the first (A ghosted as it passed, swept), B stays",
                  listed == 1u && nodes[0].note == 64u && near_at(nodes[0].at, 900, 1) && near_at(nodes[0].len, 100, 2));
@@ -684,6 +684,46 @@ static int test_strum_not_doubled(void)
     return bad;
 }
 
+/* UNDO: the last recording pass taken back, the notes it replaced back; refused while it records */
+static int test_undo(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0, undone;
+    fresh(1, 0);
+    tp_overdub = 0;
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    run_to(500);
+    input_on(t, 60, 100);
+    run_to(600);
+    input_off(t, 60);
+    run_to(1900);
+    tape_req = TQ_REC;                                  /* (punch out) */
+    run_to(1950);
+    tape_commit();
+    tape_req = TQ_REC;
+    run_to(TAPE_BAR + 700u);
+    input_on(t, 64, 100);
+    run_to(TAPE_BAR + 800u);
+    input_off(t, 64);
+    run_to(TAPE_BAR + 850u);
+    undone = tape_undo();
+    bad += check("UNDO while recording: refused, nothing changed", undone == UNDO_BUSY && tp_notes(0) == 1u && tp_trk[0].count == 2u);
+    tape_req = TQ_REC;                                  /* (punch out) */
+    run_to(TAPE_BAR + 900u);
+    list(0);
+    bad += check("replace pass: the old note a ghost (not counted), the new one counted, an undo ready",
+                 tp_notes(0) == 1u && listed == 2u && nodes[0].ghost + nodes[1].ghost == 1u && tape_undo_ready());
+    undone = tape_undo();
+    list(0);
+    bad += check("UNDO: the new note gone, the replaced one back, nothing left to undo",
+                 undone == UNDO_DONE && listed == 1u && nodes[0].note == 60u && !nodes[0].ghost && tp_notes(0) == 1u &&
+                 !tape_undo_ready() && tape_undo() == UNDO_NONE);
+    stop();
+    return bad;
+}
+
 /* REC with the tape running: punch in, punch out; a note held over the punch out keeps its end */
 static int test_punch(void)
 {
@@ -737,6 +777,7 @@ int main(void)
     fails += test_punch();
     fails += test_steprec_not_doubled();
     fails += test_strum_not_doubled();
+    fails += test_undo();
     printf(fails ? "taperec: %u FAILED\n" : "taperec: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }

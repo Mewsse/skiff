@@ -1896,7 +1896,10 @@ static uint32_t proj_tape_sig(uint32_t h)
     for (k = 0; k < TAPE_TRACKS; k++) {
         h = as_mix(h, &tp_trk[k].mute, 1);
         for (node = tp_trk[k].first, n = 0; node != TAPE_END && n < TAPE_N; node = tp_nx[node], n++) {
-            h = as_mix(h, &tp_w0[node], sizeof tp_w0[node]);
+            uint32_t saved = tp_w0[node] & ~TP_NEW;          /* (as a save keeps it: no ghost, not new) */
+            if (tp_w0[node] & TP_GHOST)
+                continue;
+            h = as_mix(h, &saved, sizeof saved);
             h = as_mix(h, &tp_w1[node], sizeof tp_w1[node]);
         }
     }

@@ -94,7 +94,7 @@ static void smk_pads_tape(void)
     smk_pad_rgb(12u, SMK_PAD_FAINT);
     smk_pad_rgb(13u, still ? SMK_PAD_FAINT : 0u);
     smk_pad_rgb(14u, still ? SMK_PAD_FAINT : 0u);
-    smk_pad_rgb(15u, 0u);
+    smk_pad_rgb(15u, tape_undo_ready() ? SMK_PAD_WHITE_FULL : 0u);
 }
 
 /* the selected track's steps of the page shown as pads (colours A): the DRUM grid's selected lane, or the notes */
@@ -181,19 +181,25 @@ static void smk_pad_tap(uint32_t p, uint32_t vel)
  * REC arms the selected track first (tape_arm: what it records) unless it is recording, a punch out */
 static void smk_tape_pad(uint32_t pad)
 {
-    static const uint8_t OPS[SMK_NPAD / 2u] = {TQ_PLAY, TQ_PAUSE, TQ_REC, TQ_BAR_BACK, TQ_BAR_ON, TQ_TOP, TQ_END, TQ_NONE};
+    static const uint8_t OPS[SMK_NPAD / 2u] = {TQ_PLAY, TQ_PAUSE, TQ_REC, TQ_BAR_BACK, TQ_BAR_ON, TQ_TOP, TQ_END};
     uint32_t op;
     if (pad < SMK_NPAD / 2u || pad >= SMK_NPAD)
         return;
-    op = OPS[pad - SMK_NPAD / 2u];
-    if (op == TQ_NONE)
+    if (pad == SMK_NPAD - 1u) {                    /* UNDO: the last recording pass, not while it records */
+        uint32_t undone = tape_undo();
+        ui_message(undone == UNDO_DONE ? "UNDO" : undone == UNDO_BUSY ? "STOP FIRST" : "NO UNDO");
+        ui.force = 1;
         return;
+    }
+    op = OPS[pad - SMK_NPAD / 2u];
     if ((op == TQ_TOP || op == TQ_END) && tape_go) {
         ui_message("STOP FIRST");
         return;
     }
-    if (op == TQ_REC && !tape_recording)
+    if (op == TQ_REC && !tape_recording) {
+        tape_commit();                               /* (the pass before is final: UNDO takes back this one) */
         tape_arm = (uint8_t)(1u << song.sel);
+    }
     (void)tape_ask(op);
 }
 

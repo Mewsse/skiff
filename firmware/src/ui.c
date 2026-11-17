@@ -2262,7 +2262,7 @@ static const char *tape_act_name(void) { return ui.tsrc ? "MERGE" : "CLEAR"; }
 static int tape_src_ok(void) { return ui.tsrc && (uint32_t)ui.tsrc - 1u != tp_target % TAPE_TRACKS; }
 static int tape_act_ready(void)
 {
-    return ui.tsrc ? tape_src_ok() && tp_trk[ui.tsrc - 1u].count != 0u : tp_trk[tp_target % TAPE_TRACKS].count != 0u;
+    return ui.tsrc ? tape_src_ok() && tp_notes(ui.tsrc - 1u) != 0u : tp_notes(tp_target % TAPE_TRACKS) != 0u;
 }
 /* (2.5, the user's 3A) SAVE > PROJECT's KNOB 3, what OCT+ does: LOAD (a used slot), NEW, CLEAR TRACKS; an empty
  * slot's list starts at NEW. ui.act2: the step past the first while KNOB 3's picked (ui_input.c) */
