@@ -576,6 +576,7 @@ enum { JOIN_SEQ = 1, JOIN_TAPE = 2, JOIN_TAPE_REC = 4 };
 static volatile uint8_t join_want __attribute__((section(".pool"))), cin_starts __attribute__((section(".pool")));
 static volatile uint8_t tape_cued __attribute__((section(".pool")));
 static uint32_t join_at __attribute__((section(".pool")));
+static uint8_t join_grid __attribute__((section(".pool")));      /* the GRID line the wait is for (join_ask) */
 static uint8_t cin_note[NTRK][4], cin_vel[NTRK][4], cin_n[NTRK], cin_up[NTRK];   /* kept notes; cin_up bit k: let go */
 static int seq_counting(void) { return cin_left != 0u; }
 /* what the tape and the sequencers wait for (the UI's: the LEDs, the tape's sign): a count-in or a join to come */
@@ -1482,13 +1483,21 @@ static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; 
  * at or before the head. The rest at the head */
 static void tape_rec(const track_t *t, uint32_t note, uint32_t vel)
 {
-    uint32_t inst = trk_index(t), at = tape_head, idx;
-    if (tape_playing || !tape_go || inst >= NTRK || (seq_src && rec_on(t)))
-        return;                                    /* (a sequencer's note of an instrument SEQ REC records is in its steps) */
-    if (!(tape_recording && ((tape_arm >> inst) & 1u)) && (vel || !((tp_rec_mask >> inst) & 1u)))
+    uint32_t inst = trk_index(t), at = tape_head, idx, bit = 1u << (note & 31u);
+    uint32_t *seq_on = &tp_seq_on[inst < NTRK ? inst : 0u][(note >> 5) & 3u];
+    if (tape_playing || !tape_go || inst >= NTRK)
+        return;
+    if (seq_src && !vel) {                         /* (a sequencer's end follows its start: SEQ REC may have come or gone between) */
+        if (!(*seq_on & bit))
+            return;
+        *seq_on &= ~bit;
+    } else if ((seq_src && rec_on(t)) ||           /* (a sequencer's note of an instrument SEQ REC records is in its steps) */
+               (!(tape_recording && ((tape_arm >> inst) & 1u)) && (vel || !((tp_rec_mask >> inst) & 1u))))
         return;
     if (vel) {
         tp_rec_mask |= (uint8_t)(1u << inst);
+        if (seq_src)
+            *seq_on |= bit;
         if (tape_live && (idx = grid_idx()) != 0u)
             at = grid_floor(idx, song.g[G_SWING] < 0 ? 0u : (uint32_t)song.g[G_SWING], tape_head);
     }
@@ -1514,6 +1523,18 @@ static int tape_ask(uint32_t op)
         return 0;
     tape_req = (uint8_t)op;
     return 1;
+}
+/* REC: the pass before is final and the selected track is the one it records (arm), then the request, all or nothing:
+ * a request waiting for the audio ISR leaves the tape and the arm as they are. 1 when taken */
+static int tape_rec_ask(uint32_t arm)
+{
+    if (tape_req)
+        return 0;
+    if (!tape_recording) {
+        tape_commit();
+        tape_arm = (uint8_t)arm;
+    }
+    return tape_ask(TQ_REC);
 }
 static __attribute__((noinline)) uint32_t tape_beat_frac(void)
 {
@@ -1746,21 +1767,56 @@ static void seq_stop(void)
     mo_motion_end();                               /* ((2.2) motion_end, an EXT track's CCs back with it) */
 }
 
-/* track t moved on adv steps from its start, silently: seq_tick's bookkeeping in its direction, its passes (TAKES,
- * the trig conditions); PING / RAND walk their cycle, the rest of a long way skipped in whole cycles. Not inlined: the
- * audio ISR's own cost stays (tests/target_budget.py) */
+/* a step on, silently: seq_tick's bookkeeping in the track's direction, its passes (TAKES, the trig conditions) */
+static inline void seq_step_on(track_t *t, uint32_t len, uint32_t i)
+{
+    t->seq_idx = (uint16_t)seq_next(t, len);
+    if (t->p[P_DIR] == DIR_FWD ? !t->seq_idx : !t->seq_cnt || t->seq_cnt >= len) {
+        t->seq_cnt = 0;
+        take_pass[i]++;
+    }
+    t->seq_cnt++;
+}
+
+/* track t moved on adv steps from its start, silently: seq_step_on's, PING / RAND walk their cycle, the rest of a long
+ * way skipped in whole cycles. Not inlined: the audio ISR's own cost stays (tests/target_budget.py) */
 static __attribute__((noinline)) void seq_skip(track_t *t, uint32_t adv)
 {
     uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, i = trk_index(t);
     uint32_t per = t->p[P_DIR] == DIR_PING && len > 1u ? (2u * len - 2u) * len : len;   /* (the state's cycle) */
     take_pass[i] = (uint16_t)(adv / per * (per / len));
-    for (adv %= per; adv; adv--) {
-        t->seq_idx = (uint16_t)seq_next(t, len);
-        if (t->p[P_DIR] == DIR_FWD ? !t->seq_idx : !t->seq_cnt || t->seq_cnt >= len) {
-            t->seq_cnt = 0;
-            take_pass[i]++;
-        }
-        t->seq_cnt++;
+    for (adv %= per; adv; adv--)
+        seq_step_on(t, len, i);
+}
+
+/* the step seq_next goes to (RAND: not drawn, the first one stands for it) */
+static uint32_t seq_next_idx(const track_t *t, uint32_t len)
+{
+    uint32_t dir = (uint32_t)t->p[P_DIR];
+    if (!t->seq_cnt && dir != DIR_FWD)
+        return dir == DIR_REV ? len - 1u : 0u;
+    return seq_peek(t, len);
+}
+
+/* track t where a run from the top is phase samples in: its steps with their swung lengths, in the order its direction
+ * plays them. A step begun less than late samples ago, and not more than half its length, is left to seq_tick: it
+ * fires it in this block with seq_pos the samples into it; one begun longer ago waits for the next. Not inlined:
+ * the audio ISR's own cost stays (tests/target_budget.py) */
+static __attribute__((noinline)) void seq_walk(track_t *t, uint32_t phase, uint32_t late)
+{
+    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, i = trk_index(t);
+    uint32_t period = div_samples((uint32_t)t->p[P_SDIV]), cur = step_samples(t, period, seq_next_idx(t, len));
+    take_pass[i] = 0;
+    while (cur && phase >= cur) {
+        phase -= cur;
+        seq_step_on(t, len, i);
+        cur = step_samples(t, period, seq_next_idx(t, len));
+    }
+    if (phase < late && 2u * phase < cur) {
+        t->seq_pos = step_samples(t, period, t->seq_idx) + phase;
+    } else {
+        seq_step_on(t, len, i);
+        t->seq_pos = phase;
     }
 }
 
@@ -1771,6 +1827,7 @@ static __attribute__((noinline)) void seq_skip(track_t *t, uint32_t adv)
  * quarter (SPP: pos's for all); a track at 0 as PLAY left it. The clock running, sequencers stopped stay stopped */
 static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t pos)
 {
+    int32_t swing = song.g[G_SWING];
     uint32_t i, k, rem, u, tick = pos * (TAPE_BAR / 16u), seqs = song.playing || !clock_run();
     uint32_t tape = (tape_cued | (tape_go ? JOIN_TAPE | (tape_recording ? JOIN_TAPE_REC : 0u) : 0u));
     tape_voices_end(-1, 1);
@@ -1793,6 +1850,8 @@ static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t
         tape_recording = (uint8_t)((tape & JOIN_TAPE_REC) != 0u);
         tape_cued = 0;
     }
+    if (join_want)                                  /* (a transport waiting for a line: the next one from here) */
+        join_at = grid_next(join_grid, swing < 0 ? 0u : (uint32_t)swing, song_ticks);
     if (!pos)
         return;
     clk_step = (pos - 1u) & 15u;                    /* (the click's next 1/16: pos's) */
@@ -2177,6 +2236,7 @@ static track_t *midi_track(uint32_t ch)
     return k >= 0 ? &trk[k] : TSEL;
 }
 #include "midi_control.c"
+static void join_ask(uint32_t what, uint32_t grid);
 #include "midi_clock.c"
 
 /* (2.2) MIDI at a block's start (events_block, after the transport's requests, before any note): MENU > MIDI changed
@@ -2403,31 +2463,22 @@ static __attribute__((noinline)) uint32_t clock_ext_block(void)
 static void join_ask(uint32_t what, uint32_t grid)
 {
     int32_t swing = song.g[G_SWING];
-    if (!join_want)
-        join_at = grid_next(grid ? grid : GRID_BAR, swing < 0 ? 0u : (uint32_t)swing, song_ticks);
+    if (!join_want) {
+        join_grid = (uint8_t)(grid ? grid : GRID_BAR);
+        join_at = grid_next(join_grid, swing < 0 ? 0u : (uint32_t)swing, song_ticks);
+    }
     join_want |= (uint8_t)what;
 }
 
-/* the step sequencers join the running clock phase_samples into its bar: each track where it would be had it started
- * on the bar line (the straight grid, as seq_locate_at). A step begun less than late samples ago (the join's line, a
- * block or so back) plays now and the track keeps the clock's place in it: seq_tick fires it in this block with
- * seq_pos the samples into it. A step begun longer ago waits for the next. Not inlined (tests/target_budget.py) */
+/* the step sequencers join the running clock phase_samples into its bar: each track where a run started on the bar
+ * line would be (seq_walk: the swung steps as they play). late: see seq_walk (the join's line, a block or so back).
+ * Not inlined (tests/target_budget.py) */
 static __attribute__((noinline)) void seqs_join(uint32_t phase_samples, uint32_t late)
 {
     uint32_t i;
     seqs_start_now();
-    for (i = 0; i < NTRK; i++) {
-        track_t *t = &trk[i];
-        uint32_t period = div_samples((uint32_t)t->p[P_SDIV]), steps = phase_samples / period;
-        uint32_t into = phase_samples % period;
-        if (into < late && 2u * into < period) {
-            seq_skip(t, steps);
-            t->seq_pos = step_samples(t, period, t->seq_idx) + into;
-        } else {
-            seq_skip(t, steps + 1u);
-            t->seq_pos = into;
-        }
-    }
+    for (i = 0; i < NTRK; i++)
+        seq_walk(&trk[i], phase_samples, late);
 }
 
 /* the clock reached join_at: what waits for it joins (the tape at the bar's place, its notes on the line played) */
@@ -2483,8 +2534,8 @@ static void tape_take(uint32_t op, uint32_t clock_mode, uint32_t was_running)
         cin_starts &= (uint8_t)~(JOIN_TAPE | JOIN_TAPE_REC);
         if (cin_left && !cin_starts)
             seq_stop();                             /* (a count-in for the tape alone: cancelled) */
-        else if (tape_go && !song.playing && !(join_want & JOIN_SEQ))
-            seq_stop();                             /* (the last transport: the clock stops too) */
+        else if (tape_go && !song.playing)
+            seq_stop();                             /* (the last one running: the clock stops, what waits is dropped) */
         else
             tape_halt();
     } else if ((op == TQ_BAR_BACK || op == TQ_BAR_ON) && tape_go) {
@@ -2501,7 +2552,7 @@ static void tape_take(uint32_t op, uint32_t clock_mode, uint32_t was_running)
 /* the step sequencers' request (transport_req) */
 static void seq_take(uint32_t op, uint32_t clock_mode)
 {
-    uint32_t tape_on = tape_go || ((join_want | cin_starts) & JOIN_TAPE);
+    uint32_t tape_on = tape_go || (cin_starts & JOIN_TAPE);
     if (op == 1u) {
         if (song.playing || ((join_want | cin_starts) & JOIN_SEQ))
             ;                                       /* (playing or starting already: the UI's PLAY stops it) */

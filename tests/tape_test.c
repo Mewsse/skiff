@@ -492,6 +492,41 @@ static void test_record_pass(void)
                                                            off_at[0][64] - on_at[0][64] == 300);
 }
 
+static void test_queued_on_bar_jump(void)
+{
+    uint16_t node;
+    uint32_t news = 0;
+    reset();
+    put(0, 2000, 60, 0, 100);
+    put(0, 3000, 62, 0, 100);
+    start();
+    play_to(4500, 10);
+    tape_recording = 1;
+    tape_rq_push(TR_ON, tape_head, 64, 0, 90);
+    tape_voices_end(-1, 1);
+    tape_head = (tape_head + tape_length() - TAPE_BAR) % tape_length();
+    tape_seek(tape_head);
+    tape_poll();
+    check("BAR BACK with an on still queued: the list stays sorted", !consistent(0));
+    play(100, 10);
+    tape_rq_push(TR_OFF, tape_head, 64, 0, 0);
+    tape_recording = 0;
+    tape_poll();
+    check("BAR BACK with an on still queued: the note is recorded, the later ones still play",
+          tp_trk[0].count == 3 && !consistent(0));
+    reset();
+    start();
+    play_to(500, 10);
+    tape_recording = 1;
+    tape_rq_push(TR_ON, tape_head, 64, 0, 90);
+    tape_recording = 0;
+    check("UNDO with an on still queued: nothing left of it", tape_undo() == UNDO_DONE && !tape_undo_ready());
+    tape_poll();
+    for (node = tp_trk[0].first; node != TAPE_END; node = tp_nx[node])
+        news += (tp_w0[node] & TP_NEW) != 0u;
+    check("UNDO with an on still queued: no undoable note appears after it", !news && !tape_undo_ready());
+}
+
 static void test_held_wrap(void)
 {
     uint16_t node;
@@ -903,6 +938,7 @@ int main(int argc, char **argv)
     test_cursor();
     test_lag();
     test_record_pass();
+    test_queued_on_bar_jump();
     test_held_wrap();
     test_replace();
     test_dedup();

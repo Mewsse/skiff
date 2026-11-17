@@ -44,8 +44,9 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
         if (!clock_run()) {
             motion_begin();
             clock_resume();
-        }
-        song.playing = 1;
+            song.playing = 1;
+        } else if (!song.playing && !(join_want & JOIN_SEQ))
+            join_ask(JOIN_SEQ, grid_idx());            /* (the tape's clock runs: the sequencers join on its next line) */
         if (tape_cued && !tape_go)
             tape_start_now(0, tape_cued & JOIN_TAPE_REC);
         tape_cued = 0;

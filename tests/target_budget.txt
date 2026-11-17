@@ -88,7 +88,8 @@ live_drop 50
 live_settle 78
 transport_take 682
 join_take 0
-seqs_join 52
+seqs_join 6
+seq_walk 51
 seq_skip 22
 arm_tick 15
 rec_hold 3

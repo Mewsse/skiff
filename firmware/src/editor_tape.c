@@ -72,7 +72,6 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         uint32_t first = a[1] | a[2] << 7, total = 0, want, sent = 0, guard;
         uint16_t node;
         track = a[0];
-        tape_commit();
         for (guard = 0, node = tp_trk[track].first; node < TAPE_N && guard < TAPE_N; guard++, node = tp_nx[node])
             total += tp_saved(node);
         ed_b(track); ed_b(first); ed_b(first >> 7); ed_b(total); ed_b(total >> 7);
@@ -118,11 +117,7 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         } else if (op == EDT_PLAY || op == EDT_PAUSE) {
             rc = !tape_ask(op == EDT_PLAY ? TQ_PLAY : TQ_PAUSE);
         } else if (op == EDT_REC) {
-            if (!tape_recording) {
-                tape_commit();
-                tape_arm = (uint8_t)(1u << song.sel);
-            }
-            rc = !tape_ask(TQ_REC);
+            rc = !tape_rec_ask(1u << song.sel);
         } else if (op == EDT_UNDO) {
             rc = tape_undo() != UNDO_DONE;
         } else {

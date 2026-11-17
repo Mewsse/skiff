@@ -732,6 +732,125 @@ static int test_join_tape(void)
     return bad;
 }
 
+/* MIDI Continue with the tape's clock running and the sequencers stopped: they join on its next line, as SEQ PLAY does,
+ * not "playing" from where they were left; with them playing, nothing moves */
+static int test_continue_tape_only(void)
+{
+    uint32_t bad = 0, blk, idx, seq_pos;
+    int ok;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 5;
+    steps_every();
+    trk[0].seq_idx = 3;
+    trk[0].seq_pos = 77u;
+    tape_req = TQ_PLAY;
+    run_to(1010);
+    midi_clock_transport(0xFBu, fm1_ms);
+    ok = !song.playing && join_want == JOIN_SEQ && join_at == 1080u;
+    bad += check("MIDI Continue, the tape running alone: the sequencers wait for the next 1/16 line, not playing yet", ok);
+    midi_clock_transport(0xFBu, fm1_ms);
+    for (blk = 0; blk < 40000u && !song.playing; blk++)
+        events_block(CTL);
+    bad += check("  a second Continue changes nothing; they join on the line at step 9 as SEQ PLAY does",
+                 song.playing && song_ticks >= 1080u && song_ticks < 1082u && trk[0].seq_idx == 9u && !join_want);
+    idx = trk[0].seq_idx;
+    seq_pos = trk[0].seq_pos;
+    midi_clock_transport(0xFBu, fm1_ms);
+    bad += check("MIDI Continue, the sequencers playing already: nothing moves", song.playing && !join_want &&
+                 trk[0].seq_idx == idx && trk[0].seq_pos >= seq_pos);
+    unit_settings[32 * 15 + 26] = 0;
+    transport_req = 4;
+    events_block(CTL);
+    return bad;
+}
+
+/* Song Position while the sequencers wait for a line: the wait is for the next line from the new place */
+static int test_join_spp(void)
+{
+    uint32_t bad = 0, blk, at = 0;
+    int ok;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 4;
+    steps_every();
+    tape_req = TQ_PLAY;
+    run_to(1010);
+    transport_req = 1;
+    events_block(CTL);
+    ok = (join_want & JOIN_SEQ) && join_at == 1200u;
+    midi_clock_spp(5);
+    bad += check("SPP 5 while SEQ PLAY waits for the 1/8 line: the wait moves to the line after 600 (720)",
+                 ok && song_ticks == 600u && join_want == JOIN_SEQ && join_at == 720u);
+    for (blk = 0; blk < 40000u && !song.playing; blk++)
+        events_block(CTL);
+    at = song_ticks;
+    bad += check("  the sequencers join there", song.playing && at >= 720u && at < 722u && !join_want);
+    midi_clock_spp(0);
+    transport_req = 4;
+    events_block(CTL);
+    unit_settings[32 * 15 + 26] = 0;
+    return bad;
+}
+
+/* SEQ PLAY joining the tape's clock on a swung GRID line plays the steps a run from the top plays, tick for tick: the
+ * step and the tick each begins at (track 0) over `ticks` clock ticks */
+static uint32_t step_log(uint32_t join, uint32_t swing, uint32_t dir, uint32_t len, uint32_t sdiv, uint32_t press,
+                         uint32_t ticks, uint32_t *idx, uint32_t *at, uint32_t *start)
+{
+    uint32_t blk, last = 0xFFFFu, n = 0;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 5;
+    song.g[G_SWING] = (int16_t)swing;
+    steps_every();
+    trk[0].p[P_DIR] = (int16_t)dir;
+    trk[0].p[P_SLEN] = (int16_t)len;
+    trk[0].p[P_SDIV] = (int16_t)sdiv;
+    if (join) {
+        tape_req = TQ_PLAY;
+        run_to(press);
+    }
+    transport_req = 1;
+    for (blk = 0; blk < 4000000u && song_ticks < ticks && n < 512u; blk++) {
+        events_block(CTL);
+        if (song.playing && !n)
+            *start = song_ticks;
+        if (song.playing && trk[0].seq_idx != last) {
+            idx[n] = trk[0].seq_idx;
+            at[n++] = song_ticks;
+            last = trk[0].seq_idx;
+        }
+    }
+    unit_settings[32 * 15 + 26] = 0;
+    song.g[G_SWING] = 0;
+    transport_req = 4;
+    events_block(CTL);
+    return n;
+}
+static int test_join_swing(void)
+{
+    static const uint32_t swings[] = {0, 50, 100}, dirs[] = {DIR_FWD, DIR_REV, DIR_PING}, lens[] = {16, 5, 7};
+    static uint32_t ref_idx[512], ref_at[512], join_idx[512], join_at_[512];
+    uint32_t bad = 0, si, di, ref_n, join_n, from, k, start, ok, sdiv;
+    for (sdiv = 1; sdiv <= 2; sdiv++)
+        for (si = 0; si < 3; si++)
+            for (di = 0; di < 3; di++) {
+                ref_n = step_log(0, swings[si], dirs[di], lens[di], sdiv, 0, 6000u, ref_idx, ref_at, &start);
+                join_n = step_log(1, swings[si], dirs[di], lens[di], sdiv, 1010, 6000u, join_idx, join_at_, &start);
+                for (from = 0; from + 1u < ref_n && ref_at[from + 1u] <= join_at_[0] + 4u; from++)
+                    ;
+                ok = join_n && from + join_n <= ref_n + 1u;
+                for (k = 0; ok && k < join_n && from + k < ref_n; k++)
+                    ok = ref_idx[from + k] == join_idx[k] && (!k || (ref_at[from + k] + 4u >= join_at_[k] &&
+                                                                    join_at_[k] + 4u >= ref_at[from + k]));
+                if (!ok)
+                    printf("grid: join swing %u dir %u sdiv %u: first step %u at %u, the run from the top's %u at %u\n",
+                           (unsigned)swings[si], (unsigned)dirs[di], (unsigned)sdiv, (unsigned)join_idx[0],
+                           (unsigned)join_at_[0], (unsigned)ref_idx[from], (unsigned)ref_at[from]);
+                bad += !ok;
+            }
+    return check("join, GRID 1/16 swung (SWING 0 / 50 / 100, FWD / REV / PING, 1/16 and 1/8): the steps, step for step and tick for tick, of a run from the top",
+                 !bad);
+}
+
 /* each transport stops alone: its own notes end, the other's and the clock go on */
 static int test_one_stops(void)
 {
@@ -781,6 +900,64 @@ static int test_one_stops(void)
     return bad;
 }
 
+/* the last transport running stops while the other waits for its line: the wait goes, the clock stops (CLOCK OUT Stop),
+ * the live notes waiting drop; the other still running keeps its wait */
+static int test_stop_last(void)
+{
+    uint32_t bad = 0, blk, ok;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 3;
+    tape_req = TQ_PLAY;
+    run_to(1000);
+    transport_req = 1;
+    events_block(CTL);
+    ok = (join_want & JOIN_SEQ) && mn.started;
+    input_on(&trk[0], 60, 100);
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    for (blk = 0; blk < 4000u; blk++)
+        events_block(CTL);
+    bad += check("tape PAUSE, the sequencers waiting for their line: the clock stops, the wait goes, CLOCK OUT Stop, live notes dropped",
+                 ok && !clock_run() && !join_want && !mn.started && !live_n && !song.playing && !seq_waits());
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 3;
+    transport_req = 1;
+    run_to(1000);
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    ok = (join_want & JOIN_TAPE) && song.playing;
+    transport_req = 2;
+    events_block(CTL);
+    for (blk = 0; blk < 4000u; blk++)
+        events_block(CTL);
+    bad += check("SEQ STOP, the tape waiting for its line: the clock stops, the wait goes, CLOCK OUT Stop, the tape never starts",
+                 ok && !clock_run() && !join_want && !mn.started && !tape_go);
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 3;
+    tape_req = TQ_PLAY;
+    run_to(1000);
+    transport_req = 1;
+    events_block(CTL);
+    transport_req = 2;
+    events_block(CTL);
+    bad += check("SEQ STOP, the sequencers waiting, the tape running: only the wait goes, the clock goes on",
+                 !join_want && tape_go && clock_run() && mn.started);
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 3;
+    transport_req = 1;
+    run_to(1000);
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    bad += check("tape PAUSE, the tape waiting, the sequencers running: only the wait goes, the clock goes on",
+                 !join_want && song.playing && clock_run() && mn.started);
+    unit_settings[32 * 15 + 26] = 0;
+    transport_req = 4;
+    events_block(CTL);
+    return bad;
+}
+
 /* the tape alone: a PERFORM MUTE armed lands on its GRID line (arm_tick); arm_poll leaves it while the clock runs */
 static int test_arm_tape_only(void)
 {
@@ -826,7 +1003,11 @@ int main(void)
     tape_only = 0;
     fails += test_join_seq();
     fails += test_join_tape();
+    fails += test_join_swing();
+    fails += test_join_spp();
+    fails += test_continue_tape_only();
     fails += test_one_stops();
+    fails += test_stop_last();
     fails += test_arm_tape_only();
     fails += test_tape_play();
     fails += test_tape_stop();

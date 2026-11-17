@@ -937,6 +937,18 @@ static int test_tape_pads(void)
     bad += check("SMK pad 16 (UNDO, not yet): nothing", tape_pad(15, &req) && !req && !steps_set(t) && !host_pad_keys);
     bad += check("SMK KNOB BANK + a top-row pad: still a step", (pad_event(2, 100), pad_event(2, 0), steps_set(TSEL) == 1u) &&
                  !tape_req);
+    tape_recording = 0;
+    tape_req = TQ_PLAY;
+    tape_arm = 4u;
+    tp_undoable = 1;
+    sel_set(1);
+    pad_event(10, 100);
+    pad_event(10, 0);
+    bad += check("SMK pad 11 while a request waits for the audio ISR: refused, the arm and the undo as they were",
+                 tape_req == TQ_PLAY && tape_arm == 4u && tp_undoable);
+    tape_req = 0;
+    tp_undoable = 0;
+    sel_set(4);
     shift_hold(0);
     bad += check("SMK pads without SHIFT: the steps again (the bottom row too)",
                  (pad_event(9, 100), pad_event(9, 0), steps_set(TSEL) == 2u) && !tape_req);

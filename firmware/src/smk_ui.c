@@ -196,11 +196,10 @@ static void smk_tape_pad(uint32_t pad)
         ui_message("STOP FIRST");
         return;
     }
-    if (op == TQ_REC && !tape_recording) {
-        tape_commit();                               /* (the pass before is final: UNDO takes back this one) */
-        tape_arm = (uint8_t)(1u << song.sel);
-    }
-    (void)tape_ask(op);
+    if (op == TQ_REC)
+        (void)tape_rec_ask(1u << song.sel);
+    else
+        (void)tape_ask(op);
 }
 
 static void smk_pads(void)

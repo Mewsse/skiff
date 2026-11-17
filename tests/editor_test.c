@@ -1362,6 +1362,11 @@ static int tape_cmds(void)
         sel_set(2);
         ok = request(ED_TAPE, op_play, 1) == 28u && !host_wire[6] && tape_req == TQ_PLAY;
         ok &= request(ED_TAPE, op_play, 1) == 28u && host_wire[6] == 1;          /* (the last not taken yet) */
+        tape_req = TQ_PLAY;
+        tape_arm = 1u;
+        tp_undoable = 1;
+        ok &= request(ED_TAPE, op_rec, 1) == 28u && host_wire[6] == 1 && tape_req == TQ_PLAY && tape_arm == 1u && tp_undoable;
+        tp_undoable = 0;
         tape_req = 0;
         ok &= request(ED_TAPE, op_pause, 1) == 28u && tape_req == TQ_PAUSE;
         tape_req = 0;
@@ -1394,8 +1399,18 @@ static int tape_cmds(void)
     tp_w1[tp_trk[0].first] |= TP_HELD;
     tp_w0[tp_nx[tp_trk[0].first]] |= TP_GHOST;
     ok = request(ED_TAPE_GET, get0, 4) == 30u && host_wire[8] == 2 && host_wire[10] == 2 && host_wire[17] == 62 && host_wire[26] == 64 &&
-         tp_trk[0].count == 3u;
-    bad += check("TAPE_GET: a held note skipped, a ghost swept", ok);
+         tp_trk[0].count == 4u && (tp_w0[tp_nx[tp_trk[0].first]] & TP_GHOST);
+    bad += check("TAPE_GET: a held note and a ghost skipped, the ghost left (no commit)", ok);
+    tp_w0[tp_nx[tp_trk[0].first]] &= ~TP_GHOST;
+    tp_w1[tp_trk[0].first] &= ~TP_HELD;
+    tp_w0[tp_trk[0].first] |= TP_NEW;
+    tp_undoable = 1;
+    ok = request(ED_TAPE_GET, get0, 4) == 30u && host_wire[8] == 4 && host_wire[14] == 20 && host_wire[26] == 60 &&
+         host_wire[27] == 1 && host_wire[28] == 90 && (tp_w0[tp_trk[0].first] & TP_NEW) && tape_undo_ready();
+    ok &= request(ED_TAPE_GET, get0, 4) == 30u && (tp_w0[tp_trk[0].first] & TP_NEW) && tape_undo_ready();
+    ok &= request(ED_TAPE, 0, 0) == 28u && host_wire[26] == 8;
+    ok &= request(ED_TAPE, op_undo, 1) == 28u && !host_wire[6] && tp_trk[0].count == 3u;
+    bad += check("TAPE_GET polled: the notes recorded by the last pass stay undoable, UNDO still takes them back", ok);
     ok = !request(ED_TAPE_GET, get_big, 4) && !request(ED_TAPE_GET, get_zero, 4) && !request(ED_TAPE_GET, get_trk, 4) &&
          !request(ED_TAPE_GET, get0, 3);
     bad += check("TAPE_GET: a page of 1..32 of a track 0..3; bad ones unanswered", ok);

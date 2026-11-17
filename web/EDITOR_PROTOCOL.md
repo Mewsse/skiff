@@ -998,7 +998,7 @@ that was refused reply with rc 1 and the state as it is.
 **A note** (TAPE_GET): `at` (ticks from the tape's start, 3 bytes), `len` (ticks, 3 bytes), note, instrument 0..5,
 velocity. The notes come in tick order; one the unit is recording as you ask (a key still held) is not among them,
 and one past the tape's length is (it stays stored and is not played). The index counts only the notes that are sent,
-so a page from `first` is stable while nothing is recorded. The reply holds at most 32 notes (297 bytes).
+so a page from `first` is stable while nothing is recorded. It only reads: the ghosts a replace pass left stay (and are not sent), the last pass stays undoable, so polling it never commits. The reply holds at most 32 notes (297 bytes).
 
 TAPE's reply to an edit is the state after it. The device saves the tape with the project (its four slots and the music
 now), only while stopped; nothing here saves. The pattern pool's POOL (78), the lists' and PERFORM's commands (79, 80,

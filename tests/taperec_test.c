@@ -650,6 +650,54 @@ static int test_steprec_not_doubled(void)
     return bad;
 }
 
+/* a long step note (8 steps tied) while SEQ REC is armed or let go in between: its end follows its start */
+static void long_note(track_t *t)
+{
+    uint32_t k;
+    t->p[P_SLEN] = 16;
+    put_step(t, 0, 1, (const uint8_t[]){48}, ST_NOTE, 0);
+    for (k = 1; k < 8u; k++)
+        put_step(t, k, 0, (const uint8_t[]){0}, ST_TIE, 0);
+}
+static int test_seqrec_mid_note(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0;
+    fresh(1, 0);
+    long_note(t);
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    run_to(300);
+    song.rec = 1;
+    run_to(1200);
+    list(0);
+    bad += check("SEQ REC armed while a recorded sequencer note sounds: its end is recorded, nothing left open",
+                 listed == 1u && !nodes[0].held && near_at(nodes[0].len, 960, 4) && !tp_open_n);
+    song.rec = 0;
+    stop();
+    fresh(1, 0);
+    long_note(t);
+    song.rec = 1;
+    tape_arm = 1;
+    transport_req = 1;
+    tape_req = TQ_REC;
+    run_to(100);
+    song.rec = 0;
+    run_to(300);
+    input_on(t, 48, 100);
+    run_to(1200);
+    list(0);
+    bad += check("SEQ REC let go while a sequencer note (in its steps) sounds: its end is not recorded, the live key's note stays open",
+                 listed == 1u && nodes[0].held && tp_open_n == 1u);
+    input_off(t, 48);
+    run_to(1300);
+    list(0);
+    bad += check("  the key's release ends it", listed == 1u && !nodes[0].held && !tp_open_n);
+    stop();
+    return bad;
+}
+
 /* a chord step strummed: its notes sound blocks after the sequencer's door closed, and are still the sequencer's */
 static int test_strum_not_doubled(void)
 {
@@ -776,6 +824,7 @@ int main(void)
     fails += test_seq_stopped_not_recorded();
     fails += test_punch();
     fails += test_steprec_not_doubled();
+    fails += test_seqrec_mid_note();
     fails += test_strum_not_doubled();
     fails += test_undo();
     printf(fails ? "taperec: %u FAILED\n" : "taperec: all passed\n", (unsigned)fails);

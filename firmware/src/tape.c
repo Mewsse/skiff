@@ -97,6 +97,7 @@ static tape_rec_t tp_rq[TAPE_RQ];
 static volatile uint16_t tp_rq_w, tp_rq_r;
 static volatile uint8_t tp_rq_lost;    /* ISR: an event dropped; main closes every open note */
 static uint8_t tp_rec_mask;            /* ISR: instruments with a recorded note-on since the last close (their ends go in) */
+static uint32_t tp_seq_on[NTRK][4] __attribute__((section(".pool")));   /* ISR: the sequencer notes recorded, by note (their ends go in) */
 
 static void tape_init(void)
 {
@@ -122,6 +123,7 @@ static void tape_init(void)
     tp_rq_w = tp_rq_r = 0;
     tp_rq_lost = 0;
     tp_rec_mask = 0;
+    memset(tp_seq_on, 0, sizeof tp_seq_on);
     tp_epoch = 0;
     tp_limbo_epoch = 0;
     tp_seen_ticks = song_ticks;
@@ -282,6 +284,14 @@ static void tape_rq_push(uint32_t kind, uint32_t at, uint32_t note, uint32_t ins
     tp_rq_w = (uint16_t)(pos + 1u);
 }
 
+static __attribute__((noinline)) void tp_seq_on_clear(int inst)
+{
+    if (inst < 0)
+        memset(tp_seq_on, 0, sizeof tp_seq_on);
+    else
+        memset(tp_seq_on[inst], 0, sizeof tp_seq_on[inst]);
+}
+
 /* ISR: STOP, a locate, SPP, panic, MIDI IN overflow end the tape's voices (inst < 0: all) and, close set, the open
  * notes (an engine switch: the voices only, a held key's note ends with its key). Call it before the head moves: the
  * close is stamped with the head now */
@@ -294,6 +304,7 @@ static __attribute__((noinline)) void tape_voices_end(int inst, int close)
     if (!close)
         return;
     tp_rec_mask &= (uint8_t)(inst < 0 ? 0u : ~(1u << inst));
+    tp_seq_on_clear(inst);
     tape_rq_push(inst < 0 ? TR_CLOSE_ALL : TR_CLOSE_INST, tape_head, 0, inst < 0 ? 0u : (uint32_t)inst, 0);
 }
 
@@ -333,7 +344,8 @@ static void tp_open_drop(uint16_t node)
 }
 
 /* a node joins track between its sorted neighbours. pass: the recording's; same as now, it never plays this pass
- * (stops before cur: the live note sounded); else it plays this pass when still ahead. Returns TAPE_END when full */
+ * (on equal ticks it stops before cur: the live note sounded; later than cur it stays in order); else it plays this
+ * pass when still ahead. Returns TAPE_END when full */
 static uint16_t tape_insert(uint32_t track, uint32_t w0, uint32_t w1, uint32_t pass)
 {
     tape_track_t *tt = &tp_trk[track];
@@ -346,7 +358,8 @@ static uint16_t tape_insert(uint32_t track, uint32_t w0, uint32_t w1, uint32_t p
     tp_w0[node] = w0 & ~TP_GHOST;
     tp_w1[node] = w1;
     next = tt->first;
-    while (next != TAPE_END && TP_AT(tp_w0[next]) <= at && !(pass == tape_pass && next == tt->cur)) {
+    while (next != TAPE_END && TP_AT(tp_w0[next]) <= at &&
+           !(pass == tape_pass && next == tt->cur && TP_AT(tp_w0[next]) == at)) {
         prev = next;
         next = tp_nx[next];
         TAPE_YIELD();
@@ -432,6 +445,7 @@ static void tape_clear(uint32_t track)
 }
 
 static void tape_commit(void);
+static void tape_poll(void);
 
 /* every node of src into dst, in order (dst's first on equal ticks), no allocation. A src node not played yet this
  * pass (src's cur) stays not played in dst; one played already stays behind dst's cur */
@@ -583,6 +597,7 @@ static void tp_count_ghosts(void)
 static void tape_commit(void)
 {
     uint32_t track;
+    tape_poll();                                    /* (a note still queued belongs to the pass it ends) */
     tape_sweep();
     for (track = 0; track < TAPE_TRACKS; track++) {
         uint16_t node;
@@ -606,6 +621,7 @@ static uint32_t tape_undo(void)
     uint32_t track, changed = 0;
     if (tape_recording)
         return UNDO_BUSY;
+    tape_poll();                                    /* (a note still queued is of the pass undone) */
     for (track = 0; track < TAPE_TRACKS; track++) {
         uint16_t prev = TAPE_END, node = tp_trk[track].first;
         while (node != TAPE_END) {
