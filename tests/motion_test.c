@@ -381,6 +381,7 @@ static int arp_new_modes(void)
     for (i = 0; i < NSTEP; i++)
         t->step[i] = (step_t){0};
     seq_start();
+    tape_arm = song.rec; tape_go = tape_recording = 1;  /* (tape REC) */
     seq_tick(t, CTL);
     arp_fresh(t, AM_CHORD, 1, CEG, 3);
     t->arp_pos = 0xFFFFFFF;
@@ -996,6 +997,7 @@ static int takes(void)
     t = tk_track();
     song.rec = 1;
     seq_start(); seq_tick(t, CTL);
+    tape_arm = song.rec; tape_go = tape_recording = 1;  /* (tape REC) */
     input_on(t, 62, 100); input_off(t, 62);
     bad += check("takes:   an armed track: REC records it onto the tape, nothing logged", take_ev_n == 0u &&
                  on_tape(t - trk, 62) == 1u && !tk_has(t, 62));

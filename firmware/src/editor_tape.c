@@ -33,7 +33,8 @@ static int ed_tape_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
     }
 }
 
-/* the RUN bit asked for, as PERFORM's key arms it (ui_layer.c arm_set): stopped at once, playing at the next GRID line */
+/* the RUN bit asked for, as PERFORM's key arms it (ui_layer.c arm_set): the clock stopped at once, running at the next
+ * GRID line */
 static void ed_tape_run(uint32_t part, uint32_t want)
 {
     arm_t *slot = &arm[part];
@@ -44,7 +45,7 @@ static void ed_tape_run(uint32_t part, uint32_t want)
         slot->op = ARM_NONE;
         return;
     }
-    if (!song.playing) {
+    if (!clock_run()) {
         fm1_irq_off();
         arm_do(&trk[part], op);
         fm1_irq_on();
@@ -98,11 +99,8 @@ static int ed_tape_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         } else if (op == EDT_LENGTH) {
             tape_set_len(a[1] | a[2] << 7);
         } else if (op == EDT_LOCATE) {
-            bars = tape_length() / TAPE_BAR;
-            if (song.playing || seq_counting() || (a[1] | a[2] << 7) >= bars)
+            if (!tape_head_set(a[1] | a[2] << 7))
                 rc = 1;
-            else
-                tape_head = (a[1] | a[2] << 7) * TAPE_BAR;
         } else if (op == EDT_TARGET) {
             tp_target = (uint8_t)track;
             if (ui.tsrc && (uint32_t)ui.tsrc - 1u == track)

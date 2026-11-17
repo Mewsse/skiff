@@ -15,17 +15,21 @@ static struct {
                                                     * WAITING FOR .. CLOCK, and clears it) */
 } midi_clock;
 
+/* The external clock owns the shared clock: Start and Continue start it with the step sequencers, the tape only when
+ * cued (tape PLAY while it was stopped) or running; Stop stops everything */
 static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint32_t ms)
 {
-    if (status == 0xFAu) {                         /* Start: step zero */
+    if (status == 0xFAu) {                         /* Start: step zero (the tape: its head's bar) */
+        uint32_t tape = tape_cued | (join_want & (JOIN_TAPE | JOIN_TAPE_REC)) |
+                        (tape_go ? JOIN_TAPE | (tape_recording ? JOIN_TAPE_REC : 0u) : 0u);
         midi_clock.pos = midi_clock.rendered = midi_clock.rem = 0;
         midi_clock.have_pulse = midi_clock.tempo_valid = 0;
         midi_clock.interval_ms = 0;
         midi_clock.start_ms = ms;
         midi_clock.spp = 0;
         tape_voices_end(-1, 1);
-        tape_head = 0;
-        seq_start();
+        tape_go = tape_cued = join_want = 0;
+        transports_start(JOIN_SEQ | tape);
     } else if (status == 0xFBu) {                  /* Continue: preserve the step ((2.2) or go where SPP said) */
         midi_clock.pos = midi_clock.rendered;
         midi_clock.rem = 0;
@@ -39,9 +43,12 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
         }
         if (!clock_run()) {
             motion_begin();
-            tape_resume();
+            clock_resume();
         }
-        song.playing = tape_go = 1;
+        song.playing = 1;
+        if (tape_cued && !tape_go)
+            tape_start_now(0, tape_cued & JOIN_TAPE_REC);
+        tape_cued = 0;
     } else if (status == 0xFCu) {
         seq_stop();
     }

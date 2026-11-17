@@ -373,10 +373,10 @@ static int ed_flash_stop(void)
     uint32_t t0 = fm1_ms;
     if (!transport_busy())
         return 0;
-    transport_req = 2;
-    while (song.playing && fm1_ms - t0 < 100u)       /* the audio ISR stops it at its next block */
+    transport_req = 4;
+    while (clock_run() && fm1_ms - t0 < 100u)        /* the audio ISR stops it at its next block */
         fm1_wdt_feed();
-    return song.playing;
+    return clock_run();
 }
 
 #include "editor_preferences.c"

@@ -10,12 +10,15 @@
 
 static uint8_t unit_settings[32 * 16];                /* (the unit's settings, as ui.c's mset_io: GRID at [15][26]) */
 static const uint8_t *const mset_io = unit_settings;
+static void fm1_irq_off(void) {}
+static void fm1_irq_on(void) {}
 
 #define TWO_BARS (2u * TAPE_BAR)
 
+static uint32_t tape_only;                            /* (the ARP and live tests: under the tape alone) */
 static int check(const char *what, int ok)
 {
-    printf("grid: %-100s %s\n", what, ok ? "ok" : "FAIL");
+    printf("grid: %s%-*s %s\n", tape_only ? "(tape alone) " : "", tape_only ? 87 : 100, what, ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
 }
 
@@ -81,7 +84,7 @@ static void fresh(uint32_t bpm)
     memset(&midi_clock, 0, sizeof midi_clock);
     host_tracks_init();
     song.g[G_BPM] = (int16_t)bpm;
-    transport_req = 0;
+    transport_req = tape_req = 0;
     midi_beat_samples = 0;
     seq_stop();
     tape_head = song_ticks = tape_beat = tape_frac = tape_pass = 0;
@@ -96,7 +99,7 @@ static int test_bars(void)
     for (i = 0; i < 3u; i++) {
         uint32_t blocks = 0, last = 0, wrong = 0;
         fresh(BPM[i]);
-        transport_req = 1;
+        tape_req = TQ_PLAY;
         while (tape_beat < 4000u || !blocks) {
             events_block(CTL);
             blocks++;
@@ -110,7 +113,7 @@ static int test_bars(void)
                  (unsigned)BPM[i], (unsigned)blocks);
         bad += check(what, !wrong && song_ticks >= 1920000u && song_ticks < 1920000u + TAPE_TPQ && tape_beat == 4000u);
     }
-    transport_req = 2;
+    transport_req = 4;
     events_block(CTL);
     return bad;
 }
@@ -119,7 +122,7 @@ static int test_tempo(void)
 {
     uint32_t blk, last = 0, wrong = 0, beats0, moved = 0;
     fresh(120);
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     for (blk = 0; blk < 60000u; blk++) {
         if (blk % 97u == 0)
             song.g[G_BPM] = (int16_t)(40u + (blk * 31u) % 200u);   /* mid-beat, up and down */
@@ -130,7 +133,7 @@ static int test_tempo(void)
         last = song_ticks;
     }
     beats0 = tape_beat;
-    transport_req = 2;
+    transport_req = 4;
     events_block(CTL);
     return check("tempo changes mid-beat (40..239 BPM every 97 blocks): ticks never go back, head = ticks mod length", !wrong && moved && beats0 > 100u);
 }
@@ -154,44 +157,110 @@ static int test_external(void)
     song.g[G_CLOCK] = 1;
     fm1_ms = 1000;
     events_block(CTL);
+    tape_req = TQ_PLAY;                               /* (the master stopped: cued) */
+    events_block(CTL);
+    wrong += tape_go || !tape_cued;
     midi_enqueue(0x0Fu | 0xFAu << 8, 1);
     events_block(CTL);
     ext_blocks(1000u, &wrong, 1u);
-    return check("external clock: 24 PPQN pulses are 20 ticks each (1,000 pulses), head = ticks mod length",
-                 !wrong && song.playing && tape_head == song_ticks % (4u * TAPE_BAR) && song_ticks == 20u * 998u);
+    return check("external clock: the tape cued, Start; 24 PPQN pulses are 20 ticks each (1,000 pulses), head = ticks mod length",
+                 !wrong && song.playing && tape_go && tape_head == song_ticks % (4u * TAPE_BAR) && song_ticks == 20u * 998u);
+}
+
+/* blocks until song_ticks reaches ticks */
+static void run_to(uint32_t ticks)
+{
+    uint32_t blk;
+    for (blk = 0; blk < 400000u && song_ticks < ticks; blk++)
+        events_block(CTL);
 }
 
 static int test_transport(void)
 {
-    int bad = 0;
+    int bad = 0, ok;
+    uint32_t ticks;
     fresh(120);
     tape_head = 5000;
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     events_block(CTL);
-    bad += check("PLAY from head 5000: the head snaps to its bar, 3840", song.playing && tape_head == 3840u && tape_beat == 8u);
+    bad += check("tape PLAY from head 5000: the head snaps to its bar, 3840; the sequencers stay stopped",
+                 tape_go && !song.playing && tape_head == 3840u && tape_beat == 8u);
+    run_to(4500);
     transport_req = 2;
     events_block(CTL);
-    bad += check("STOP keeps the head (3840)", !song.playing && tape_head == 3840u);
     transport_req = 2;
     events_block(CTL);
-    bad += check("STOP when stopped: the head to 0", !song.playing && tape_head == 0u);
-    tape_head = 3000;
+    bad += check("SEQ STOP twice with the tape running: the tape and the clock go on", tape_go && song_ticks > 4500u &&
+                 tape_head == song_ticks % (4u * TAPE_BAR));
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    ticks = tape_head;
+    transport_req = 2;
+    events_block(CTL);
+    bad += check("tape PAUSE keeps the head; SEQ STOP stopped keeps it too", !tape_go && !clock_run() && tape_head == ticks);
     transport_req = 1;
     events_block(CTL);
+    bad += check("SEQ PLAY: the sequencers from the top, the tape stays where it is",
+                 song.playing && !tape_go && song_ticks == 0u && tape_head == ticks);
     transport_req = 3;
     events_block(CTL);
-    bad += check("GLO + PLAY: from the top, head 0, beat 0", song.playing && tape_head == 0u && tape_beat == 0u);
+    bad += check("GLO + PLAY, the tape stopped: from the top", song.playing && song_ticks < 2u && tape_beat == 0u);
+    transport_req = 4;
+    events_block(CTL);
+    tape_head = 0;
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    run_to(TAPE_BAR + 700u);
+    transport_req = 3;
+    events_block(CTL);
+    ok = !song.playing && (join_want & JOIN_SEQ) && join_at == 2u * TAPE_BAR;
+    run_to(2u * TAPE_BAR + 2u);
+    bad += check("GLO + PLAY, the tape running: the sequencers join on its next bar line, the clock goes on",
+                 ok && song.playing && tape_go && song_ticks >= 2u * TAPE_BAR && trk[0].seq_idx == 0u);
     seq_locate(300);
     bad += check("SPP 300: 36,000 ticks, head 36,000 mod 7,680, beat 75, passes 4",
                  song_ticks == 36000u && tape_head == 36000u % (4u * TAPE_BAR) && tape_beat == 75u && tape_frac == 0u &&
-                 tape_pass == 0u);
+                 tape_pass == 0u && tape_go);
     seq_locate(301);
     bad += check("SPP 301: 120 ticks into the beat", song_ticks == 36120u && tape_beat == 75u && tape_frac == 120u);
     events_block(CTL);
     bad += check("the clock goes on from the locate", song_ticks >= 36120u && song_ticks < 36120u + 20u);
     seq_locate(0);
     bad += check("SPP 0: the top", song_ticks == 0u && tape_head == 0u && tape_beat == 0u);
-    transport_req = 2;
+    transport_req = 4;
+    events_block(CTL);
+    bad += check("stop everything (4)", !song.playing && !tape_go && !clock_run());
+    tape_head = 0;
+    tape_req = TQ_BAR_BACK;
+    events_block(CTL);
+    ok = tape_head == 3u * TAPE_BAR;
+    tape_req = TQ_BAR_ON;
+    events_block(CTL);
+    tape_req = TQ_BAR_ON;
+    events_block(CTL);
+    ok &= tape_head == TAPE_BAR;
+    tape_req = TQ_END;
+    events_block(CTL);
+    ok &= tape_head == 3u * TAPE_BAR;
+    tape_req = TQ_TOP;
+    events_block(CTL);
+    bad += check("tape requests stopped: a bar back (round to the last), on, the last bar, the top", ok && tape_head == 0u);
+    tape_req = TQ_PLAY;
+    events_block(CTL);
+    run_to(700);
+    tape_req = TQ_BAR_ON;
+    events_block(CTL);
+    ok = tape_head == TAPE_BAR + song_ticks % TAPE_BAR;
+    tape_req = TQ_BAR_BACK;
+    events_block(CTL);
+    ok &= tape_head == song_ticks % TAPE_BAR;
+    tape_req = TQ_TOP;
+    events_block(CTL);
+    tape_req = TQ_END;
+    events_block(CTL);
+    bad += check("tape requests running: a bar on and back keep the clock's place, the top and the end refused",
+                 ok && tape_go && tape_head == song_ticks % TAPE_BAR);
+    transport_req = 4;
     events_block(CTL);
     return bad;
 }
@@ -212,24 +281,37 @@ static int test_phase_invariant(void)
     fresh(120);
     phase_wrong = 0;
     tape_head = 5000;
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     phase_blocks(3000);
     ran = tape_go;
+    transport_req = 1;
+    phase_blocks(3000);
+    ran &= song.playing;
     seq_locate(301);
     phase_wrong += song_ticks % TAPE_BAR != tape_head % TAPE_BAR;
     phase_blocks(3000);
     tape_set_len(3);
     phase_blocks(3000);
-    transport_req = 2;
-    events_block(CTL);
-    ran &= tape_bar_step(1) && tape_bar_step(1);
-    transport_req = 1;
+    tape_req = TQ_BAR_ON;
+    phase_blocks(1000);
+    tape_req = TQ_BAR_BACK;
+    phase_blocks(1000);
+    tape_req = TQ_PAUSE;
+    phase_blocks(2000);
+    ran &= !tape_go && song.playing;
+    tape_req = TQ_PLAY;
     phase_blocks(3000);
     ran &= tape_go;
-    transport_req = 2;
+    transport_req = 4;
+    events_block(CTL);
+    ran &= tape_bar_step(1) && tape_bar_step(1);
+    tape_req = TQ_PLAY;
+    phase_blocks(3000);
+    ran &= tape_go;
+    transport_req = 4;
     events_block(CTL);
     tape_len = 0;
-    return check("the tape running: head = clock mod a bar across PLAY, SPP, a length change, bar steps", ran && !phase_wrong);
+    return check("the tape running: head = clock mod a bar across PLAY, a join, SPP, a length change, bar steps", ran && !phase_wrong);
 }
 
 /* the arm table (launch.c): an op armed on step k lands at the boundary into step k + 1 */
@@ -294,24 +376,32 @@ static int test_arm_grid(void)
         t->step[i] = (step_t){{60}, 1, ST_NOTE, 0, 100};
     t->p[P_SLEN] = 16;
     transport_req = 1;
-    for (blk = 0; blk < 4000u && tape_head < 500u; blk++)
+    for (blk = 0; blk < 4000u && song_ticks < 500u; blk++)
         events_block(CTL);
-    head0 = tape_head;
-    ok = head0 >= 500u && head0 < 700u && arm_when(0) == song_ticks;
+    head0 = song_ticks;
+    ok = head0 >= 500u && head0 < 700u && arm_when(0) == song_ticks;   /* (head0: the clock's, the tape stopped) */
     ok &= arm_when(1) == song_ticks + TAPE_BAR - head0 && arm_when(3) == song_ticks + 960u - head0 &&
           arm_when(5) == song_ticks + 600u - head0;
     bad += check("arm_when: OFF now, 1 BAR / 1/4 / 1/16 the next line after the head", ok);
-    ok = grid_land(1, ARM_RUN_OFF, &late) && late < 200u && !seq_running(0) && tape_head % TAPE_BAR < 200u;
+    ok = grid_land(1, ARM_RUN_OFF, &late) && late < 200u && !seq_running(0) && song_ticks % TAPE_BAR < 200u;
     bad += check("GRID 1 BAR: RUN OFF armed mid-bar lands on the bar line (the first step boundary from it)", ok);
-    for (blk = 0; blk < 4000u && (tape_head % TAPE_BAR < 300u || tape_head % TAPE_BAR > 400u); blk++)
+    for (blk = 0; blk < 4000u && (song_ticks % TAPE_BAR < 300u || song_ticks % TAPE_BAR > 400u); blk++)
         events_block(CTL);
-    ok = grid_land(3, ARM_RUN_ON, &late) && late < 200u && seq_running(0) && tape_head % 480u < 200u;
+    ok = grid_land(3, ARM_RUN_ON, &late) && late < 200u && seq_running(0) && song_ticks % 480u < 200u;
     bad += check("GRID 1/4: RUN ON armed lands on the next beat line", ok);
     transport_req = 2;
     events_block(CTL);
     return bad;
 }
 
+/* the transport the ARP and live tests run under: the sequencers, or the tape alone (the shared clock either way) */
+static void play_start(void)
+{
+    if (tape_only)
+        tape_req = TQ_PLAY;
+    else
+        transport_req = 1;
+}
 /* the ARP's first key on the GRID (seq.c arp_wait): past the line's window it waits for the next line, within it, or
  * with GRID OFF, it starts at once */
 static uint32_t arp_press(uint32_t grid, uint32_t offset, uint32_t *waited, uint32_t *start)
@@ -322,19 +412,19 @@ static uint32_t arp_press(uint32_t grid, uint32_t offset, uint32_t *waited, uint
     unit_settings[32 * 15 + 26] = (uint8_t)grid;
     t->p[P_AMODE] = AM_UP;
     t->p[P_APROB] = 127;
-    transport_req = 1;
-    for (blk = 0; blk < 4000u && (tape_head < 960u || tape_head % TAPE_TPQ < offset); blk++)
+    play_start();
+    for (blk = 0; blk < 4000u && (song_ticks < 960u || song_ticks % TAPE_TPQ < offset); blk++)
         events_block(CTL);
     press = song_ticks;
-    base = tape_head - tape_head % TAPE_TPQ;
+    base = song_ticks - song_ticks % TAPE_TPQ;
     arp_add(t, 60);
     events_block(CTL);
     *waited = t->arp_pos == ARP_WAIT;
     for (blk = 0; blk < 4000u && !t->arp_note; blk++)
         events_block(CTL);
     *start = song_ticks - press;
-    press = tape_head - base;
-    transport_req = 2;
+    press = song_ticks - base;
+    transport_req = 4;
     events_block(CTL);
     return t->arp_note != 0 ? press : 0u;
 }
@@ -367,8 +457,8 @@ static void live_begin(uint32_t grid, uint32_t offset)
     uint32_t blk;
     fresh(120);
     unit_settings[32 * 15 + 26] = (uint8_t)grid;
-    transport_req = 1;
-    for (blk = 0; blk < 4000u && (tape_head < 960u || tape_head % TAPE_TPQ < offset); blk++)
+    play_start();
+    for (blk = 0; blk < 4000u && (song_ticks < 960u || song_ticks % TAPE_TPQ < offset); blk++)
         events_block(CTL);
 }
 static uint32_t live_until(const track_t *t, uint32_t note, int on)
@@ -380,7 +470,7 @@ static uint32_t live_until(const track_t *t, uint32_t note, int on)
 }
 static void live_end(void)
 {
-    transport_req = 2;
+    transport_req = 4;
     events_block(CTL);
 }
 static int test_live(void)
@@ -391,7 +481,7 @@ static int test_live(void)
 
     live_begin(3, 100);
     press = song_ticks;
-    line = press + TAPE_TPQ - tape_head % TAPE_TPQ;
+    line = press + TAPE_TPQ - song_ticks % TAPE_TPQ;
     input_on(t, 60, 100);
     ok = live_n == 1u && !sounds(t, 60) && !t->hits;
     at = live_until(t, 60, 1);
@@ -503,31 +593,31 @@ static int test_tape_play(void)
 {
     uint32_t bad = 0, pass, ok;
     tape_fresh(120);
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     tape_run(4u * TAPE_BAR, 0, 0);
     ok = rises[0] == 4u && rises[1] == 4u;
     for (pass = 0; ok && pass < 4u; pass++)
         ok = near_at(rise[0][pass], pass * TAPE_BAR + 100u, 4u) && near_at(rise[1][pass], pass * TAPE_BAR + 1000u, 4u);
     bad += check("TAPE: a 1 bar tape plays its notes at their ticks across 3 loop wraps", ok);
-    transport_req = 2;
+    transport_req = 4;
     events_block(CTL);
     tape_fresh(120);
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     tape_run(3u * TAPE_BAR / 2u, 2000u, 240);
     tape_run(5u * TAPE_BAR, 0, 0);
     ok = rises[0] >= 4u && rises[1] >= 4u && near_at(rise[0][2], 2u * TAPE_BAR + 100u, 8u) && near_at(rise[1][2], 2u * TAPE_BAR + 1000u, 8u);
     bad += check("TAPE: a tempo change in the middle of a pass: the next passes land on their ticks (the head counts beats)", ok);
-    transport_req = 2;
+    transport_req = 4;
     events_block(CTL);
     tape_fresh(120);
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     tape_run(2u * TAPE_TPQ, 0, 0);
     seq_locate(24);
     rises[0] = rises[1] = 0;
     tape_run(song_ticks + 1500u, 0, 0);
     ok = rises[1] >= 1u && near_at(rise[1][0] % TAPE_BAR, 1000u, 8u) && (!rises[0] || rise[0][0] >= TAPE_BAR);
     bad += check("TAPE: SPP to the 24th 16th (head 960): the note at 1000 sounds, the one at 100 waits for the next pass", ok);
-    transport_req = 2;
+    transport_req = 4;
     events_block(CTL);
     return bad;
 }
@@ -536,14 +626,178 @@ static int test_tape_stop(void)
     uint32_t bad = 0, blk;
     tape_fresh(120);
     tape_insert(1, 500u | 64u << 20, 1500u | 100u << 20, TAPE_ANY_PASS);
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     for (blk = 0; blk < 4000u && !sounds(&trk[0], 64); blk++)
         events_block(CTL);
     bad += check("TAPE: a long note sounds", sounds(&trk[0], 64));
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    bad += check("TAPE: PAUSE ends every tape voice", !sounds(&trk[0], 64));
+    return bad;
+}
+
+/* a pattern on track 0: a note every 1/16 step, 16 steps */
+static void steps_every(void)
+{
+    track_t *t = &trk[0];
+    uint32_t i;
+    for (i = 0; i < NSTEP; i++)
+        t->step[i] = (step_t){{60}, 1, ST_NOTE, 0, 100};
+    t->p[P_SLEN] = 16;
+    t->p[P_SDIV] = 2;
+}
+/* the tape running, SEQ PLAY: the sequencers join on the next GRID line (OFF: the next bar) at the bar's place */
+static uint32_t join_seq_at(uint32_t grid, uint32_t press, uint32_t *idx, uint32_t *beat, uint32_t *wrong)
+{
+    uint32_t blk, at = 0, clk = 0;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = (uint8_t)grid;
+    steps_every();
+    tape_req = TQ_PLAY;
+    run_to(press);
+    transport_req = 1;
+    for (blk = 0; blk < 40000u && !song.playing; blk++) {
+        events_block(CTL);
+        clk += clk_pos == CLK_START;
+    }
+    at = song_ticks;
+    *idx = trk[0].seq_idx;
+    *beat = beat_n;
+    *wrong = clk != 0u || !trk[0].seq_n || !tape_go;
+    for (blk = 0; blk < 40000u && song_ticks < 2u * TAPE_BAR + 5u; blk++) {   /* then on the bar's 1/16 lines */
+        events_block(CTL);
+        *wrong += (song_ticks % 120u) > 3u && (song_ticks % 120u) < 117u &&
+                  trk[0].seq_idx != song_ticks % TAPE_BAR / 120u;
+    }
+    unit_settings[32 * 15 + 26] = 0;
+    transport_req = 4;
+    events_block(CTL);
+    return at;
+}
+static int test_join_seq(void)
+{
+    uint32_t bad = 0, at, idx, beat, wrong;
+    at = join_seq_at(3, 1000, &idx, &beat, &wrong);
+    bad += check("join, GRID 1/4: SEQ PLAY at 1000 with the tape running: step 12 sounds on the beat at 1440, then on the bar's lines",
+                 at >= 1440u && at < 1442u && idx == 12u && beat == 3u && !wrong);
+    at = join_seq_at(0, 1000, &idx, &beat, &wrong);
+    bad += check("join, GRID OFF: on the next bar line (1920), step 0", at >= 1920u && at < 1922u && idx == 0u && !wrong);
+    at = join_seq_at(5, 1010, &idx, &beat, &wrong);
+    bad += check("join, GRID 1/16: on the next 1/16 line (1080), step 9; the click and the beat not restarted",
+                 at >= 1080u && at < 1082u && idx == 9u && beat == 2u && !wrong);
+    return bad;
+}
+
+/* the sequencers running, tape PLAY: the tape joins at its bar + the clock's place; its notes on their ticks against the
+ * steps, the one on the join's line too */
+static int test_join_tape(void)
+{
+    uint32_t bad = 0, blk, at, line_on = 0, late_on = 0, late_idx = 0, ok;
+    fresh(120);
+    unit_settings[32 * 15 + 26] = 3;
+    steps_every();
+    tape_init();
+    tape_set_len(1);
+    tape_insert(0, 480u | 64u << 20, 100u | 100u << 20, TAPE_ANY_PASS);
+    tape_insert(0, 1000u | 62u << 20, 100u | 100u << 20, TAPE_ANY_PASS);
+    tape_poll();
+    trk[0].p[P_LEVEL] = trk[0].p[P_LEVEL];
+    transport_req = 1;
+    run_to(TAPE_BAR + 300u);
+    tape_req = TQ_PLAY;
+    for (blk = 0; blk < 40000u && !tape_go; blk++)
+        events_block(CTL);
+    at = song_ticks;
+    ok = tape_head == song_ticks % TAPE_BAR && song.playing;
+    for (blk = 0; blk < 40000u && song_ticks < 2u * TAPE_BAR; blk++) {
+        events_block(CTL);
+        if (!line_on && sounds(&trk[0], 64))
+            line_on = song_ticks;
+        if (!late_on && sounds(&trk[0], 62)) {
+            late_on = song_ticks;
+            late_idx = trk[0].seq_idx;
+        }
+    }
+    bad += check("join: tape PLAY at bar 2 + 300 with the sequencers running: the tape from 2400 (head 480), head = clock mod a bar",
+                 at >= 2400u && at < 2402u && ok);
+    bad += check("join: the tape's note on the join's line sounds, the one at 1000 at 2920 with step 8",
+                 line_on >= 2400u && line_on < 2404u && near_at(late_on, 2920u, 3u) && late_idx == 8u);
+    unit_settings[32 * 15 + 26] = 0;
+    transport_req = 4;
+    events_block(CTL);
+    return bad;
+}
+
+/* each transport stops alone: its own notes end, the other's and the clock go on */
+static int test_one_stops(void)
+{
+    track_t *t = &trk[1];
+    uint32_t bad = 0, ticks, ok;
+    fresh(120);
+    t->step[0] = (step_t){{50}, 1, ST_NOTE, 0, 100};
+    t->p[P_SLEN] = 1;
+    t->p[P_SDIV] = 9;
+    t->p[P_SGATE] = 127;
+    tape_init();
+    tape_set_len(1);
+    tape_insert(0, 10u | 64u << 20, 1900u | 100u << 20, TAPE_ANY_PASS);
+    tape_poll();
+    transport_req = 1;
+    tape_req = TQ_PLAY;
+    run_to(400);
+    ok = song.playing && tape_go && sounds(t, 50) && sounds(&trk[0], 64);
     transport_req = 2;
     events_block(CTL);
-    bad += check("TAPE: STOP ends every tape voice", !sounds(&trk[0], 64));
+    ticks = song_ticks;
+    run_to(ticks + 100u);
+    bad += check("SEQ STOP with the tape running: the sequencer's note ends, the tape's sounds on, the clock goes on",
+                 ok && !song.playing && !sounds(t, 50) && !t->seq_n && sounds(&trk[0], 64) && tape_go && song_ticks > ticks);
+    fresh(120);
+    t->step[0] = (step_t){{50}, 1, ST_NOTE, 0, 100};
+    t->p[P_SLEN] = 1;
+    t->p[P_SDIV] = 9;
+    t->p[P_SGATE] = 127;
+    tape_init();
+    tape_set_len(1);
+    tape_insert(0, 10u | 64u << 20, 1900u | 100u << 20, TAPE_ANY_PASS);
+    tape_poll();
+    transport_req = 1;
+    tape_req = TQ_PLAY;
+    run_to(400);
+    ok = sounds(t, 50) && sounds(&trk[0], 64);
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    ticks = song_ticks;
+    run_to(ticks + 100u);
+    bad += check("tape PAUSE with the sequencers running: the tape's note ends, the sequencer's sounds on, the clock goes on",
+                 ok && !tape_go && !sounds(&trk[0], 64) && sounds(t, 50) && t->seq_n && song.playing && song_ticks > ticks);
+    transport_req = 2;
+    events_block(CTL);
+    bad += check("SEQ STOP, the tape paused: the last transport, the clock stops", !clock_run() && !sounds(t, 50));
     return bad;
+}
+
+/* the tape alone: a PERFORM MUTE armed lands on its GRID line (arm_tick); arm_poll leaves it while the clock runs */
+static int test_arm_tape_only(void)
+{
+    uint32_t blk, ok;
+    fresh(120);
+    tape_req = TQ_PLAY;
+    run_to(700);
+    arm[0].at = arm_when(3);
+    arm[0].op = ARM_MUTE;
+    arm_poll();
+    ok = arm[0].op == ARM_MUTE && arm[0].at == 960u && !trk[0].p[P_MUTE];
+    for (blk = 0; blk < 40000u && arm[0].op; blk++)
+        events_block(CTL);
+    ok &= trk[0].p[P_MUTE] == 1 && song_ticks >= 960u && song_ticks < 962u;
+    transport_req = 4;
+    events_block(CTL);
+    arm[0].at = 0;
+    arm[0].op = ARM_UNMUTE;
+    arm_poll();
+    return check("arm, the tape alone: MUTE armed lands on the next 1/4 line (960), the clock stopped at once", ok &&
+                 !trk[0].p[P_MUTE] && !arm[0].op);
 }
 
 int main(void)
@@ -562,6 +816,14 @@ int main(void)
     fails += test_arm_grid();
     fails += test_arp();
     fails += test_live();
+    tape_only = 1;
+    fails += test_arp();
+    fails += test_live();
+    tape_only = 0;
+    fails += test_join_seq();
+    fails += test_join_tape();
+    fails += test_one_stops();
+    fails += test_arm_tape_only();
     fails += test_tape_play();
     fails += test_tape_stop();
     printf(fails ? "grid: %u FAILED\n" : "grid: all passed\n", (unsigned)fails);

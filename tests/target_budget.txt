@@ -86,6 +86,11 @@ live_release 9
 live_tick 48
 live_drop 50
 live_settle 78
+transport_take 682
+join_take 0
+seqs_join 52
+seq_skip 22
+arm_tick 15
 strum_tick 139
 strum_flush 531
 mix_spread 151

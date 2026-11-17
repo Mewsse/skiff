@@ -315,12 +315,14 @@ static int rec_stop(void)
     sel_set(0);
     song.rec = 1u;                                      /* T1 armed */
     play();
+    tape_arm = 1u; tape_go = tape_recording = 1;        /* (tape REC) */
     run_to(IN(1));
     key_down(K(60));
     ok = sounds(F, 65);
     run_to(IN(1) + L / 4u);
     key_up(K(60));
     song.rec = 0;
+    tape_go = tape_recording = 0;
     for (s = 0; s < 4u; s++)
         moved |= F->step[s].n != 0u;
     got = on_tape(F - trk, 60);

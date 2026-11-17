@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Skiff: the arm table (the PERFORM layer's keys). A track's SEQ RUN (seq_run: its step sequencer plays only while set
  * and playing) or MUTE turned while playing is armed: the main loop sets `at` (song_ticks) first, `op` last; the audio
- * ISR applies it at the track's first step boundary from `at` on (seq_tick) and clears op. Stopped it applies at once.
+ * ISR applies it at the track's first step boundary from `at` on (seq_tick), or at `at` with only the tape running
+ * (arm_tick), and clears op. The clock stopped it applies at once.
  * Included by seq.c (before seq_tick); arm_apply runs in the ISR, only with something armed, not inlined. */
 enum { ARM_NONE, ARM_RUN_ON, ARM_RUN_OFF, ARM_MUTE, ARM_UNMUTE };
 typedef struct {
@@ -56,11 +57,22 @@ static int arm_cancel(void)
     }
     return was;
 }
-/* each frame (ui_input): an op armed when the transport stopped comes in now, as while stopped */
+/* the step sequencers stopped, the clock running (the tape alone): an armed op lands on its GRID line (at), there is
+ * no step boundary. Not inlined (tests/target_budget.py) */
+static __attribute__((noinline)) void arm_tick(void)
+{
+    uint32_t k;
+    for (k = 0; k < NTRK; k++)
+        if (arm[k].op != ARM_NONE && (int32_t)(song_ticks - arm[k].at) >= 0) {
+            arm_do(&trk[k], arm[k].op);
+            arm[k].op = ARM_NONE;
+        }
+}
+/* each frame (ui_input): an op armed when the clock stopped comes in now, as while stopped */
 static void arm_poll(void)
 {
     uint32_t k, op;
-    if (song.playing)
+    if (clock_run())
         return;
     for (k = 0; k < NTRK; k++)
         if ((op = arm[k].op) != ARM_NONE) {

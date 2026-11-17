@@ -797,7 +797,7 @@ static void clk_second(void)                       /* one second of blocks, as t
 static int test_clock_out(void)
 {
     int bad = 0;
-    uint32_t pulses;
+    uint32_t pulses, starts;
     smk_power_on();
     song.g[G_CLOCK] = 0;
     song.g[G_BPM] = 120;
@@ -816,6 +816,19 @@ static int test_clock_out(void)
     pulses = ut_count(0xF8u);
     bad += check("(2.2) SMK TRS MIDI OUT clock: stopped, the pulses go on (the gear that follows keeps the tempo)",
                  pulses >= 47u && pulses <= 49u && !ut_count(0xFAu) && !ut_count(0xFCu));
+    trs(); host_ut_n = 0;
+    tape_req = TQ_PLAY;
+    clk_second();
+    transport_req = 1;                             /* (joins the tape's clock) */
+    clk_second();
+    starts = ut_count(0xFAu);
+    transport_req = 2;
+    clk_second();
+    bad += check("SMK TRS MIDI OUT clock: tape PLAY sends Start, SEQ PLAY joining none, SEQ STOP with the tape running no Stop",
+                 starts == 1u && ut_count(0xFAu) == 1u && !ut_count(0xFCu) && song_ticks > TAPE_BAR);
+    tape_req = TQ_PAUSE;
+    events_block(CTL);
+    bad += check("SMK TRS MIDI OUT clock: tape PAUSE, the last transport: Stop", ut_count(0xFCu) == 1u && !clock_run());
     song.g[G_CLOCK] = 1;
     events_block(CTL);
     trs(); host_ut_n = 0;

@@ -271,14 +271,19 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
     }
     kills0 = voice_kills;
     transport_req = 1;
+    tape_req = TQ_PLAY;                            /* (the sequencers and the tape together) */
     wav_hdr(w, frames);
     for (f = 0; f < frames; f += CTL) {
         int32_t o[2 * CTL];
         uint32_t barn = f / bar, period = div_samples(2);
-        if (barn == 4u && !song.rec)
-            song.rec = 0x0Eu;                      /* bars 5..6: tracks 2, 3, 4 armed */
-        if (barn == 6u)
+        if (barn == 4u && !song.rec) {
+            song.rec = tape_arm = 0x0Eu;           /* bars 5..6: tracks 2, 3, 4 armed, tape REC (punch in) */
+            tape_req = TQ_REC;
+        }
+        if (barn == 6u && song.rec) {
             song.rec = 0;
+            tape_req = TQ_REC;                     /* (punch out) */
+        }
         /* (a) a clap into the drums, late in step 3: lands on step 4, sounds now, step 4 does not repeat it */
         if (song.rec && !clap_done && td->seq_idx == 3u && td->seq_pos > period * 3u / 4u) {
             input_on(td, 39, 110);
@@ -748,8 +753,9 @@ static int trs_test(void)
     sel_set(2);                                   /* another track selected while ch 5's note is down */
     trs_bytes((const uint8_t[]){0x84, 67, 0}, 3);
     ok_hang = !trs_held(&trk[1], 67);
-    song.rec = 1u << 2;                             /* track 3 armed, transport on: ch 3 records */
+    song.rec = tape_arm = 1u << 2;                  /* track 3 armed, transport on, tape REC: ch 3 records */
     transport_req = 1;
+    tape_req = TQ_REC;
     trs_bytes((const uint8_t[]){0xF8}, 1);
     trs_bytes((const uint8_t[]){0x92, 72, 100}, 3);
     trs_bytes((const uint8_t[]){0x92, 72, 0}, 3);

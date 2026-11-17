@@ -57,7 +57,7 @@ static int fl_erase4k(uint32_t off, uint32_t *took) { *took = 0; return st_erase
 static int fl_write(uint32_t off, const void *p, uint32_t n) { return st_prog(off, p, n); }
 static void cf_wdt_feed(void)                       /* (a flash write while playing stops the transport first: */
 {                                                   /* ed_flash_stop waits for the audio ISR's stop, done here) */
-    if (transport_req == 2u) {
+    if (transport_req == 4u) {                      /* (4: everything stops) */
         seq_stop();
         transport_req = 0;
     }

@@ -383,7 +383,7 @@ static int scr_input(uint32_t pressed, uint32_t notes)
 static int scr_frame(void)
 {
     uint32_t lim = SCR_MIN[scr_get()] * 60000u;
-    if (ui.confirm || ui.uboot || seq_counting() || song.playing) {   /* (never dark under these; (Skiff U1) nor
+    if (ui.confirm || ui.uboot || seq_counting() || clock_run()) {   /* (never dark under these; (Skiff U1) nor
                                                                          * while the music plays) */
         scrn.idle = fm1_ms;
         if (scrn.st == SCR_OFF)
@@ -718,17 +718,18 @@ static int transport_busy(void)
 {
     int busy;
     fm1_irq_off();
-    busy = song.playing || transport_req == 1u || seq_counting();   /* (a count-in: as playing) */
+    busy = clock_run() || transport_req == 1u || tape_req == TQ_PLAY || tape_req == TQ_REC ||
+           seq_counting();                                           /* (a count-in: as playing) */
     fm1_irq_on();
     return busy;
 }
 /* (Skiff) the transport stopped from the main loop there and then, as the audio ISR stops it (a count-in too) */
 static void transport_stop_now(void)
 {
-    transport_req = 2;
+    transport_req = 4;
     fm1_irq_off();
     seq_stop();
-    transport_req = 0;
+    transport_req = tape_req = 0;
     fm1_irq_on();
 }
 
@@ -2292,7 +2293,7 @@ static int act_ready(void)
         return 0;
     if (cur_page()->graph == GR_EVENTS) return ui.ev_top ? motion_count(TSEL) != 0u : ev_act_ready();
     if (cur_page()->graph == GR_USER)
-        return c == 3u ? !song.playing : up_used(ui.uslot) && (c == 1u || !song.playing);
+        return c == 3u ? !clock_run() : up_used(ui.uslot) && (c == 1u || !clock_run());
     if (cur_page()->graph == GR_SLOTS && c == 1u)       /* ((Skiff U2) NAME; (1.2.1) DELETE) */
         return project_used((uint32_t)song.g[G_SLOT] - 1u) && !transport_busy();
     if (cur_page()->graph == GR_TAPE)
@@ -2304,5 +2305,5 @@ static int act_ready(void)
     id = cur_page()->id[c & 3u];
     if (id == G_LOAD)                                   /* ((1.2.1, #6) an empty slot: NEW, always) */
         return 1;
-    return !song.playing;                               /* (G_SAVE) */
+    return !clock_run();                                /* (G_SAVE) */
 }

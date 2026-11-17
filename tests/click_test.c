@@ -56,7 +56,7 @@ static void fresh(void)
     for (p = 0; p < NPART; p++) host_preset(&trk[p], 0, 0);
     for (p = 0; p < NPART; p++)
         trk[p].p[P_DIST] = trk[p].p[P_CHOR] = trk[p].p[P_DLY] = trk[p].p[P_REV] = 0;
-    transport_req = panic_req = 0;
+    transport_req = tape_req = tape_arm = panic_req = 0;
     seq_stop();
     clk_pos = CLK_START; clk_step = 0;
     lim_env = LIM_T; dc_l = dc_r = dce_l = dce_r = 0;
@@ -370,7 +370,7 @@ static void count_in_notes(void)
     uint32_t ka = key_of(60), kb = key_of(64), held_ticks;
     int ok;
     /* held from the last eighth over the start: on the tape at the start, open while held */
-    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
+    fresh(); grid_track(); cin_bars = 1; tape_arm = 1u; tape_req = TQ_REC;
     run(half + 20u);
     fm1_in.notes = 1u << ka;
     run(1);
@@ -383,7 +383,7 @@ static void count_in_notes(void)
     ok &= tape_is(60, 0, held_ticks, 0);
     check("a note held from the count-in's last eighth: on the tape at the start, its length as held (it sounded at once)", ok);
     /* let go before the start: a sixteenth */
-    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
+    fresh(); grid_track(); cin_bars = 1; tape_arm = 1u; tape_req = TQ_REC;
     run(half + 20u);
     fm1_in.notes = 1u << kb;
     run(60);
@@ -391,7 +391,7 @@ static void count_in_notes(void)
     run(start - nb + 400u);
     check("a note let go before the start (in the last eighth): at the start, a sixteenth", tape_is(64, 0, TAPE_TPQ / 4u, 0));
     /* earlier in the last beat (its first half) or before: not recorded */
-    fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
+    fresh(); grid_track(); cin_bars = 1; tape_arm = 1u; tape_req = TQ_REC;
     run(last + 50u);
     fm1_in.notes = 1u << ka;
     run(60);
@@ -400,14 +400,42 @@ static void count_in_notes(void)
     tape_poll();
     check("a note before the last eighth: played, not recorded", tp_trk[0].first == TAPE_END);
     /* a track not armed: nothing */
-    fresh(); grid_track(); cin_bars = 1; song.rec = 2u; transport_req = 1;
+    fresh(); grid_track(); cin_bars = 1; tape_arm = 2u; tape_req = TQ_REC;
     run(half + 20u);
     fm1_in.notes = 1u << ka;
     run(30);
     fm1_in.notes = 0;
     run(start - nb + 100u);
     tape_poll();
-    check("a note into a track not armed: not recorded", tp_trk[0].first == TAPE_END && trk[0].step[0].time == ST_REST);
+    check("a note into an instrument tape REC does not record: not recorded", tp_trk[0].first == TAPE_END && trk[0].step[0].time == ST_REST);
+}
+
+/* tape REC from stop counts in too, onto its head's bar line; the clock started, a transport joining restarts no click */
+static void tape_count_in(void)
+{
+    uint32_t k, ok, start = ceil_div(4u * QB, CTL);
+    fresh(); grid_track();
+    cin_bars = 1; tape_arm = 1u; tape_head = 2u * TAPE_BAR + 700u;
+    tape_req = TQ_REC;
+    run(start + 4u);
+    clicks(0);
+    ok = nc == 4u && tape_go && tape_recording && !song.playing;
+    for (k = 0; k < start; k++)
+        ok &= blk_cnt[k];
+    ok &= !blk_cnt[start] && song_ticks < 2u * TAPE_BAR + 60u && song_ticks >= 2u * TAPE_BAR &&
+          tape_head == song_ticks % (4u * TAPE_BAR);
+    check("tape REC from stop: a count-in (4 clicks, CLICK OFF), then the tape records from its head's bar (3840)", ok);
+    fresh(); grid_track();
+    click_mode = CLICK_ON;
+    tape_req = TQ_PLAY;
+    run(ceil_div(QB * 5u / 2u, CTL));
+    transport_req = 1;
+    run(ceil_div(QB * 6u, CTL) - nb);
+    clicks(0);
+    ok = nc == 6u && song.playing && tape_go;
+    for (k = 0; k < nc; k++)
+        ok &= c_at[k] == ceil_div((uint64_t)k * QB, CTL) * CTL && (k % 4u == 0u) == (c_hz[k] > 1600.0);
+    check("CLICK ON, the tape playing, SEQ PLAY joins: the click goes on, every beat in its place, no restart", ok);
 }
 
 /* the external clock (USB, 24 pulses a quarter at 120 BPM): Start starts at once (no count-in), a click on every 24th
@@ -467,6 +495,7 @@ int main(void)
     usb_clean();
     count_in();
     count_in_notes();
+    tape_count_in();
     ext_clock();
     printf(bad ? "click: %d FAILED\n" : "click: all passed\n", bad);
     return bad != 0;

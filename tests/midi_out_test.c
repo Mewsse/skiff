@@ -633,6 +633,21 @@ static int test_clock(void)
         if (lg[i].st == 0xFCu)
             fa = i;
     bad += check("  STOP: the last note's note-off, then Stop", fa < lgn && fa > 0u && (lg[fa - 1u].st & 0xF0u) == 0x80u);
+    lgn = 0;
+    tape_req = TQ_PLAY;                           /* the tape first, the sequencers join, the tape stops, then they */
+    tblk(BAR_BLOCKS);
+    transport_req = 1;
+    tblk(2u * BAR_BLOCKS);
+    tape_req = TQ_PAUSE;
+    tblk(BAR_BLOCKS);
+    ok = count_st(0, 0xFAu, 0xFFu) == 1u && lg[0].st == 0xFAu && !count_st(0, 0xFCu, 0xFFu) && song.playing && !tape_go;
+    transport_req = 2;
+    tblk(1);
+    for (i = 0, fa = 99; i < lgn; i++)
+        if (lg[i].st == 0xFCu)
+            fa = i;
+    bad += check("  two transports, one clock: Start with the tape's PLAY, none on the join or the tape's PAUSE, Stop after the last's notes",
+                 ok && count_st(0, 0xFCu, 0xFFu) == 1u && fa < lgn && fa > 0u && (lg[fa - 1u].st & 0xF0u) == 0x80u);
     song.g[G_CLOCK] = 1;                          /* an external clock: none of ours */
     tblk(2);
     lgn = 0;

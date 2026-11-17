@@ -60,7 +60,12 @@ static volatile uint8_t kb_asleep;       /* MENU > SCREEN OFF (ui.c): the screen
 static uint8_t last_note = 60;
 static uint8_t last_hits __attribute__((section(".pool")));   /* ((2.0) the notes struck, counted: the same key again
                                                                 * picks its lane again too, ui.c lane_follow) */
-static volatile uint8_t transport_req;   /* 1 start, 2 stop, 3 restart (from the UI) */
+static volatile uint8_t transport_req;   /* the step sequencers: 1 start, 2 stop, 3 restart; 4 stop everything (UI) */
+/* the tape's: one request at a time, written by the main loop, taken by the audio ISR (transport_take). tape_arm, the
+ * instruments tape REC records, is the main loop's: written before TQ_REC, read by the ISR */
+enum { TQ_NONE, TQ_PLAY, TQ_PAUSE, TQ_REC, TQ_BAR_BACK, TQ_BAR_ON, TQ_TOP, TQ_END };
+static volatile uint8_t tape_req __attribute__((section(".pool")));
+static volatile uint8_t tape_arm __attribute__((section(".pool")));
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
 static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
 
@@ -553,12 +558,19 @@ static uint32_t clk_pos = CLK_START, clk_step;  /* samples into the 1/16 step, t
 static volatile uint8_t cin_left, cin_total;    /* the count-in's beats still to come (0: none), of how many */
 static volatile uint32_t cin_pos;               /* samples into its beat playing */
 static uint8_t cin_flush;                       /* the count-in ended in this block: record what was kept */
+/* what starts later, the audio ISR's: join_want on the clock's next line (join_at, song_ticks), cin_starts at the
+ * count-in's end, tape_cued with an external clock's Start or Continue */
+enum { JOIN_SEQ = 1, JOIN_TAPE = 2, JOIN_TAPE_REC = 4 };
+static volatile uint8_t join_want __attribute__((section(".pool"))), cin_starts __attribute__((section(".pool")));
+static volatile uint8_t tape_cued __attribute__((section(".pool")));
+static uint32_t join_at __attribute__((section(".pool")));
 static uint8_t cin_note[NTRK][4], cin_vel[NTRK][4], cin_n[NTRK], cin_up[NTRK];   /* kept notes; cin_up bit k: let go */
 static int seq_counting(void) { return cin_left != 0u; }
 static uint32_t click_beat_len(void) { return 4u * div_samples(2); }   /* DIV 2: 1/16 */
-static int click_wanted(void)                  /* CLICK REC: while a track is armed (not in a song: no recording) */
+static int click_wanted(void)                  /* CLICK REC: while a track is armed, the tape records or will */
 {
-    return click_mode == CLICK_ON || (click_mode == CLICK_REC && song.rec);
+    uint32_t tape_rec_on = tape_recording || ((join_want | cin_starts | tape_cued) & JOIN_TAPE_REC);
+    return click_mode == CLICK_ON || (click_mode == CLICK_REC && (song.rec || tape_rec_on));
 }
 /* the arp's note list (list, its length returned; 0: nothing to play): the held notes (sorted or as played) over OCT
  * octaves, *cnt of them. (Felucca #191) the notes as they play now, a key's mapped again through kb_pitch (TRN, ROOT,
@@ -777,7 +789,8 @@ static void rec_put(track_t *t, step_t *s, uint32_t note, uint32_t vel)
 static __attribute__((noinline)) void cin_keep(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t i = trk_index(t), k;
-    if (cin_left != 1u || cin_pos < click_beat_len() / 2u || !((song.rec >> i) & 1u) || (t->p[P_AMODE] && !in_solo))
+    uint32_t armed = song.rec | ((cin_starts & JOIN_TAPE_REC) ? tape_arm : 0u);
+    if (cin_left != 1u || cin_pos < click_beat_len() / 2u || !((armed >> i) & 1u) || (t->p[P_AMODE] && !in_solo))
         return;
     for (k = 0; k < cin_n[i] && cin_note[i][k] != note; k++)
         ;
@@ -1243,7 +1256,8 @@ static void mo_rt(uint32_t b, uint32_t due) { (void)mo_put(0x0Fu | b << 8, due);
 
 static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; }
 #include "tape.c"                                  /* the note tape: its lists, and what the ISR plays of them */
-/* REC (voice.c's hooks: a note an armed instrument sounds while playing, not the tape's own): onto the record queue
+/* REC (voice.c's hooks: a note an instrument of tape_arm sounds while the tape records, not the tape's own; a
+ * sequencer's only while it runs): onto the record queue
  * (vel 0: its end; after REC is let go too, while that instrument has notes open). A live note (input_now) with the
  * GRID on is on its line: it sounded in the line's window or waited for the line (live_tick), so the line is the one
  * at or before the head. The rest at the head */
@@ -1252,7 +1266,7 @@ static void tape_rec(const track_t *t, uint32_t note, uint32_t vel)
     uint32_t inst = trk_index(t), at = tape_head, idx;
     if (tape_playing || !tape_go || inst >= NTRK)
         return;
-    if (!((song.rec >> inst) & 1u) && (vel || !((tp_rec_mask >> inst) & 1u)))
+    if (!(tape_recording && ((tape_arm >> inst) & 1u)) && (vel || !((tp_rec_mask >> inst) & 1u)))
         return;
     if (vel) {
         tp_rec_mask |= (uint8_t)(1u << inst);
@@ -1261,14 +1275,22 @@ static void tape_rec(const track_t *t, uint32_t note, uint32_t vel)
     }
     tape_rq_push(vel ? TR_ON : TR_OFF, at, note, inst, vel);
 }
-/* (SMK-37 < >) the head a bar back or on, stopped only (PLAY snaps to the bar it is in): 1, or 0 when playing */
+/* (SMK-37 < >, the editor) the main loop moves the stopped tape's head, with the audio ISR held off: the ISR starts
+ * the tape from it (a request, a join, a Start). 1, or 0 when the tape runs or counts in */
+static int tape_head_set(uint32_t bar)
+{
+    int done;
+    fm1_irq_off();
+    done = !tape_go && !cin_left && bar < tape_length() / TAPE_BAR;
+    if (done)
+        tape_head = bar * TAPE_BAR;
+    fm1_irq_on();
+    return done;
+}
 static int tape_bar_step(int dir)
 {
-    uint32_t bars = tape_length() / TAPE_BAR, bar = tape_head / TAPE_BAR;
-    if (tape_go || cin_left)
-        return 0;
-    tape_head = (bar + (dir < 0 ? bars - 1u : 1u)) % bars * TAPE_BAR;
-    return 1;
+    uint32_t bars = tape_length() / TAPE_BAR;
+    return tape_head_set((tape_head / TAPE_BAR + (dir < 0 ? bars - 1u : 1u)) % bars);
 }
 static __attribute__((noinline)) uint32_t tape_beat_frac(void)
 {
@@ -1291,12 +1313,11 @@ static __attribute__((noinline)) void tape_locate(uint32_t tick)
     tape_pass = 0;
     tape_seek(tape_head);
 }
-/* Continue: where the beat is now, nothing counted for the time stopped (beat_pos runs free then) */
-static void tape_resume(void)
+/* Continue: the clock where the beat is now, nothing counted for the time stopped (beat_pos runs free then) */
+static void clock_resume(void)
 {
     tape_frac = (uint16_t)tape_beat_frac();
     song_ticks = tape_beat * TAPE_TPQ + tape_frac;
-    tape_seek(tape_head);
 }
 /* the clock and the head on, once a block while the clock runs (events_block). Not inlined: the audio ISR's loop keeps
  * its shape */
@@ -1306,7 +1327,8 @@ static __attribute__((noinline)) void tape_clock(void)
     frac = frac > tape_frac ? frac : tape_frac;
     tape_frac = (uint16_t)frac;
     now = tape_beat * TAPE_TPQ + frac;
-    tape_head += now - song_ticks;
+    if (tape_go)
+        tape_head += now - song_ticks;
     song_ticks = now;
     if (tape_head >= len) {                        /* (a divide, not a loop: tests/target_budget.py counts none for tape_clock) */
         tape_pass += (uint16_t)(tape_head / len);
@@ -1351,22 +1373,30 @@ static void seqs_start_now(void)
     song.playing = 1;
 }
 
-/* the tape runs from its head, at the clock's phase in the bar */
-static void tape_start_now(void)
+/* the tape runs from its head's bar, at the clock's place in the bar (head = clock mod a bar). late: the ticks since
+ * the GRID line it starts on, whose notes still play */
+static void tape_start_now(uint32_t late, uint32_t rec)
 {
-    tape_head = (tape_head - tape_head % TAPE_BAR + song_ticks % TAPE_BAR) % tape_length();
+    uint32_t into = song_ticks % TAPE_BAR;
+    tape_head = (tape_head - tape_head % TAPE_BAR + into) % tape_length();
     tape_pass = 0;
-    tape_seek(tape_head);
+    tape_seek(tape_head - (late < into ? late : into));
     tape_go = 1;
+    tape_recording = (uint8_t)(rec != 0u);
 }
 
-/* the clock, the sequencers and the tape together, from the tape's head */
-static void seq_start(void)
+/* the clock and what starts with it (JOIN_ bits) from stop: from the tape's bar line when the tape starts, else from
+ * 0. Not inlined: events_block and cin_block keep their shape (tests/target_budget.py reads their loops) */
+static __attribute__((noinline)) void transports_start(uint32_t starts)
 {
-    seqs_start_now();
-    clock_start(tape_head);
-    tape_start_now();
+    if (starts & JOIN_SEQ)
+        seqs_start_now();
+    clock_start(starts & JOIN_TAPE ? tape_head - tape_head % TAPE_BAR : 0u);
+    if (starts & JOIN_TAPE)
+        tape_start_now(0, starts & JOIN_TAPE_REC);
 }
+/* PLAY from stop: the clock and the step sequencers from the top */
+static void seq_start(void) { transports_start(JOIN_SEQ); }
 
 /* (Skiff 2.0, #25) per-note ties (core.h step_ties), the sequencer's side. A NOTE step's tied note that still sounds goes
  * on (no note-on, no release); one that doesn't stays silent (a tie never starts a note); what sounds and isn't tied
@@ -1436,19 +1466,43 @@ static uint32_t seq_ties_of(track_t *t, const step_t *s, uint32_t qseq, int32_t 
     return m;
 }
 
-/* the tape stops: its voices end, its held recorded notes close at the head */
+/* the tape stops: its voices end, its held recorded notes close at the head. The clock and the sequencers go on */
 static void tape_halt(void)
 {
     tape_voices_end(-1, 1);
-    tape_go = tape_recording = 0;
+    tape_go = tape_recording = tape_cued = 0;
+    join_want &= (uint8_t)~(JOIN_TAPE | JOIN_TAPE_REC);
+}
+
+static void seqs_release(void)                     /* the sequencers' notes end */
+{
+    uint32_t i;
+    for (i = 0; i < NTRK; i++) {
+        seq_release(&trk[i]);
+        trk[i].rat_left = 0;
+        trk[i].nud = 0;                            /* (Skiff) no NUDGE pending */
+    }
+    memset(fol_src, 0, sizeof fol_src);            /* ((2.1) no chords: the followers as written until theirs play) */
 }
 
 static void mo_motion_end(void);                   /* ((2.2) motion_end, an EXT track's CCs back with it) */
+/* the step sequencers stop, their notes only: the clock, the tape and the live notes waiting for a line go on */
+static void seqs_halt(void)
+{
+    song.playing = 0;
+    join_want &= (uint8_t)~JOIN_SEQ;
+    free_stop();                                   /* ((2.5) take.c: what is played from now: a free take */
+    seqs_release();
+    mo_motion_end();
+}
+
+/* everything stops: the sequencers, the tape, the clock */
 static void seq_stop(void)
 {
     uint32_t i;
     song.playing = 0;
     tape_halt();
+    join_want = cin_starts = 0;
     live_drop((1u << NTRK) - 1u);
     free_stop();                                   /* ((2.5) take.c: what is played from now: a free take */
     thr_out = 0;                                   /* (Skiff) the throws back at once (throw.c) */
@@ -1459,12 +1513,7 @@ static void seq_stop(void)
         for (i = 0; i < NPART; i++)                /* its sounding note too (HOLD keeps the latched chord) */
             if (trk[i].arp_note)
                 arp_off(&trk[i]);
-    for (i = 0; i < NTRK; i++) {
-        seq_release(&trk[i]);
-        trk[i].rat_left = 0;
-        trk[i].nud = 0;                            /* (Skiff) no NUDGE pending */
-    }
-    memset(fol_src, 0, sizeof fol_src);            /* ((2.1) no chords: the followers as written until theirs play) */
+    seqs_release();
     if (mn.started) {                              /* ((2.2) CLOCK OUT: Stop, after the notes' ends) */
         mo_rt(0xFCu, mo.tick);
         mn.started = 0;
@@ -1472,39 +1521,53 @@ static void seq_stop(void)
     mo_motion_end();                               /* ((2.2) motion_end, an EXT track's CCs back with it) */
 }
 
+/* track t moved on adv steps from its start, silently: seq_tick's bookkeeping in its direction, its passes (TAKES,
+ * the trig conditions); PING / RAND walk their cycle, the rest of a long way skipped in whole cycles. Not inlined: the
+ * audio ISR's own cost stays (tests/target_budget.py) */
+static __attribute__((noinline)) void seq_skip(track_t *t, uint32_t adv)
+{
+    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, i = trk_index(t);
+    uint32_t per = t->p[P_DIR] == DIR_PING && len > 1u ? (2u * len - 2u) * len : len;   /* (the state's cycle) */
+    take_pass[i] = (uint16_t)(adv / per * (per / len));
+    for (adv %= per; adv; adv--) {
+        t->seq_idx = (uint16_t)seq_next(t, len);
+        if (t->p[P_DIR] == DIR_FWD ? !t->seq_idx : !t->seq_cnt || t->seq_cnt >= len) {
+            t->seq_cnt = 0;
+            take_pass[i]++;
+        }
+        t->seq_cnt++;
+    }
+}
+
 /* (2.2) Song Position (an external clock's SPP, then Continue; midi_clock.c): from the top as PLAY, then every track
- * moved on, silently, to where pos 16ths put it: its steps (N_DIV in 48ths of a quarter: DIV_48) in its direction, its
- * passes (TAKES, the trig conditions), a step part-way waiting for the next; the click and the beat with them.
- * ponytail: the straight grid (a swung step lands a few ms off until the next); PING / RAND walk their cycle, the rest
- * of a long way skipped in whole cycles. DIV_48: voice.c. (2.5) at: each track's own place, in 48ths of a quarter
- * (SPP: pos's for all); a track at 0 as PLAY left it */
+ * moved on, silently, to where pos 16ths put it (N_DIV in 48ths of a quarter: DIV_48), a step part-way waiting for the
+ * next; the click and the beat with them; the tape there too when it runs or is cued. ponytail: the straight grid (a
+ * swung step lands a few ms off until the next). DIV_48: voice.c. (2.5) at: each track's own place, in 48ths of a
+ * quarter (SPP: pos's for all); a track at 0 as PLAY left it. The clock running, sequencers stopped stay stopped */
 static __attribute__((noinline)) void seq_locate_at(const uint32_t *at, uint32_t pos)
 {
-    uint32_t i, k, rem, adv, len, per, u;
+    uint32_t i, k, rem, u, tick = pos * (TAPE_BAR / 16u), seqs = song.playing || !clock_run();
+    uint32_t tape = (tape_cued | (tape_go ? JOIN_TAPE | (tape_recording ? JOIN_TAPE_REC : 0u) : 0u));
     tape_voices_end(-1, 1);
-    seq_start();
-    for (i = 0; i < NTRK; i++) {
+    if (seqs)
+        seqs_start_now();
+    clock_start(tick);
+    for (i = 0; seqs && i < NTRK; i++) {
         track_t *t = &trk[i];
         if (!at[i])
             continue;
         u = DIV_48[(uint32_t)t->p[P_SDIV] % 10u];
-        len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u;
         k = at[i] / u;
         rem = at[i] % u;
-        adv = k + (rem != 0u);                      /* (the steps begun: the last one sounds from the next) */
-        per = t->p[P_DIR] == DIR_PING && len > 1u ? (2u * len - 2u) * len : len;   /* (the state's cycle, its passes) */
-        take_pass[i] = (uint16_t)(adv / per * (per / len));
-        for (adv %= per; adv; adv--) {              /* (seq_tick's bookkeeping, nothing played) */
-            t->seq_idx = (uint16_t)seq_next(t, len);
-            if (t->p[P_DIR] == DIR_FWD ? !t->seq_idx : !t->seq_cnt || t->seq_cnt >= len) {
-                t->seq_cnt = 0;
-                take_pass[i]++;
-            }
-            t->seq_cnt++;
-        }
+        seq_skip(t, k + (rem != 0u));               /* (the steps begun: the last one sounds from the next) */
         t->seq_pos = rem ? rem * div_samples((uint32_t)t->p[P_SDIV]) / u : 0x7FFFFFFFu;
     }
-    tape_locate(pos * (TAPE_BAR / 16u));
+    if (tape) {
+        tape_locate(tick);
+        tape_go = 1;
+        tape_recording = (uint8_t)((tape & JOIN_TAPE_REC) != 0u);
+        tape_cued = 0;
+    }
     if (!pos)
         return;
     clk_step = (pos - 1u) & 15u;                    /* (the click's next 1/16: pos's) */
@@ -1518,14 +1581,6 @@ static __attribute__((noinline)) void seq_locate(uint32_t pos)
     for (i = 0; i < NTRK; i++)
         at[i] = pos * 12u;
     seq_locate_at(at, pos);
-}
-/* PLAY's start (events_block, the count-in's end): from the top, or there. Not inlined: events_block and cin_block keep
- * their shape (tests/target_budget.py reads their loops from the layout) */
-static __attribute__((noinline)) void seq_go(void)
-{
-    tape_voices_end(-1, 1);
-    tape_head -= tape_head % TAPE_BAR;
-    seq_start();
 }
 
 /* play one step: TIE extends, REST releases, NOTE (re)triggers its notes, then its lane hits (their GM
@@ -2013,7 +2068,8 @@ static __attribute__((noinline)) void cin_begin(void)
     memset(cin_n, 0, sizeof cin_n);
     click_req = 2;
 }
-/* n samples on: a beat ends; the last one starts the sequencer (in this block, before seq_tick: step 0 with it) */
+/* n samples on: a beat ends; the last one starts what cin_starts says (in this block, before seq_tick: step 0 with
+ * it) */
 static __attribute__((noinline)) void cin_block(uint32_t n)
 {
     uint32_t b = click_beat_len();
@@ -2026,11 +2082,12 @@ static __attribute__((noinline)) void cin_block(uint32_t n)
         click_req = (uint8_t)((cin_total - cin_left) % 4u ? 1u : 2u);
         return;
     }
-    seq_go();                                      /* ((2.5) SONG's entry too: counted in, then from there) */
+    transports_start(cin_starts);
+    cin_starts = 0;
     cin_flush = 1;
 }
-/* the count-in's kept notes onto the tape at the start, which has just come (events_block, after seq_tick): held on,
- * open until let go; let go already, a sixteenth long */
+/* the count-in's kept notes onto the tape at the start, which has just come (events_block, after seq_tick), the tape
+ * recording: held on, open until let go; let go already, a sixteenth long */
 static __attribute__((noinline)) void cin_record(void)
 {
     uint32_t i, k, start = tape_head - tape_head % TAPE_BAR;
@@ -2038,7 +2095,7 @@ static __attribute__((noinline)) void cin_record(void)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         for (k = 0; k < cin_n[i]; k++)
-            if (rec_on(t) && !t->p[P_MUTE]) {
+            if (tape_recording && ((tape_arm >> i) & 1u) && !t->p[P_MUTE]) {
                 tp_rec_mask |= (uint8_t)(1u << i);
                 tape_rq_push(TR_ON, start, cin_note[i][k], i, cin_vel[i][k]);
                 if ((cin_up[i] >> k) & 1u)
@@ -2097,6 +2154,154 @@ static __attribute__((noinline)) uint32_t clock_ext_block(void)
     return midi_clock_advance(fm1_ms);
 }
 
+/* the next GRID line from the clock now (OFF: the next bar), the one a transport joins on */
+static void join_ask(uint32_t what, uint32_t grid)
+{
+    int32_t swing = song.g[G_SWING];
+    if (!join_want)
+        join_at = grid_next(grid ? grid : GRID_BAR, swing < 0 ? 0u : (uint32_t)swing, song_ticks);
+    join_want |= (uint8_t)what;
+}
+
+/* the step sequencers join the running clock phase_samples into its bar: each track where it would be had it started
+ * on the bar line (the straight grid, as seq_locate_at). A step begun less than late samples ago (the join's line, a
+ * block or so back) plays now and the track keeps the clock's place in it: seq_tick fires it in this block with
+ * seq_pos the samples into it. A step begun longer ago waits for the next. Not inlined (tests/target_budget.py) */
+static __attribute__((noinline)) void seqs_join(uint32_t phase_samples, uint32_t late)
+{
+    uint32_t i;
+    seqs_start_now();
+    for (i = 0; i < NTRK; i++) {
+        track_t *t = &trk[i];
+        uint32_t period = div_samples((uint32_t)t->p[P_SDIV]), steps = phase_samples / period;
+        uint32_t into = phase_samples % period;
+        if (into < late && 2u * into < period) {
+            seq_skip(t, steps);
+            t->seq_pos = step_samples(t, period, t->seq_idx) + into;
+        } else {
+            seq_skip(t, steps + 1u);
+            t->seq_pos = into;
+        }
+    }
+}
+
+/* the clock reached join_at: what waits for it joins (the tape at the bar's place, its notes on the line played) */
+static __attribute__((noinline)) void join_take(void)
+{
+    uint32_t want = join_want, grid = grid_idx();
+    if ((int32_t)(song_ticks - join_at) < 0)
+        return;
+    join_want = 0;
+    if (want & JOIN_TAPE)
+        tape_start_now(song_ticks - join_at, want & JOIN_TAPE_REC);
+    if (want & JOIN_SEQ)
+        seqs_join((beat_n & 3u) * beat_samples() + beat_pos,
+                  grid_window(grid ? grid : GRID_BAR, (uint32_t)song.g[G_BPM]) * beat_samples() / TAPE_TPQ);
+}
+
+/* tape PLAY (rec 0) or REC (JOIN_TAPE_REC) with the tape stopped. was_running: the clock ran before this block's
+ * requests (else what starts in this block starts together) */
+static void tape_play(uint32_t rec, uint32_t clock_mode, uint32_t was_running)
+{
+    uint32_t want = JOIN_TAPE | rec;
+    if (clock_mode && !clock_run())
+        tape_cued |= (uint8_t)want;                 /* (the external clock's Start or Continue starts it) */
+    else if (cin_left)
+        cin_starts |= (uint8_t)want;
+    else if (clock_run() && was_running)
+        join_ask(want, grid_idx());
+    else if (clock_run())
+        tape_start_now(0, rec);
+    else if (rec && cin_bars) {
+        cin_begin();                                /* recording from stop: the count-in first */
+        cin_starts = (uint8_t)want;
+    } else
+        transports_start(want);
+}
+
+/* the tape's request (tape_req) */
+static void tape_take(uint32_t op, uint32_t clock_mode, uint32_t was_running)
+{
+    uint32_t len = tape_length(), bars = len / TAPE_BAR, pending = (join_want | cin_starts | tape_cued) & JOIN_TAPE;
+    if (op == TQ_PLAY && !tape_go && !pending) {
+        tape_play(0, clock_mode, was_running);
+    } else if (op == TQ_REC) {
+        if (tape_go)
+            tape_recording ^= 1u;                   /* (punch in, punch out) */
+        else if (pending) {
+            join_want |= (uint8_t)(join_want & JOIN_TAPE ? JOIN_TAPE_REC : 0u);
+            cin_starts |= (uint8_t)(cin_starts & JOIN_TAPE ? JOIN_TAPE_REC : 0u);
+            tape_cued |= (uint8_t)(tape_cued & JOIN_TAPE ? JOIN_TAPE_REC : 0u);
+        } else
+            tape_play(JOIN_TAPE_REC, clock_mode, was_running);
+    } else if (op == TQ_PAUSE) {
+        cin_starts &= (uint8_t)~(JOIN_TAPE | JOIN_TAPE_REC);
+        if (cin_left && !cin_starts)
+            seq_stop();                             /* (a count-in for the tape alone: cancelled) */
+        else if (tape_go && !song.playing && !(join_want & JOIN_SEQ))
+            seq_stop();                             /* (the last transport: the clock stops too) */
+        else
+            tape_halt();
+    } else if ((op == TQ_BAR_BACK || op == TQ_BAR_ON) && tape_go) {
+        tape_voices_end(-1, 1);                     /* (a bar exactly: the head keeps the clock's place in it) */
+        tape_head = (tape_head + (op == TQ_BAR_BACK ? len - TAPE_BAR : TAPE_BAR)) % len;
+        tape_seek(tape_head);
+    } else if (op == TQ_BAR_BACK || op == TQ_BAR_ON) {
+        tape_head = (tape_head / TAPE_BAR + (op == TQ_BAR_BACK ? bars - 1u : 1u)) % bars * TAPE_BAR;
+    } else if ((op == TQ_TOP || op == TQ_END) && !tape_go) {
+        tape_head = op == TQ_TOP ? 0u : len - TAPE_BAR;
+    }
+}
+
+/* the step sequencers' request (transport_req) */
+static void seq_take(uint32_t op, uint32_t clock_mode)
+{
+    uint32_t tape_on = tape_go || ((join_want | cin_starts) & JOIN_TAPE);
+    if (op == 1u) {
+        if (song.playing || ((join_want | cin_starts) & JOIN_SEQ))
+            ;                                       /* (playing or starting already: the UI's PLAY stops it) */
+        else if (clock_run())
+            join_ask(JOIN_SEQ, grid_idx());
+        else if (cin_left)
+            cin_starts |= JOIN_SEQ;
+        else if (clock_mode)
+            midi_clock_transport(0xFAu, fm1_ms);
+        else if (cin_bars && song.rec) {
+            cin_begin();                            /* recording from stop: the count-in first */
+            cin_starts = JOIN_SEQ;
+        } else
+            seq_start();                            /* ((2.5) from the top) */
+    } else if (op == 2u) {
+        cin_starts &= (uint8_t)~JOIN_SEQ;
+        if (!tape_on)
+            seq_stop();                             /* (the last transport: everything as before) */
+        else
+            seqs_halt();
+    } else if (op == 3u && !clock_mode) {           /* GLO + PLAY: from the top without stopping */
+        if (tape_go) {
+            seqs_halt();                            /* (the tape runs: they join on its next bar line) */
+            join_ask(JOIN_SEQ, GRID_BAR);
+        } else {
+            seq_stop();
+            seq_start();
+        }
+    } else if (op == 4u) {
+        seq_stop();
+    }
+}
+
+/* the UI's requests, the sequencers' first (one PLAY of each in a block from stop starts both together). Not
+ * inlined: events_block keeps its shape (tests/target_budget.py) */
+static __attribute__((noinline)) void transport_take(uint32_t clock_mode)
+{
+    uint32_t seq_op = transport_req, tape_op = tape_req, was_running = clock_run();
+    transport_req = tape_req = 0;
+    if (seq_op)
+        seq_take(seq_op, clock_mode);
+    if (tape_op)
+        tape_take(tape_op, clock_mode, was_running);
+}
+
 /* everything that happens between two rendered blocks. ((2.2) Not inlined, measured on its own (tests/target_budget.py):
  * inlined into the audio ISR's render loop, a cold stub the compiler parks before that loop's head (an external clock's
  * seq_n = 0, the second core's wait) moved with each small change here, and its backward jump read as a loop around
@@ -2114,33 +2319,14 @@ static __attribute__((noinline)) void events_block(uint32_t n)
     }
     if (cin_left && !clock_mode)
         cin_block(n);
-    if (transport_req == 1u) {
-        if (clock_mode)
-            midi_clock_transport(0xFAu, fm1_ms);
-        else if (cin_left)
-            ;                                       /* counting in already (the UI's PLAY stops it: seq_counting) */
-        else if (cin_bars && song.rec && !song.playing)
-            cin_begin();                            /* recording from stop: the count-in first */
-        else
-            seq_go();                               /* ((2.5) from the top, or SONG's entry: seq_go) */
-        transport_req = 0;
-    } else if (transport_req == 2u) {
-        if (!song.playing && !cin_left)
-            tape_head = 0;                            /* STOP when stopped: the tape to its start */
-        seq_stop();
-        transport_req = 0;
-    } else if (transport_req == 3u) {                 /* GLO + PLAY: from the top without stopping (INT clock) */
-        if (!clock_mode) {
-            seq_stop();
-            tape_head = 0;
-            seq_start();
-        }
-        transport_req = 0;
-    }
-    if (clock_run()) {
+    if (transport_req | tape_req)
+        transport_take(clock_mode);
+    if (clock_run())
         tape_clock();
-        tape_recording = (uint8_t)(tape_go && song.rec);
-    }
+    if (join_want)
+        join_take();
+    if (!song.playing && tape_go)
+        arm_tick();                                   /* (Skiff) the tape alone: armed RUN / MUTE on their line */
     pulse = mo_block_begin(n);                         /* ((2.2) MENU > MIDI changed: what no longer applies, let go;
                                                          * CLOCK OUT's pulse) */
     pr = panic_req;

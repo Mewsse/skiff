@@ -6,6 +6,7 @@
 #define TAPE_TPQ 480u
 #define TAPE_BAR (4u * TAPE_TPQ)
 #define GRID_N 10u
+#define GRID_BAR 1u                        /* the 1 BAR grid's index */
 #define GRID_LATE_MS_BPM 4u                /* the late window's 20 ms, in ticks: BPM * 4 / 25 (0.16 ticks a BPM) */
 
 static const uint16_t GRID_TICKS[GRID_N] = {0, 1920, 960, 480, 240, 120, 60, 320, 160, 80};

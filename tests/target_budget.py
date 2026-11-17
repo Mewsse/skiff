@@ -50,6 +50,8 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "arp_wait",                                  # an ARP start held for a GRID line (seq.c), until the line
          "live_hold", "live_release", "live_tick", "live_drop",   # the live-play delay (seq.c): a note waiting for its line
          "live_settle",                               # .. a key sounding again: its delayed note's end due, now
+         "transport_take", "join_take", "seqs_join",  # the two transports (seq.c): the UI's requests, a join on the
+         "seq_skip", "arm_tick",                      # clock's line, a track moved on; the tape alone's armed RUN / MUTE
          "strum_tick", "strum_flush",                # ((2.5) SCL > CHORD's STRUM, voice.c: each block's start and end)
          "mix_spread", "esync_coef", "mod_depth",   # (Skiff 1.3) SPREAD (fx.c), ENV SYNC (voice.c), MOD DEPTH (mod.c)
          "smx_render",                           # (Skiff, #21) a user sample's sound with its own sends (fx.c)

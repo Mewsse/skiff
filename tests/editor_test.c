@@ -35,7 +35,7 @@ static void ota_idle(void) { host_drain(); fm1_ms++; }
 static void fm1_wdt_feed(void)
 {
     fm1_ms++;
-    if (host_progress && transport_req == 2u) { seq_stop(); transport_req = 0; }
+    if (host_progress && transport_req == 4u) { seq_stop(); transport_req = 0; }   /* (4: everything stops) */
 }
 static void fm1_irq_off(void) {}
 static void fm1_irq_on(void) {}
@@ -454,6 +454,9 @@ static int samples(void)
     host_progress = 1;
     bad += check("sample erase stops transport before touching flash",
                  request(ED_SMP_BEGIN, a, 1) == 8u && !host_wire[6] && host_erases == 1 && !song.playing);
+    tape_go = 1;
+    bad += check("sample erase stops the tape alone too (the clock running) before touching flash",
+                 request(ED_SMP_BEGIN, a, 1) == 8u && !host_wire[6] && host_erases == 2 && !tape_go && !clock_run());
     a[0] = 0; a[1] = 0; a[2] = 4; a[3] = 0;
     n = pack7(data, 257, a + 4) + 4u;
     bad += check("257 decoded sample bytes are rejected without a truncated write",
@@ -1345,11 +1348,13 @@ static int tape_cmds(void)
     ok &= request(ED_TAPE, locate, 3) == 27u && !host_wire[6] && tape_head == 3u * TAPE_BAR;
     ok &= request(ED_TAPE, far, 3) == 27u && host_wire[6] == 1 && tape_head == 3u * TAPE_BAR;
     song.playing = 1;
+    ok &= request(ED_TAPE, locate, 3) == 27u && !host_wire[6];
+    tape_go = 1;
     ok &= request(ED_TAPE, locate, 3) == 27u && host_wire[6] == 1;
     ok &= request(ED_TAPE, run_off, 3) == 27u && seq_running(4) && arm[4].op == ARM_RUN_OFF;
     ok &= request(ED_TAPE, run_on, 3) == 27u && seq_running(4) && arm[4].op == ARM_NONE;
-    song.playing = 0;
-    bad += check("TAPE: LENGTH (1..256), LOCATE (refused playing or past the end), RUN armed while playing, taken back", ok);
+    song.playing = tape_go = 0;
+    bad += check("TAPE: LENGTH (1..256), LOCATE (the sequencers playing: yes; the tape: refused; past the end), RUN armed while playing, taken back", ok);
     ok = request(ED_TAPE_GET, get0, 4) == 30u && !host_wire[5] && host_wire[8] == 4 && host_wire[10] == 2 &&
          host_wire[11] == 5 && host_wire[14] == 20 && host_wire[17] == 40 && host_wire[18] == 3 && host_wire[19] == 100 &&
          host_wire[20] == 100 && host_wire[23] == 50 && host_wire[26] == 60 && host_wire[27] == 1 && host_wire[28] == 90;

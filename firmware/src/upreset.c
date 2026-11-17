@@ -512,7 +512,7 @@ static void up_ui_named(uint32_t op, uint32_t k, const char *name)   /* 0 load, 
         ui_message(up_old(k) ? "OLD FORMAT" : "EMPTY SLOT");   /* ((2.0) converted by the editor's Restore) */
         return;
     }
-    if (op && (song.playing || transport_req == 1u)) {    /* (up_put refuses too) */
+    if (op && (clock_run() || transport_req == 1u)) {     /* (up_put refuses too) */
         ui_message(op == 1u ? "STOP TO ERASE" : op == 3u ? "STOP TO RENAME" : "STOP TO SAVE");
         return;
     }

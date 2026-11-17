@@ -246,7 +246,7 @@ static int arp_rec(void)
     t->p[P_AMODE] = 0;
     for (i = 0; i < NSTEP; i++) t->step[i] = (step_t){{0}, 0, ST_REST, 0, 0};
     t->p[P_CHRD] = CH_DIA3;
-    song.rec = 1; song.playing = tape_go = 1;
+    song.rec = 1; song.playing = tape_go = tape_recording = 1; tape_arm = song.rec;
     t->seq_idx = 0; t->seq_pos = 0;
     key_down(K_D4);
     bad += check("live recording: the chord onto the tape (D F A), the pattern untouched", on_tape(0, 128) == 3u &&
@@ -259,13 +259,13 @@ static int arp_rec(void)
     bad += check("  a 4-note voicing: its 4 notes onto the tape", on_tape(0, 128) == 4u && on_tape(0, 48));
     key_up(K_C4);
     tape_init();
-    song.rec = 0; song.playing = tape_go = 0;
+    song.rec = 0; song.playing = tape_go = tape_recording = 0;
     t->p[P_VOICE] = V_MONO; t->p[P_CHRD] = CH_DIA3; t->p[P_VOIC] = VC_CLOSE;
-    song.rec = 1; song.playing = tape_go = 1; t->seq_idx = 8;
+    song.rec = 1; song.playing = tape_go = tape_recording = 1; tape_arm = song.rec; t->seq_idx = 8;
     key_down(K_E4);
     bad += check("  MONO: what it plays recorded (the chord's notes go to the voice, the root sounds)", on_tape(0, 64) == 1u);
     key_up(K_E4);
-    song.rec = 0; song.playing = tape_go = 0;
+    song.rec = 0; song.playing = tape_go = tape_recording = 0;
     return bad;
 }
 

@@ -25,7 +25,7 @@ static void fresh(uint32_t bars, uint32_t grid)
     memset(&midi_clock, 0, sizeof midi_clock);
     host_tracks_init();
     song.g[G_BPM] = 120;
-    transport_req = 0;
+    transport_req = tape_req = tape_arm = 0;
     midi_beat_samples = 0;
     cin_bars = 0;
     seq_stop();
@@ -53,7 +53,7 @@ static void run_to(uint32_t ticks)
 
 static void stop(void)
 {
-    transport_req = 2;
+    transport_req = 4;
     block();
 }
 
@@ -96,8 +96,9 @@ static int test_live_off(void)
     track_t *t = &trk[0];
     uint32_t at, at2, bad = 0;
     fresh(4, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(1001);
     at = tape_head;
     input_on(t, 60, 90);
@@ -124,8 +125,9 @@ static int test_live_grid(void)
     track_t *t = &trk[0];
     uint32_t k, bad = 0, wrong = 0, want[6];
     fresh(4, 5);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     for (k = 0; k < 6u; k++) {
         uint32_t line = 960u + 480u * k;
         run_to(line + OFFSETS[k]);
@@ -143,8 +145,9 @@ static int test_live_grid(void)
     stop();
     fresh(4, 5);
     song.g[G_SWING] = 50;
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(1920u + 120u + 24u + 4u);                      /* 4 ticks after the swung odd line (144 into the beat) */
     input_on(t, 72, 100);
     input_off(t, 72);
@@ -165,8 +168,9 @@ static int test_seq_passes(void)
     t->p[P_SLEN] = 16;
     for (k = 0; k < 4u; k++)
         put_step(t, 4u * k, 1, &NOTES[k], ST_NOTE, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(TAPE_BAR - 10u);
     first = list(0);
     run_to(4u * TAPE_BAR + 200u);                       /* (pass 5's first note over: none open) */
@@ -186,8 +190,9 @@ static int test_arp_passes(void)
     fresh(1, 0);
     t->p[P_AMODE] = AM_UP;
     t->p[P_ARATE] = 2;
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     block();
     input_on(t, 60, 100);
     input_on(t, 64, 100);
@@ -209,8 +214,9 @@ static int test_replace(void)
     uint32_t bad = 0;
     fresh(1, 0);
     tp_overdub = 0;
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(500);
     input_on(t, 60, 100);
     run_to(600);
@@ -220,7 +226,7 @@ static int test_replace(void)
     run_to(TAPE_BAR + 1000u);
     input_off(t, 64);
     run_to(2u * TAPE_BAR - 10u);
-    song.rec = 0;
+    tape_req = TQ_REC;                                  /* (punch out) */
     run_to(3u * TAPE_BAR);
     stop();
     bad += check("replace mode: STOP sweeps the ghosts (the main loop's tape_poll): the count is the notes",
@@ -237,8 +243,9 @@ static int test_held_wrap(void)
     track_t *t = &trk[0];
     uint32_t bad = 0, at;
     fresh(1, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(1700);
     at = tape_head;
     input_on(t, 60, 100);
@@ -260,8 +267,9 @@ static int test_overflow(void)
     track_t *t = &trk[0];
     uint32_t bad = 0, k;
     fresh(4, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(800);
     input_on(t, 60, 100);
     block();
@@ -286,12 +294,12 @@ static int test_count_in(void)
     uint32_t bad = 0, blk;
     fresh(4, 0);
     cin_bars = 1;
-    song.rec = 1;
-    transport_req = 1;
+    tape_arm = 1;
+    tape_req = TQ_REC;
     for (blk = 0; blk < 10000u && !(cin_left == 1u && cin_pos > click_beat_len() * 3u / 4u); blk++)
         block();
     input_on(t, 60, 100);
-    for (blk = 0; blk < 10000u && !song.playing; blk++)
+    for (blk = 0; blk < 10000u && !tape_go; blk++)
         block();
     block();
     list(0);
@@ -305,14 +313,14 @@ static int test_count_in(void)
     stop();
     fresh(4, 0);
     cin_bars = 1;
-    song.rec = 1;
-    transport_req = 1;
+    tape_arm = 1;
+    tape_req = TQ_REC;
     for (blk = 0; blk < 10000u && !(cin_left == 1u && cin_pos > click_beat_len() * 3u / 4u); blk++)
         block();
     input_on(t, 62, 100);
     block();
     input_off(t, 62);
-    for (blk = 0; blk < 10000u && !song.playing; blk++)
+    for (blk = 0; blk < 10000u && !tape_go; blk++)
         block();
     run_to(300);
     list(0);
@@ -321,13 +329,13 @@ static int test_count_in(void)
     stop();
     fresh(4, 0);                                        /* (PLAY from bar 3: the head's bar line, not 0) */
     cin_bars = 1;
-    song.rec = 1;
+    tape_arm = 1;
     tape_head = 2u * TAPE_BAR;
-    transport_req = 1;
+    tape_req = TQ_REC;
     for (blk = 0; blk < 10000u && !(cin_left == 1u && cin_pos > click_beat_len() * 3u / 4u); blk++)
         block();
     input_on(t, 64, 100);
-    for (blk = 0; blk < 10000u && !song.playing; blk++)
+    for (blk = 0; blk < 10000u && !tape_go; blk++)
         block();
     block();
     list(0);
@@ -348,7 +356,7 @@ static int test_engine_switch_voices(void)
     host_preset(t, 0, 1);
     (void)tape_insert(0, 100u | 60u << 20 | 0u << 27, 1500u | 100u << 20, TAPE_ANY_PASS);
     (void)tape_insert(1, 100u | 62u << 20 | 1u << 27, 1500u | 100u << 20, TAPE_ANY_PASS);
-    transport_req = 1;
+    tape_req = TQ_PLAY;
     run_to(400);
     t->eng_req = (uint8_t)(t->engine ? 0u : 1u);
     for (blk = 0; blk < 4u; blk++)
@@ -373,8 +381,9 @@ static int test_mute(void)
     t->p[P_MUTE] = 1;
     t->p[P_SLEN] = 16;
     put_step(t, 0, 1, &NOTE, ST_NOTE, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(300);
     input_on(t, 60, 100);
     run_to(500);
@@ -387,10 +396,11 @@ static int test_mute(void)
     put_step(&trk[1], 0, 1, &NOTE, ST_NOTE, 0);
     input_on(t, 60, 100);
     transport_req = 1;
+    tape_req = TQ_PLAY;
     run_to(2u * TAPE_BAR);
     input_off(t, 60);
     block();
-    bad += check("REC never armed: nothing recorded (live notes, the sequencer)", !list(0) && !tp_open_n);
+    bad += check("REC never armed, the tape playing: nothing recorded (live notes, the sequencer)", !list(0) && !tp_open_n);
     stop();
     return bad;
 }
@@ -400,8 +410,9 @@ static int test_ends(void)
     track_t *t = &trk[0];
     uint32_t bad = 0, blk;
     fresh(1, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(300);
     input_on(t, 60, 100);
     input_on(t, 64, 100);
@@ -416,8 +427,9 @@ static int test_ends(void)
     bad += check("STOP: nothing sounding", !sounding());
 
     fresh(1, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(300);
     input_on(t, 60, 100);
     run_to(700);
@@ -432,12 +444,13 @@ static int test_ends(void)
     bad += check("panic: the recorded note plays back and ends", !sounding());
 
     fresh(1, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(300);
     input_on(t, 60, 100);
     run_to(500);
-    song.rec = 0;
+    tape_req = TQ_REC;                                  /* (punch out) */
     run_to(700);
     input_off(t, 60);
     block();
@@ -448,8 +461,9 @@ static int test_ends(void)
 
     fresh(1, 0);
     host_preset(t, 0, 1);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(300);
     input_on(t, 60, 100);
     run_to(400);
@@ -476,8 +490,9 @@ static int test_strum_passes(void)
     uint32_t bad = 0, k, wrong = 0, count1;
     fresh(1, 0);
     t->p[P_STRUM] = 50;
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(100);
     for (k = 0; k < 3u; k++)
         input_on(t, CHORD[k], 100);
@@ -499,8 +514,9 @@ static int test_strum_passes(void)
     t->p[P_STRUM] = 50;
     t->p[P_SLEN] = 16;
     put_step(t, 0, 3, CHORD, ST_NOTE, 0);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(TAPE_BAR - 10u);
     count1 = list(0);
     memcpy(first, nodes, sizeof first);
@@ -522,8 +538,9 @@ static int test_live_retrigger(void)
     track_t *t = &trk[0];
     uint32_t bad = 0, k, cut = 0, at2;
     fresh(4, 5);
-    song.rec = 1;
+    tape_arm = 1;
     transport_req = 1;
+    tape_req = TQ_REC;
     run_to(1920u + 120u + 60u);                         /* (60 ticks after a line: late, sounds on the next) */
     input_on(t, 60, 100);
     run_to(song_ticks + 20u);
@@ -549,6 +566,81 @@ static int test_live_retrigger(void)
     return bad;
 }
 
+/* tape REC records a sequencer only while it runs; SEQ REC alone records nothing onto the tape */
+static int test_seq_stopped_not_recorded(void)
+{
+    static const uint8_t NOTES[4] = {48, 52, 55, 59};
+    track_t *t = &trk[0];
+    uint32_t k, bad = 0, stopped, joined, after;
+    fresh(1, 0);
+    t->p[P_SLEN] = 16;
+    for (k = 0; k < 4u; k++)
+        put_step(t, 4u * k, 1, &NOTES[k], ST_NOTE, 0);
+    tape_arm = 1;
+    tape_req = TQ_REC;
+    run_to(2u * TAPE_BAR);
+    stopped = list(0);
+    transport_req = 1;                                  /* (joins on the next bar: GRID OFF) */
+    run_to(4u * TAPE_BAR - 10u);
+    joined = list(0);
+    transport_req = 2;
+    block();
+    run_to(6u * TAPE_BAR);
+    after = list(0);
+    bad += check("tape REC, the sequencer stopped: nothing; joined: its 4 notes; stopped again: none more, the tape runs on",
+                 !stopped && joined == 4u && after == 4u && tape_go && tape_recording);
+    stop();
+    fresh(1, 0);
+    t->p[P_SLEN] = 16;
+    for (k = 0; k < 4u; k++)
+        put_step(t, 4u * k, 1, &NOTES[k], ST_NOTE, 0);
+    song.rec = 1;
+    transport_req = 1;
+    tape_req = TQ_PLAY;
+    run_to(300);
+    input_on(t, 60, 100);
+    run_to(500);
+    input_off(t, 60);
+    run_to(2u * TAPE_BAR);
+    bad += check("SEQ REC with the tape playing, tape REC off: nothing onto the tape (live or sequencer)", !list(0) && !tp_open_n);
+    song.rec = 0;
+    stop();
+    return bad;
+}
+
+/* REC with the tape running: punch in, punch out; a note held over the punch out keeps its end */
+static int test_punch(void)
+{
+    track_t *t = &trk[0];
+    uint32_t bad = 0, in_at;
+    fresh(4, 0);
+    tape_arm = 1;
+    tape_req = TQ_PLAY;
+    run_to(300);
+    input_on(t, 60, 100);
+    run_to(400);
+    input_off(t, 60);
+    tape_req = TQ_REC;
+    run_to(700);
+    in_at = tape_head;
+    input_on(t, 62, 100);
+    run_to(1000);
+    tape_req = TQ_REC;
+    run_to(1100);
+    input_off(t, 62);
+    run_to(1300);
+    input_on(t, 64, 100);
+    run_to(1400);
+    input_off(t, 64);
+    block();
+    list(0);
+    bad += check("punch: before REC nothing, in: the note (its end after the punch out too), out: nothing; the tape runs on",
+                 listed == 1u && nodes[0].note == 62u && nodes[0].at == in_at && near_at(nodes[0].len, 400, 3) &&
+                 !nodes[0].held && !tp_open_n && tape_go && !tape_recording);
+    stop();
+    return bad;
+}
+
 int main(void)
 {
     uint32_t fails = 0;
@@ -565,6 +657,8 @@ int main(void)
     fails += test_mute();
     fails += test_ends();
     fails += test_engine_switch_voices();
+    fails += test_seq_stopped_not_recorded();
+    fails += test_punch();
     printf(fails ? "taperec: %u FAILED\n" : "taperec: all passed\n", (unsigned)fails);
     return fails ? 1 : 0;
 }
