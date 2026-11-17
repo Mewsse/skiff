@@ -568,7 +568,7 @@ static void foot_hint(char *a, char *b)
     uint32_t c = act_col();
     str_cpy(a, "OCT+ ", 8);
     str_cpy(a + 5, c ? act_name(c - 1u) : "--", 19);   /* ((2.0) CLEAR 3 UNUSED, COPY 06 TO 22 AT F: a 24-byte a) */
-    str_cpy(b, ui.act || ui.ev_del ? "OCT- CANCEL" : "OCT- HOME", 16);   /* ((Skiff U2) where it goes: HOME, not "BACK") */
+    str_cpy(b, ui.act || ui.ev_del ? "OCT- CANCEL" : cur_page()->graph == GR_TAPE ? "OCT- TRACKS" : "OCT- TAPE", 16);   /* where it goes: the tape, from the tape the tracks */
 }
 
 /* the sound's name on the track: a user preset or the engine's preset (b holds 16); (FM6 LAB) an FM6 track on its own
@@ -1429,7 +1429,7 @@ static void ui_draw_page(uint32_t counting)
             ui.page = (uint8_t)f;
             page_entered();
         } else {
-            go_home();
+            go_tape();
         }
     }
     cursor_fix();

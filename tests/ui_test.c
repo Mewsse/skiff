@@ -180,7 +180,11 @@ static uint32_t on_tape(uint32_t part, uint32_t note)
     return n;
 }
 
-/* main.c felucca_init */
+/* the main screen: the tape page, home off (the track overview is ui.home) */
+static int on_tape_page(void) { return !ui.home && cur_page()->graph == GR_TAPE; }
+
+/* main.c felucca_init (the tests start on the track overview, ui.home, which most of them were written on; felucca_init lands
+ * on the tape: test_tape_home) */
 static void ui_power_on(void)
 {
     uint32_t i;
@@ -987,7 +991,7 @@ static int test_actions(void)
     {
         char a[16], b[16];
         foot_hint(a, b);
-        bad += check("..the footer: OCT+ CLEAR / (U2) OCT- HOME", str_eq(a, "OCT+ CLEAR") && str_eq(b, "OCT- HOME"));
+        bad += check("..the footer: OCT+ CLEAR / OCT- TRACKS (the tape is home: OCT- goes to the track overview)", str_eq(a, "OCT+ CLEAR") && str_eq(b, "OCT- TRACKS"));
     }
     press(B_OCTUP);
     bad += check("..OCT+ on it: NOTHING TO CLEAR, the octave stays", msg_is("NOTHING TO CLEAR") && song.octave == 1 &&
@@ -1098,7 +1102,7 @@ static int test_home_footer(void)
             set_engine_of(&trk[0], ENGI_DRUM);
             trk[0].engine = trk[0].eng_req;
         }
-        open_family(FAM_ENV);
+        open_family(FAM_EDIT);
         frame();
         press(B_HOME);
         frame();
@@ -1108,7 +1112,7 @@ static int test_home_footer(void)
         ok &= cur_page()->graph == GR_ROLL && grid_on() == (int)d;
         press(B_HOME);
         frame();
-        ok &= ui.home && !memcmp(ref + foot_y() * 240, host_screen + foot_y() * 240, 240u * foot_h() * sizeof *ref);
+        ok &= on_tape_page() && !memcmp(ref + foot_y() * 240, host_screen + foot_y() * 240, 240u * foot_h() * sizeof *ref);
     }
     return check("#3 HOME after SEQ's first page (NOTES, a drum grid): the footer as after any other page", ok);
 }
@@ -2406,6 +2410,86 @@ static uint32_t gates(void)                        /* voices of every track with
 }
 static uint32_t white(uint32_t w) { return key_at(0, w); }
 
+/* the tape is the main screen: power-on, every way home, the keys, the reels */
+static uint32_t reels_hash(void)
+{
+    uint32_t sum = 2166136261u, row, col;
+    for (row = 0; row < 30u; row++)
+        for (col = 20u; col < 220u; col++)
+            if (col < 52u || col > 188u)
+                sum = (sum ^ host_screen[(graph_y() + 2u + row) * 240u + col]) * 16777619u;
+    return sum;
+}
+static int test_tape_home(void)
+{
+    uint32_t bad = 0, still, turned, moves = 0, step, before;
+    ui_power_on();
+    memset(&ui, 0, sizeof ui);
+    go_tape();                                        /* as main.c felucca_init */
+    frames(100);
+    bad += check("power-on: the tape page, not the track overview", on_tape_page() && song.seq_mode);
+    open_family(FAM_ENV);
+    frame();
+    bad += check("an EDIT page is not the tape", !on_tape_page());
+    press(B_HOME);
+    bad += check("HOME from a sound page: the tape", on_tape_page());
+    press(B_HOME);
+    bad += check("HOME on the tape: the track overview", ui.home && !ui.home_scope);
+    press(B_HOME);
+    bad += check("HOME on the overview: the scope", ui.home && ui.home_scope);
+    press(B_HOME);
+    bad += check("HOME on the scope: the tape again, the overview reset", on_tape_page() && !ui.home_scope);
+    open_family(FAM_SAVE);
+    frame();
+    press(B_OCTDN);
+    press(B_OCTDN);
+    bad += check("OCT- on an action page (SAVE): the pick, then the tape", on_tape_page());
+    open_family(FAM_ENV);
+    press(B_SEQ);
+    bad += check("SEQ from a sound page: its own last page (NOTES), not the tape", cur_page()->graph == GR_ROLL);
+    open_family(FAM_ENV);
+    frame();
+    press(B_HOME);
+    bad += check("a sound page and back: ENV, HOME, the tape", on_tape_page());
+    song.playing = 0;
+    key_down(5);
+    frame();
+    bad += check("a key on the tape page plays the selected track", gates() >= 1u && trk[song.sel].v[0].gate);
+    key_up(5);
+    frames(100);
+    tape_head = 0;
+    bad += check("reel angle 0 at a bar's start", tape_reel_phase() == 0u);
+    tape_head = TAPE_BAR / 4u;
+    bad += check("a quarter of a bar: a quarter turn", tape_reel_phase() == 256u);
+    tape_head = 3u * TAPE_BAR + TAPE_BAR / 2u;
+    bad += check("a turn a bar, whatever the bar", tape_reel_phase() == 512u);
+    tape_head = TAPE_BAR - 1u;
+    before = tape_reel_phase();
+    tape_head = 0;
+    bad += check("the loop's end meets its start: no jump", before >= 1023u && tape_reel_phase() == 0u);
+    tape_head = 3u * TAPE_BAR / 8u;
+    ui.force = 1;
+    frames(100);
+    still = reels_hash();
+    frames(1000);
+    bad += check("stopped: the reels stand still", reels_hash() == still && !song.playing);
+    tape_head += TAPE_BAR / 8u;
+    frames(100);
+    turned = reels_hash();
+    bad += check("the head moved (a seek): the reels turned", turned != still);
+    song.playing = 1;
+    for (step = 0; step < 8u; step++) {
+        before = reels_hash();
+        tape_head += TAPE_BAR / 32u;
+        frames(100);
+        moves += reels_hash() != before;
+    }
+    bad += check("playing: the reels turn with the head", moves >= 6u);
+    song.playing = 0;
+    return bad;
+}
+
+
 /* a layer's key LEDs as the old 250 ms blink read them: lit, and the breathing ones (#119) "on" at even quarters,
  * so (a ^ b) over ms 0 and 250 = the ones that can be pressed, (a & b) = lit */
 static uint32_t leds_at(uint32_t ms)
@@ -3405,8 +3489,8 @@ static int test_slices(void)
     btn_down(B_OCTDN); frame(); btn_up(B_OCTDN); frame();
     ok = ui.act == 0u && !ui.home;
     btn_down(B_OCTDN); frame(); btn_up(B_OCTDN); frame();
-    ok &= ui.home;
-    bad += check("SLICES: OCT- drops the pick, then goes HOME", ok);
+    ok &= on_tape_page();
+    bad += check("SLICES: OCT- drops the pick, then goes HOME (the tape)", ok);
     go_page(GR_SLICES); frame();
     set_engine_of(TSEL, 0); frame();
     bad += check("SLICES: on another engine the page is not there (EDIT 1)", str_eq(cur_page()->title, "EDIT 1"));
@@ -5854,7 +5938,7 @@ static int test_layer_lock(void)
     shift_lock(B_SCL); frames(100);
     ok &= ui.lock == LAYER_SCL && str_eq(cur_page()->title, "LFO");
     press(B_HOME); frames(16);
-    ok &= !ui.lock && !ui.layer && ui.home;
+    ok &= !ui.lock && !ui.layer && on_tape_page();
     shift_lock(B_GLO); frames(100);
     press(B_SCL); frames(400);
     ok &= !ui.lock && !ui.layer && cur_page()->fam == FAM_SCL;
@@ -8025,7 +8109,7 @@ static int test_u3(void)
     set_engine_of(TSEL, ENGI_FM6);
     TSEL->engine = TSEL->eng_req;
     frame();
-    bad += check("U3 N3: ENV on a track now FM6 (its operators the envelope): HOME, NO ENV ON FM6", ui.home && msg_is("NO ENV ON FM6"));
+    bad += check("U3 N3: ENV on a track now FM6 (its operators the envelope): HOME (the tape), NO ENV ON FM6", on_tape_page() && msg_is("NO ENV ON FM6"));
     ui_power_on();                                      /* N3: the MENU back onto its page */
     go_title("LFO"); frame();
     hold(B_HOME);
@@ -8573,7 +8657,7 @@ static int test_blocks(void)
     take_ev[0] = (take_ev_t){1, 0, 0, 60, 100};
     take_ev_n = 1;
     take_commit(0);
-    ok = ui.home && ui.take_t == TB_FRAMES && !ui.msg_t && str_eq(take_box.title, "TAKE KEPT") &&
+    ok = on_tape_page() && ui.take_t == TB_FRAMES && !ui.msg_t && str_eq(take_box.title, "TAKE KEPT") &&
          str_eq(take_box.line, "1 NOTE");
     frame();
     ok &= lg_px(TB_X + TB_W - 4, Y_GRAPH + TB_Y + 4) == T_TEXT;   /* the white box over the panel */
@@ -9228,6 +9312,7 @@ int main(void)
     bad += test_tracks();
     bad += test_grid();
     bad += test_home_footer();
+    bad += test_tape_home();
     bad += test_home_names();
     bad += test_clock_wait();
     bad += test_grid_rows();

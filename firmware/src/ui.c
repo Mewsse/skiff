@@ -479,7 +479,7 @@ static uint32_t large_kind(void)
         return LK_TALL;
     g = cur_page()->graph;
     return g == GR_BROWSE || g == GR_SLOTS || g == GR_USER || step_page(g) ||
-           g == GR_FEEL || g == GR_SLICES || g == GR_EVENTS || sheet_of(g) ? LK_LABEL : LK_TALL;
+           g == GR_FEEL || g == GR_SLICES || g == GR_EVENTS || g == GR_TAPE || sheet_of(g) ? LK_LABEL : LK_TALL;
 }
 /* the geometry of the page shown: the cards' height, the panel's top and height */
 static uint32_t card_h(void) { return large_kind() == LK_TALL ? LG_CARD_H : CARD_H; }
@@ -1264,6 +1264,20 @@ static const char *page_head(void)
         fmt_int(hb + str_len(hb), (int32_t)(sel_hi() + off) + 1);
     }
     return hb;
+}
+
+/* the main screen: the note tape (SEQ > TAPE). HOME, power-on and every way back land here; the track overview (go_home)
+ * is one HOME tap further */
+static void go_tape(void)
+{
+    uint32_t page = 0;
+    while (page < NPAGES - 1u && PAGES[page].graph != GR_TAPE)
+        page++;
+    ui.home = 0;
+    ui.home_scope = 0;
+    ui.page = (uint8_t)page;
+    ui.plk_src = 0;
+    page_entered();
 }
 
 static void go_home(void)

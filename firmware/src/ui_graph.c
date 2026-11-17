@@ -1688,6 +1688,10 @@ static int analog_page(const page_t *pg, const track_t *t)
 #define TPG_X0 26
 #define TPG_W 196
 static uint32_t tape_head_px(void) { return tape_head % tape_length() * TPG_W / tape_length(); }
+#define TPB_STEP 12                                  /* the band's marks: one a beat of tape */
+/* the reels turn a bar of tape a turn (1024 to the turn); both come from the head alone: a stopped tape stands still */
+static uint32_t tape_reel_phase(void) { return tape_head % TAPE_BAR * 1024u / TAPE_BAR; }
+static int32_t tape_band_off(void) { return (int32_t)(tape_head % TAPE_TPQ * TPB_STEP / TAPE_TPQ); }
 static uint32_t graph_signature(void)
 {
     const page_t *pg = cur_page();
@@ -1771,6 +1775,8 @@ static uint32_t graph_signature(void)
     }
     if (pg->graph == GR_TAPE) {                      /* the head's pixel, the notes (a track's count; a take going in), mutes */
         h = (h ^ (tape_head_px() + 1u) * 40503u ^ tape_length() * 2654435761u ^ ui.tsrc * 7919u ^ tp_target * 131u) * 16777619u;
+        h = (h ^ (tape_reel_phase() >> 4 | (uint32_t)tape_band_off() << 8 | (uint32_t)song.playing << 12 | (song.rec != 0u) << 13 |
+                  ui_grid_idx() << 16)) * 16777619u;
         for (i = 0; i < TAPE_TRACKS; i++)
             h = (h ^ ((uint32_t)tp_trk[i].count << 4 | tp_trk[i].mute << 2 | (tp_trk[i].first == TAPE_END))) * 16777619u;
         if (song.playing && song.rec)
@@ -1957,29 +1963,129 @@ static void graph_user(void)
         list_row(LIST_Y(row), k == ui.uslot, tag, T_MID, nm, used ? T_TEXT : T_DIM, 232);
     }
 }
-/* SEQ > TAPE: the four lanes over the tape's length, a note a mark in its instrument's colour (a muted track's: DIM),
- * higher up for a higher pitch, as long as it sounds; the target's lane on RAISE, a line a bar (every 2nd, 4th ... when
- * they would crowd), the head a TEXT line across them; under them, the notes the tape holds and its length. The lists
- * are walked as the main loop may (tape.c): bounded by TAPE_N */
+/* SEQ > TAPE, the main screen: two reels and the tape between them past a head block, a half sun on the band; under them
+ * the four lanes over the tape's length, a note a mark in its instrument's colour (a muted track's: DIM), higher up for
+ * a higher pitch, as long as it sounds; the target's lane on RAISE with a tab, a merge's source framed, a line a bar
+ * (every 2nd, 4th ... when they would crowd), the head a TEXT line down them. The reels turn a bar of tape a turn and
+ * the band's marks pass a beat each: both come from the head alone, so a stopped tape stands still. The lists are
+ * walked as the main loop may (tape.c): bounded by TAPE_N */
+#define TPR_L 36                                     /* the reels' centres, their flange, hub and spokes */
+#define TPR_R 204
+#define TPR_CY 17
+#define TPR_FLANGE 14
+#define TPR_HUB 7
+#define TPR_SPOKE 6
+#define TPB_Y 29                                     /* the band: its left and right ends where it runs level */
+#define TPB_X0 66
+#define TPB_X1 174
+#define TPL_Y 38                                     /* the lanes' top; the caption's row is the last 16 px */
+#define TPL_STRIP_X 22
+#define TPL_STRIP_W 204
+
+
+
+static int32_t tape_pack(uint32_t wound, uint32_t len) { return 9 + (int32_t)(wound * 4u / len); }   /* a reel's tape */
+static void tape_disc(int32_t cx, int32_t cy, int32_t radius, uint16_t col)
+{
+    int32_t dy, half;
+    for (dy = -radius; dy <= radius; dy++) {
+        for (half = radius; half * half + dy * dy > radius * radius; half--)
+            ;
+        cv_rect(cx - half, cy + dy, 2 * half + 1, 1, col);
+    }
+}
+static void tape_reel(int32_t cx, int32_t pack, uint32_t phase, uint16_t spoke)
+{
+    uint32_t arm;
+    tape_disc(cx, TPR_CY, TPR_FLANGE, T_THEME);
+    tape_disc(cx, TPR_CY, TPR_FLANGE - 1, T_BG);
+    tape_disc(cx, TPR_CY, pack, T_TINT);
+    tape_disc(cx, TPR_CY, TPR_HUB, T_BG);
+    for (arm = 0; arm < 3u; arm++) {
+        uint32_t ang = phase + arm * 341u;
+        cv_line_t(cx, TPR_CY, cx + (SINE[ang & 1023u] * TPR_SPOKE + 16384) / 32768,
+                  TPR_CY - (SINE[(ang + 256u) & 1023u] * TPR_SPOKE + 16384) / 32768, spoke, 2);
+    }
+}
+static void tape_sun(int32_t cx, int32_t horizon, int32_t radius)
+{
+    int32_t row, half;
+    if (ux.neon) {
+        ne_sun(cx, horizon, radius, 35);
+        return;
+    }
+    for (row = horizon - radius; row < horizon; row++) {
+        if ((horizon - row) % 4 == 0 && horizon - row < radius)
+            continue;
+        for (half = radius; half * half + (horizon - row) * (horizon - row) > radius * radius; half--)
+            ;
+        cv_rect(cx - half, row, 2 * half + 1, 1, ux_mix(T_THEME, T_SURF, 72));
+    }
+}
+static void tape_band(uint32_t pos, uint32_t len, uint16_t ink)
+{
+    int32_t supply = tape_pack(len - pos, len), take = tape_pack(pos, len), mark;
+    cv_line_t(TPR_L, TPR_CY + supply, TPB_X0, TPB_Y, ink, 2);
+    cv_line_t(TPB_X0, TPB_Y, TPB_X1, TPB_Y, ink, 2);
+    cv_line_t(TPB_X1, TPB_Y, TPR_R, TPR_CY + take, ink, 2);
+    for (mark = TPB_X0 + tape_band_off() + TPB_STEP; mark < TPB_X1 - 2; mark += TPB_STEP)
+        cv_rect(mark, TPB_Y - 4, 1, 3, T_MID);
+    cv_rect(TPB_X0 + (TPB_X1 - TPB_X0) / 2 - 10, TPB_Y + 3, 20, 3, T_ACCENT);
+}
+static void tape_head_text(uint32_t pos)
+{
+    char text[12];
+    uint16_t ink = T_MID;
+    const char *state = "STOP";
+    if (song.rec) {
+        state = song.playing ? "REC" : "ARMED";
+        ink = T_REC;
+    } else if (song.playing) {
+        state = "PLAY";
+        ink = T_THEME;
+    }
+    if (song.rec && song.playing && (ui.frame / 8u) % 2u == 0u)
+        tape_disc(TPR_L + 24, 8, 3, T_REC);
+    GFX_HOOK_ALIGN(0, 2, 0, 14, AL_V, "tape state centred up/down");
+    cv_text_on(TPR_L + 30, 2 + CAP_IN(S, 12), &AF_S, state, ink, T_SURF);
+    fmt_int(text, (int32_t)(pos / TAPE_BAR) + 1);
+    str_cpy(text + str_len(text), ".", 2);
+    fmt_int(text + str_len(text), (int32_t)(pos % TAPE_BAR / TAPE_TPQ) + 1);
+    GFX_HOOK_ALIGN(0, 2, 0, 14, AL_V, "tape counter centred up/down");
+    cv_text_in(TPB_X0, 2 + CAP_IN(M, 12), TPB_X1 - TPB_X0, &AF_M, text, T_TEXT, T_SURF);
+}
 static void graph_tape(void)
 {
-    uint32_t len = tape_length(), bars = len / TAPE_BAR, lane, node, guard, notes = 0, every = 1;
-    int32_t top = 6, lane_h = ((int32_t)cv_h - top - 20) / 4, i;
+    uint32_t len = tape_length(), bars = len / TAPE_BAR, pos = tape_head % len, lane, node, guard, notes = 0, every = 1;
+    int32_t lane_h = ((int32_t)cv_h - TPL_Y - 16) / 4, i, foot, target = (int32_t)(tp_target % TAPE_TRACKS);
     char b[16];
+    uint16_t spoke = tp_trk[target].mute ? T_DIM : T_TEXT;
     if (lane_h < 6)
         lane_h = 6;
+    foot = TPL_Y + 4 * lane_h;
+    tape_sun((TPR_L + TPR_R) / 2, TPB_Y, 15);
+    tape_reel(TPR_L, tape_pack(len - pos, len), tape_reel_phase(), spoke);
+    tape_reel(TPR_R, tape_pack(pos, len), tape_reel_phase(), spoke);
+    tape_band(pos, len, T_MID);
+    tape_head_text(pos);
     while (TPG_W * every / bars < 6u)
         every *= 2u;
     for (lane = 0; lane < TAPE_TRACKS; lane++) {
-        int32_t y = top + (int32_t)lane * lane_h, base = lane_h - 4;
-        uint16_t ink = tp_trk[lane].mute ? T_DIM : T_TEXT;
-        if (lane == tp_target % TAPE_TRACKS)
-            cv_rect(TPG_X0 - 2, y, TPG_W + 4, lane_h - 2, T_RAISE);
+        int32_t y = TPL_Y + (int32_t)lane * lane_h, base = lane_h - 6;
+        int sel = (int32_t)lane == target, from = ui.tsrc && lane == (uint32_t)ui.tsrc - 1u;
+        uint16_t ink = tp_trk[lane].mute ? T_DIM : T_TRK(lane);
+        if (ux.neon)
+            ne_glass(TPL_STRIP_X, y, TPL_STRIP_W, lane_h - 2, sel ? T_RAISE : T_BG);
+        else
+            cv_rect(TPL_STRIP_X, y, TPL_STRIP_W, lane_h - 2, sel ? T_RAISE : T_BG);
+        if (sel)
+            cv_rect(TPL_STRIP_X, y, 2, lane_h - 2, T_ACCENT);
+        if (from)
+            cv_frame(TPL_STRIP_X, y, TPL_STRIP_W, lane_h - 2, T_THEME);
         b[0] = (char)('1' + lane);
         b[1] = 0;
         GFX_HOOK_ALIGN(0, y, 0, y + lane_h - 2, AL_V, "tape lane number centred up/down");
-        cv_text_on(12, y + CAP_IN(S, lane_h - 2), &AF_S, b, lane == tp_target % TAPE_TRACKS ? ink : tp_trk[lane].mute ? T_DIM : T_MID,
-                   T_SURF);
+        cv_text_on(12, y + CAP_IN(S, lane_h - 2), &AF_S, b, sel || from ? ink : tp_trk[lane].mute ? T_DIM : T_MID, T_SURF);
         notes += tp_trk[lane].count;
         for (i = 1; i * (int32_t)every < (int32_t)bars; i++)
             cv_rect(TPG_X0 + i * (int32_t)every * TPG_W / (int32_t)bars, y, 1, lane_h - 2, T_LINE);
@@ -1992,18 +2098,23 @@ static void graph_tape(void)
             x = TPG_X0 + (int32_t)(at * TPG_W / len);
             w = (int32_t)(span * TPG_W / len);
             w = w < 2 ? 2 : w > TPG_X0 + TPG_W - x ? TPG_X0 + TPG_W - x : w;
-            cv_rect(x, y + base - (int32_t)TP_NOTE(w0) * base / 127, w, 2, tp_trk[lane].mute ? T_DIM : T_TRK(TP_INST(w0)));
+            cv_rect(x, y + 2 + base - (int32_t)TP_NOTE(w0) * base / 127, w, 2, tp_trk[lane].mute ? T_DIM : T_TRK(TP_INST(w0)));
         }
     }
-    cv_rect(TPG_X0 + (int32_t)tape_head_px(), top - 2, 1, 4 * lane_h + 2, T_TEXT);
+    cv_rect(TPG_X0 + (int32_t)tape_head_px(), TPL_Y - 2, 1, 4 * lane_h + 2, T_TEXT);
+    cv_rect(TPG_X0 + (int32_t)tape_head_px() - 1, TPL_Y - 3, 3, 1, T_ACCENT);
     fmt_int(b, (int32_t)notes);
     str_cpy(b + str_len(b), notes == 1u ? " NOTE" : " NOTES", sizeof b - str_len(b));
-    GFX_HOOK_ALIGN(0, top + 4 * lane_h, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
-    cv_text_on(12, top + 4 * lane_h + CAP_IN(S, (int32_t)cv_h - top - 4 * lane_h), &AF_S, b, T_MID, T_SURF);
+    GFX_HOOK_ALIGN(0, foot, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
+    cv_text_on(12, foot + CAP_IN(S, (int32_t)cv_h - foot), &AF_S, b, T_MID, T_SURF);
+    str_cpy(b, "GRID ", sizeof b);
+    str_cpy(b + 5, GRID_NAME[ui_grid_idx()], sizeof b - 5u);
+    GFX_HOOK_ALIGN(0, foot, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
+    cv_text_in(TPB_X0, foot + CAP_IN(S, (int32_t)cv_h - foot), TPB_X1 - TPB_X0, &AF_S, b, T_MID, T_SURF);
     fmt_int(b, (int32_t)bars);
     str_cpy(b + str_len(b), bars == 1u ? " BAR" : " BARS", sizeof b - str_len(b));
-    GFX_HOOK_ALIGN(0, top + 4 * lane_h, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
-    cv_text_r(224, top + 4 * lane_h + CAP_IN(S, (int32_t)cv_h - top - 4 * lane_h), &AF_S, b, T_MID, T_SURF);
+    GFX_HOOK_ALIGN(0, foot, 0, (int32_t)cv_h, AL_V, "tape caption centred up/down");
+    cv_text_r(224, foot + CAP_IN(S, (int32_t)cv_h - foot), &AF_S, b, T_MID, T_SURF);
 }
 /* SEQ > AUTOMATION (ui_events.c; 1.1.5's AUTO LIST): the track's records around the one selected, a row each: the kind
  * (LOCK in the accent, AUTO), the step, the parameter's name, the value at the right; the last row + ADD LOCK. (Skiff

@@ -121,8 +121,7 @@ static void felucca_init(void)
     undo_depth--;
     sel_set(0);
     song.master_q12 = 2048;                   /* (the pot's level replaces it before the audio starts: master_boot) */
-    ui.home = 1;
-    ui.force = 1;
+    go_tape();
 }
 
 /* The power-on LED sweep (1.1, hal/fm1_led_anim.h: a soft light over the keys left to right, then the buttons swell

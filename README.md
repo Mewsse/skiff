@@ -219,7 +219,7 @@ too. Switching a track to DRUM-X keeps the kit the project has.
 
 <table>
 <tr>
-<td width="33%"><img src="docs/img/tape_notes.png" alt="SEQ › TAPE"><br><sub><b>TAPE</b>: four lanes of notes, the target's raised, the head a line across</sub></td>
+<td width="33%"><img src="docs/img/tape_notes.png" alt="SEQ › TAPE"><br><sub><b>TAPE</b>, the main screen: two reels that turn with the head, the tape between them, four lanes of notes, the target's raised</sub></td>
 <td width="33%"><img src="docs/img/layer_perform.png" alt="The PERFORM layer"><br><sub><b>PERFORM</b> (hold ARP): each track's RUN, its mute, throws on the knobs</sub></td>
 <td width="33%"><img src="docs/img/tape_merge.png" alt="SEQ › TAPE, merging"><br><sub><b>MERGE</b>: a track into the target, after a question</sub></td>
 </tr>
@@ -477,7 +477,7 @@ SWING, GATE and DIR, its automation and locks), saved with the project. Its **RU
 the transport runs (PERFORM's white keys; all on in a new project). There is no pool of patterns, no lists, no song, no
 scenes and no LAUNCH point: what a track plays is what is on its steps, and the **tape** takes the rest.
 
-- **The tape** (SEQ › TAPE) holds notes: 4 tracks, each in time order, at 480 ticks to a quarter note and in 4/4,
+- **The tape** (SEQ › TAPE, the main screen: the unit starts on it and HOME comes back to it) holds notes: 4 tracks, each in time order, at 480 ticks to a quarter note and in 4/4,
   1 to 256 bars long, 1,440 notes in all (TAPE FULL when it is). It holds neither knob moves nor audio. PLAY plays
   it with the sequencers, and a note it plays is sounded by its own track, so followers, MIDI OUT and the engines
   treat it as a key played.
@@ -486,6 +486,10 @@ scenes and no LAUNCH point: what a track plays is what is on its steps, and the 
   follow is applied again on playback). Overdub keeps what is there; a note played again within a few ticks of the same note is
   kept once, so a sequencer left running over four passes leaves one pass. A key held when the loop ends keeps its
   whole length. Turn RUN off after a pass to keep only the tape's copy. A muted track records nothing.
+- **The tape screen** draws two reels and the tape between them past a head block; the reels turn a bar of tape a turn and the band's marks pass a beat each, so they stand still when stopped. Under them the four tracks' lanes
+  (the target's raised, a muted one dimmed, a merge's source framed), the head, the counter (bar.beat), PLAY / REC / STOP, the
+  notes held, the GRID and the length. NEON adds the striped sun. The sound pages are one button away (ENV, EDIT, ...); HOME
+  comes back.
 - **TAPE's knobs:** 1 TRACK (the target: REC writes there, 3 and 4 act on it), 2 LENGTH (bars), 3 ACTION (CLEAR, or
   merge track 1–4 into the target), 4 MUTE. OCT+ does the action after asking; a merge empties the source and keeps
   every note, in order. Notes past the length stay on the tape unplayed; make it longer and they are back.
@@ -514,7 +518,7 @@ The black keys' legends are M-VAVE's: [docs/keystrip.pdf](docs/keystrip.pdf) is 
 by the keys, with what each key is in Skiff.
 
 - Tap a page button for its pages (again, or SELECT, for the next one); every family reopens the page you left
-- **HOME** goes home. **Held**, it is SHIFT: its map shows what every control does on the page; let go alone,
+- **HOME** goes to the tape (SEQ › TAPE), the main screen, where the unit starts; tapped on the tape it shows the track overview, tapped again the scope, again the tape. **Held**, it is SHIFT: its map shows what every control does on the page; let go alone,
   the MENU opens
 - Hold FX, GLO, SEL, EDIT, ARP or SEQ for its layer; **SHIFT + the button** (or the button held, then HOME) keeps it open (the header says
   LOCKED), the button closes it. A locked FX layer latches its effects
@@ -530,7 +534,7 @@ by the keys, with what each key is in Skiff.
   on a type (BASS, PAD ..) it steps through that type only
 - On NOTES and FEEL, **SHIFT + PRESETS** stretches the selection over a range of steps, **SHIFT + OCT− / OCT+** copy
   and paste it, **SHIFT + EDIT** deletes it; with REC off a key picks its note in the selection
-- On SEQ › TAPE, OCT+ clears the target track or merges another into it (it asks first); on the SMK-37, **<** and **>**
+- On SEQ › TAPE, OCT+ clears the target track or merges another into it (it asks first) and OCT− shows the track overview; on the SMK-37, **<** and **>**
   move the tape's head a bar while stopped
 - On action pages and in dialogs, **OCT+** does it and **OCT−** goes back
 - Hold a step on SEQ › NOTES (on the drum grid its white key; on the piano roll the step you are entering, REC armed

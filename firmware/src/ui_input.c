@@ -2256,11 +2256,18 @@ static void ui_input(void)
         layer_tap(lytap);
     if (home == BT_TAP)
         layer_unlock();                                 /* ((Skiff U2) HOME tapped: a locked layer closes, as before) */
-    if (home == BT_TAP && ui.home) {                    /* Skiff: HOME on HOME, the tracks <-> the scope (ui_home.c) */
-        ui.home_scope ^= 1u;
+    if (home == BT_TAP && ui.home) {                    /* the tape, then the tracks, then the scope, then the tape (ui_home.c) */
+        if (ui.home_scope)
+            go_tape();
+        else
+            ui.home_scope = 1;
         ui.force = 1;
-    } else if (home == BT_TAP)                          /* HOME acts on release: a hold opens the menu */
-        go_home();
+    } else if (home == BT_TAP) {                        /* HOME acts on release: a hold opens the menu */
+        if (cur_page()->graph == GR_TAPE)
+            go_home();
+        else
+            go_tape();
+    }
     cursor_fix();                                       /* LEN may have changed (knob, editor, load) */
     for (id = 0; id < FM1_NBTN; id++) {
         if (!((pressed >> id) & 1u))
@@ -2329,8 +2336,10 @@ static void ui_input(void)
             ui.act = ui.act2 = 0;
         else if (ui.ev_del)                             /* ((Skiff U2) AUTO LIST's DELETE) */
             ui.ev_del = 0;
-        else
+        else if (cur_page()->graph == GR_TAPE)
             go_home();
+        else
+            go_tape();
     } else if (ui.ml.on && oct) {                       /* ((1.3) MIDI LEARN: OCT- clears the picked CC, OCT+ done) */
         ml_oct(oct);
     }

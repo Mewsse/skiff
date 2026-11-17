@@ -37,7 +37,7 @@ Each rule comes from what FM-1 owners said about the stock firmware, Felucca and
    - True-black and high-contrast palettes.
    - Colour is never the only cue: a track colour always comes with its number.
    - Animations are short and ANIM OFF turns them off. (D#80, #46, #50)
-10. **HOME is the all-tracks overview:** a lane per track with its steps in its colour, the playhead, and bar.beat in the header. The selected track is a band of its colour. (D#112, D#134)
+10. **The tape is home** (`go_tape`): the unit starts on SEQ › TAPE and HOME, and every way back, lands there; the all-tracks overview is one HOME tap on the tape (then the scope, then the tape). The overview: a lane per track with its steps in its colour, the playhead, and bar.beat in the header. The selected track is a band of its colour. (D#112, D#134)
 11. **One line of hint** says what to do next, and it can be turned off (U4: MENU > DISPLAY > HINTS; an action page's OCT+ / OCT- line stays, it says what they do now). (D#88)
 
 Things to avoid:
@@ -60,9 +60,9 @@ Things to avoid:
 | EDIT | EDIT pages, on every page (U2; on NOTES with REC armed it clears the cursor step, with a step held its locks) | EDIT layer: engine on the keys | Lock |
 | SEQ | SEQ pages | SEQ TOOLS, on every page (U2) | Lock |
 | REC | Arm, on the press (U2); on an armed track every track disarmed (1.4.1) | — | REC layer, locked: CLEAR (held), CLICK, COUNT-IN, GRID, FEEL |
-| HOME | HOME (a locked layer closes); on HOME, the tracks or the scope; with a layer's button held: locks that layer (1.2.1, #13) | **SHIFT**. Let go alone: MENU (not over a dialog or NAME, U2) | — |
+| HOME | The tape (a locked layer closes); on the tape, the tracks, then the scope, then the tape; with a layer's button held: locks that layer (1.2.1, #13) | **SHIFT**. Let go alone: MENU (not over a dialog or NAME, U2) | — |
 | PLAY | Start / stop | — | — |
-| OCT− / OCT+ | Octave. In dialogs and on action pages: OCT− cancel (or HOME, as its footer says), OCT+ do it. While the undo box (or message) shows: OCT− undo further, OCT+ redo (on action pages too, U2) | Both for 5 s: UPDATE MODE | — |
+| OCT− / OCT+ | Octave. In dialogs and on action pages: OCT− cancel (or the tape, as its footer says; on the tape, the track overview), OCT+ do it. While the undo box (or message) shows: OCT− undo further, OCT+ redo (on action pages too, U2) | Both for 5 s: UPDATE MODE | — |
 
 **SHIFT combos:**
 
@@ -187,7 +187,7 @@ Add a combo here before adding it to the code. Every SHIFT combo has to appear o
 - **AUTOMATION FULL:** the 64 automation records are the six tracks'; a track takes no new one past them.
 - **TAPE FULL:** a recorded note finding no free node is dropped, with that message.
 
-**SEQ › TAPE** (`ui_graph.c` `graph_tape`, `ui_input.c` `tape_knob`; after AUTOMATION): the four lanes over the tape's length, a note a mark in its instrument's colour (a muted track's DIM), higher for a higher pitch, as long as it sounds; the target's lane raised, a line a bar (every 2nd, 4th .. when they crowd), the head a TEXT line across them; under them the notes the tape holds and its length.
+**SEQ › TAPE** (`ui_graph.c` `graph_tape`, `ui_input.c` `tape_knob`; after AUTOMATION): the four lanes over the tape's length, a note a mark in its instrument's colour (a muted track's DIM), higher for a higher pitch, as long as it sounds; the target's lane raised, a line a bar (every 2nd, 4th .. when they crowd), the head a TEXT line across them; above them two reels (a flange, the tape's pack on each, three spokes) and the tape between them past a head block, a half sun on the band (NEON's own sun; the other looks a faint stripe of THEME), drawn in code, palette colours only. The reels turn a bar of tape a turn (`tape_reel_phase`, from `tape_head` and the SINE table) and the band's marks pass a beat each: both come from the head alone, so a stopped tape stands still. The state (STOP, PLAY, REC), the counter, the notes held, the GRID and the length are in text; a merge's source lane is framed. The page is the main screen: MENU › LARGE leaves it its layout.
 - **Knobs:** 1 TRACK (1–4: the target, the one REC writes to), 2 LENGTH (1–256 BARS), 3 ACTION (CLEAR, or merge track 1–4 into the target; never itself), 4 MUTE (OFF, ON the target's). No knob is an action: **OCT+** does KNOB 3's, after a dialog (CLEAR TAPE TRACK 2?, MERGE TRACK 3 INTO 2?, with the notes that go; can't be undone). NOTHING TO CLEAR, PICK ANOTHER TRACK and THAT TRACK IS EMPTY are the refusals.
 - **The head** is a line on the lanes; PLAY, STOP and the SMK's `<` `>` move it as above.
 
