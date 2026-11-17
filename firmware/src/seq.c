@@ -664,12 +664,12 @@ static uint32_t arp_due[NPART] __attribute__((section(".pool")));   /* song_tick
 static __attribute__((noinline)) int arp_wait(track_t *t)
 {
     uint32_t k = trk_index(t), ahead;
-    if (!song.playing || !grid_idx()) {
+    if (!clock_run() || !grid_idx()) {
         t->arp_pos = ARP_START;
         return 0;
     }
     if (t->arp_pos == ARP_START) {
-        if (!grid_late(tape_head, &ahead))
+        if (!grid_late(song_ticks, &ahead))
             return 0;
         arp_due[k] = song_ticks + ahead;
         t->arp_pos = ARP_WAIT;
@@ -856,7 +856,7 @@ static __attribute__((noinline)) int live_hold(track_t *t, uint32_t note, uint32
 {
     uint32_t ahead;
     live_ev_t *ev;
-    if (live_n == LIVE_N || !song.playing || !grid_late(tape_head, &ahead))
+    if (live_n == LIVE_N || !clock_run() || !grid_late(song_ticks, &ahead))
         return 0;
     ev = &live_q[live_n++];
     ev->trk = (uint8_t)trk_index(t);
@@ -1236,7 +1236,7 @@ static int clock_out(void) { return !song.g[G_CLOCK] && !(MSET(15, 17) & MO_CLOC
 static void mo_rt(uint32_t b, uint32_t due) { (void)mo_put(0x0Fu | b << 8, due); }
 
 /* the tape's clock: ticks (TAPE_TPQ to the quarter) from the beat counters the ARP and the click use, so a tempo change
- * or an external clock needs no rescaling. tape_beat counts the beats since PLAY / a locate (only while playing),
+ * or an external clock needs no rescaling. tape_beat counts the beats since PLAY / a locate (only while the clock runs),
  * song_ticks the ticks (due times: never wrapped), tape_head the same wrapped at tape_len, tape_pass the wraps.
  * tape_frac is the last tick into the beat: it never goes back within one. In the pool, zero at boot: tape_len 0 means
  * 4 bars until the tape's own (tape.c) sets it */
@@ -1250,7 +1250,7 @@ static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; 
 static void tape_rec(const track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t inst = trk_index(t), at = tape_head, idx;
-    if (tape_playing || !song.playing || inst >= NTRK)
+    if (tape_playing || !tape_go || inst >= NTRK)
         return;
     if (!((song.rec >> inst) & 1u) && (vel || !((tp_rec_mask >> inst) & 1u)))
         return;
@@ -1265,7 +1265,7 @@ static void tape_rec(const track_t *t, uint32_t note, uint32_t vel)
 static int tape_bar_step(int dir)
 {
     uint32_t bars = tape_length() / TAPE_BAR, bar = tape_head / TAPE_BAR;
-    if (song.playing || cin_left)
+    if (tape_go || cin_left)
         return 0;
     tape_head = (bar + (dir < 0 ? bars - 1u : 1u)) % bars * TAPE_BAR;
     return 1;
@@ -1275,14 +1275,19 @@ static __attribute__((noinline)) uint32_t tape_beat_frac(void)
     uint32_t quarter = beat_samples(), frac = (beat_pos * TAPE_TPQ + quarter / 2u) / quarter;   /* (rounded: a pulse is 20) */
     return frac < TAPE_TPQ ? frac : TAPE_TPQ - 1u;
 }
-/* PLAY, Start, a locate: the clock to a tick (a bar line for PLAY), the head with it */
-static __attribute__((noinline)) void tape_locate(uint32_t tick)
+/* the clock to a tick: what waits for a GRID line is dropped */
+static void clock_set(uint32_t tick)
 {
     live_drop((1u << NTRK) - 1u);
     song_ticks = tick;
-    tape_head = tick % tape_length();
     tape_beat = tick / TAPE_TPQ;
     tape_frac = (uint16_t)(tick % TAPE_TPQ);
+}
+/* PLAY, Start, a locate: the clock to a tick (a bar line for PLAY), the head with it */
+static __attribute__((noinline)) void tape_locate(uint32_t tick)
+{
+    clock_set(tick);
+    tape_head = tick % tape_length();
     tape_pass = 0;
     tape_seek(tape_head);
 }
@@ -1293,7 +1298,8 @@ static void tape_resume(void)
     song_ticks = tape_beat * TAPE_TPQ + tape_frac;
     tape_seek(tape_head);
 }
-/* the head on, once a block while playing (events_block). Not inlined: the audio ISR's loop keeps its shape */
+/* the clock and the head on, once a block while the clock runs (events_block). Not inlined: the audio ISR's loop keeps
+ * its shape */
 static __attribute__((noinline)) void tape_clock(void)
 {
     uint32_t frac = tape_beat_frac(), now, len = tape_length();
@@ -1308,14 +1314,26 @@ static __attribute__((noinline)) void tape_clock(void)
     }
 }
 
-static void seq_start(void)
+/* the shared clock starts at start_tick: CLOCK OUT's Start, the beat, the click, the slicer and the FX grid from it */
+static void clock_start(uint32_t start_tick)
 {
-    uint32_t i;
     if (clock_out()) {                             /* ((2.2) Start, and the first pulse with this block, step 0's) */
         mo_rt(0xFAu, mo.tick);
         mn.started = 1;
         mn.clk = div_samples(2);
     }
+    song.tick = 0;
+    beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
+    clock_set(start_tick);
+    clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
+    slicer_start();                                /* slicer.c: its step 0 with the sequencer's */
+    perf_start();                                  /* perform.c: its 1/16 grid too */
+}
+
+/* the step sequencers start, every track from its step 0 */
+static void seqs_start_now(void)
+{
+    uint32_t i;
     motion_begin();
     take_clear();                                  /* (Skiff) TAKES: a new log from PLAY */
     for (i = 0; i < NTRK; i++) {                   /* every track from its step 0, together */
@@ -1330,13 +1348,24 @@ static void seq_start(void)
             t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;   /* with the bars from PLAY ((2.2, #94) a kit's too: its LFO
                                                            * runs free, no note restarts it) */
     }
-    song.tick = 0;
-    beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
-    tape_locate(tape_head);                        /* the tape from its head (PLAY snapped it to a bar line) */
-    clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
     song.playing = 1;
-    slicer_start();                                /* slicer.c: its step 0 with the sequencer's */
-    perf_start();                                  /* perform.c: its 1/16 grid too */
+}
+
+/* the tape runs from its head, at the clock's phase in the bar */
+static void tape_start_now(void)
+{
+    tape_head = (tape_head - tape_head % TAPE_BAR + song_ticks % TAPE_BAR) % tape_length();
+    tape_pass = 0;
+    tape_seek(tape_head);
+    tape_go = 1;
+}
+
+/* the clock, the sequencers and the tape together, from the tape's head */
+static void seq_start(void)
+{
+    seqs_start_now();
+    clock_start(tape_head);
+    tape_start_now();
 }
 
 /* (Skiff 2.0, #25) per-note ties (core.h step_ties), the sequencer's side. A NOTE step's tied note that still sounds goes
@@ -1407,12 +1436,19 @@ static uint32_t seq_ties_of(track_t *t, const step_t *s, uint32_t qseq, int32_t 
     return m;
 }
 
+/* the tape stops: its voices end, its held recorded notes close at the head */
+static void tape_halt(void)
+{
+    tape_voices_end(-1, 1);
+    tape_go = tape_recording = 0;
+}
+
 static void mo_motion_end(void);                   /* ((2.2) motion_end, an EXT track's CCs back with it) */
 static void seq_stop(void)
 {
     uint32_t i;
     song.playing = 0;
-    tape_voices_end(-1, 1);
+    tape_halt();
     live_drop((1u << NTRK) - 1u);
     free_stop();                                   /* ((2.5) take.c: what is played from now: a free take */
     thr_out = 0;                                   /* (Skiff) the throws back at once (throw.c) */
@@ -2038,7 +2074,7 @@ static int32_t click_beat_now(void)
 {
     if (cin_left)
         return (int32_t)((uint32_t)(cin_total - cin_left) % 4u);
-    if (!song.playing)
+    if (!clock_run())
         return -1;
     return clk_pos == CLK_START ? 0 : (int32_t)(clk_step >> 2);
 }
@@ -2049,7 +2085,7 @@ static int32_t click_beat_now(void)
 static __attribute__((noinline)) uint32_t clock_ext_block(void)
 {
     uint32_t last;
-    if (!song.playing)
+    if (!clock_run())
         return 0;
     last = midi_clock.have_pulse ? midi_clock.last_ms : midi_clock.start_ms;
     if (fm1_ms - last > 500u) {
@@ -2067,7 +2103,7 @@ static __attribute__((noinline)) uint32_t clock_ext_block(void)
  * hundreds of instructions; a call once a block costs nothing) */
 static __attribute__((noinline)) void events_block(uint32_t n)
 {
-    uint32_t i, pr, ord, seq_n = n, pulse;
+    uint32_t i, pr, ord, seq_n = n, pulse, gate_n;
     uint32_t clock_mode = (uint32_t)song.g[G_CLOCK];
     CAST_BLOCK();                                     /* (Skiff Studio: the block count the cast's stamps use) */
     if (midi_clock.mode != clock_mode) {
@@ -2101,8 +2137,10 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         }
         transport_req = 0;
     }
-    if (song.playing)
+    if (clock_run()) {
         tape_clock();
+        tape_recording = (uint8_t)(tape_go && song.rec);
+    }
     pulse = mo_block_begin(n);                         /* ((2.2) MENU > MIDI changed: what no longer applies, let go;
                                                          * CLOCK OUT's pulse) */
     pr = panic_req;
@@ -2189,10 +2227,11 @@ static __attribute__((noinline)) void events_block(uint32_t n)
     tape_block();
     if (cin_flush)
         cin_record();
-    if (song.playing)
+    if (clock_run())
         click_tick(seq_n);
+    gate_n = clock_mode && clock_run() ? seq_n : n;
     for (i = 0; i < NPART; i++)
-        arp_step(&trk[i], clock_mode ? seq_n : n, clock_mode && song.playing ? seq_n : n);
+        arp_step(&trk[i], clock_mode ? seq_n : n, gate_n);
     if (pulse)
         mo_block_end(pulse);                          /* ((2.2) CLOCK OUT: a pulse later in the block, after its notes) */
     beat_pos += clock_mode ? seq_n : n;               /* the beat the ARP LED flashes on (ui_leds) */
@@ -2200,12 +2239,12 @@ static __attribute__((noinline)) void events_block(uint32_t n)
         beat_pos -= beat_samples();
         beat_pos = beat_pos < beat_samples() ? beat_pos : 0u;
         beat_n = (beat_n + 1u) & 3u;
-        if (song.playing) {
+        if (clock_run()) {
             tape_beat++;
             tape_frac = 0;
         }
     }
-    if (song.playing)
+    if (clock_run())
         song.tick++;
     strum_flush();                                    /* ((2.5) this block's notes of a strum: ordered, timed) */
     sq_in = 0;

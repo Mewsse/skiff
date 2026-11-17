@@ -279,8 +279,8 @@ static __attribute__((noinline)) AUDIO_RAM int perf_begin(uint32_t n)
     pf.act0 = pf.act;
     q = held & PF_Q & ~pf.act;
     pf.split = n;
-    if (q && (!song.playing || bnd < n)) {
-        pf.split = song.playing ? bnd : 0u;
+    if (q && (!clock_run() || bnd < n)) {
+        pf.split = clock_run() ? bnd : 0u;
         pf.act |= q;
     }
     perf_act = pf.act;

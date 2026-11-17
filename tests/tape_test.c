@@ -13,7 +13,7 @@
 #define NTRK 6u
 typedef struct { uint8_t id; } track_t;
 static track_t trk[NTRK];
-static struct { uint8_t playing, rec; } song;
+static uint8_t tape_go, tape_recording;
 static uint32_t song_ticks, tape_head, tape_len;
 static uint16_t tape_pass;
 static uint32_t tape_length(void) { return tape_len ? tape_len : 4u * TAPE_BAR; }
@@ -116,7 +116,7 @@ static void host_block(uint32_t adv)
 {
     if (irq_off)
         fail_now("ISR ran inside an irq-off section");
-    if (song.playing) {
+    if (tape_go) {
         song_ticks += adv;
         tape_head += adv;
         while (tape_head >= tape_length()) {
@@ -309,8 +309,8 @@ static const char *consistent(int with_ref)
 
 static void reset(void)
 {
-    song.playing = 0;
-    song.rec = 0;
+    tape_go = 0;
+    tape_recording = 0;
     tape_len = 0;
     tape_head = song_ticks = 0;
     tape_pass = 0;
@@ -328,7 +328,7 @@ static void reset(void)
 }
 static void start(void)
 {
-    song.playing = 1;
+    tape_go = 1;
     tape_seek(tape_head);
     checked_pass = tape_pass;
 }
@@ -521,7 +521,7 @@ static void test_replace(void)
         put(0, k * 480u, 40 + k, 0, 100);
     start();
     play(tape_length() - 10u, 10);
-    song.rec = 1;
+    tape_recording = 1;
     tp_overdub = 0;
     for (k = 0; k < 16; k++) {
         play_to(240u + k * 480u, 10);
@@ -530,7 +530,7 @@ static void test_replace(void)
         rec_event(TR_OFF, 80 + k, 0);
     }
     play_to(0, 10);
-    song.rec = 0;
+    tape_recording = 0;
     for (k = 0; k < 16; k++)
         old += fires[0][40 + k];
     tape_sweep();
@@ -610,7 +610,7 @@ static void test_overlap(void)
     play_to(1060, 10);
     stop_at = song_ticks;
     tape_voices_end(-1, 1);
-    song.playing = 0;
+    tape_go = 0;
     check("STOP: every tape voice ends", gates_off() && off_at[0][61] == stop_at);
     tape_poll();
 }
@@ -649,7 +649,7 @@ static void test_full(void)
     rec_event(TR_ON, 62, 90);
     rec_event(TR_OFF, 62, 0);
     check("tape full: a recorded note dropped, nothing left open", !tp_open_n && !consistent(0));
-    song.playing = 0;
+    tape_go = 0;
     yield_on = 0;
     tape_delete(0, tp_trk[0].first);
     node = put(1, 100, 63, 0, 10);

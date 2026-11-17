@@ -431,10 +431,10 @@ static int test_faders(void)
     press_id(SMK_BTN_LEFT);
     press_id(SMK_BTN_LEFT);
     bad += check("SMK <: a bar back, from the first bar round to the last (4 bars)", tape_head == 3u * TAPE_BAR);
-    song.playing = 1;
+    tape_go = 1;
     ui.msg_t = 0;
     press_id(SMK_BTN_RIGHT);
-    song.playing = 0;
+    tape_go = 0;
     bad += check("SMK >: playing, the head stays, STOP FIRST said", tape_head == 3u * TAPE_BAR && msg_is("STOP FIRST"));
     tape_head = 0;
     sel_set(5);                                 /* T6: the window T3..T6 */

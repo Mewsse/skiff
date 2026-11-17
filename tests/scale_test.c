@@ -95,6 +95,7 @@ static void key_events_test(void)
     t->p[P_SCALE] = 2;                      /* C minor: E key plays Eb */
     t->p[P_AMODE] = 1;
     song.playing = song.rec = 1;
+    tape_go = 1;                            /* (the tape records) */
     fm1_in.notes = 1u << 8;                /* C# is silent */
     keyboard_block();
     assert(t->arp_phys == 0 && t->nheld == 0 && t->step[0].n == 0 && mo_w == 0 && tp_rq_w == tp_rq_r);

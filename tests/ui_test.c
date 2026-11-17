@@ -190,6 +190,7 @@ static void ui_power_on(void)
     uint32_t i;
     memset(trk, 0, sizeof trk);
     memset(&song, 0, sizeof song); sel_set(0);
+    tape_go = tape_recording = 0;                 /* (.pool at power-on: the tape stopped) */
     memset(fol_src, 0, sizeof fol_src);           /* ((2.1) .pool at power-on: no chords, nothing followed) */
     memset(fol_map, 0, sizeof fol_map);
     memset(&mn, 0, sizeof mn);                    /* ((2.2) .bss at power-on: no note out, nothing owed) */
@@ -739,7 +740,7 @@ static int test_rec(void)
         t->p[P_AOCT] = 2;
         t->p[P_APROB] = 127;
         song.rec = 1;
-        song.playing = 1;
+        song.playing = tape_go = 1;
         input_on(t, 60, 100);
         bad += check("ARP on: the key held is not recorded", !on_tape(0, 128));
         arp_tick(t, 1);
@@ -1326,7 +1327,7 @@ static int test_grid(void)
     /* live recording on the grid: armed and playing, a lane key records its hit at the play head */
     track_defaults_steps(t);
     song.rec = 1;
-    song.playing = 1;
+    song.playing = tape_go = 1;
     t->seq_idx = 5;
     t->seq_pos = 0;
     fm1_in.notes = 1u << key_at(1, 4);
@@ -1352,7 +1353,7 @@ static int test_grid(void)
     ok = !song.grid && !t->step[9].hit && !t->step[9].n && on_tape(t - trk, 35) == 1u && on_tape(t - trk, 36) >= 1u &&
          on_tape(t - trk, 42) == 1u;
     song.rec = 0;
-    song.playing = 0;
+    song.playing = tape_go = 0;
     bad += check("REC on HOME: the GM keys onto the tape (35, 36, 42), the grid untouched", ok);
     /* the BEAT phrase (tests/phrases.h) into the DRUM track fills the grid */
     track_defaults_steps(t);
@@ -4331,10 +4332,10 @@ static int test_bughunt_ui2(void)
                 ok &= e.n == (v ? 1u : 3u) && e.note[0] == 60u && (v || (e.note[1] == 64u && e.note[2] == 67u));
                 ui_power_on(); t = TSEL; t->p[P_VOICE] = v ? V_MONO : V_POLY; t->p[P_CHRD] = CH_DIA3; t->p[P_SCALE] = 1;
                 track_defaults_steps(t); go_home(); frame();
-                song.rec = 1; song.playing = 1; t->seq_idx = 3; t->seq_pos = 0;
+                song.rec = 1; song.playing = tape_go = 1; t->seq_idx = 3; t->seq_pos = 0;
                 fm1_in.notes = 1u << KEY[j]; keyboard_block();
                 fm1_in.notes = 0; keyboard_block();
-                song.rec = 0; song.playing = 0;
+                song.rec = 0; song.playing = tape_go = 0;
                 ok &= on_tape(t - trk, 128) == e.n;
                 for (r.n = 0; r.n < e.n; r.n++)
                     ok &= on_tape(t - trk, e.note[r.n]) == 1u;
@@ -6507,12 +6508,12 @@ static int test_solo(void)
     track_defaults_steps(t);
     t->p[P_SLEN] = 16;
     song.rec = 1u << song.sel;                                    /* recording, the ARP on */
-    song.playing = 1;
+    song.playing = tape_go = 1;
     t->seq_idx = 0;
     t->seq_pos = 0;
     key_down(D_4);
     key_up(D_4);
-    song.playing = 0;
+    song.playing = tape_go = 0;
     song.rec = 0;
     t->p[P_AMODE] = 0;
     events_block(CTL);
@@ -8885,7 +8886,7 @@ static int test_perform(void)
         bad += check("  KNOB 1: a throw of HOME's first parameter (its own value kept; the card: the thrown one)", ok);
     }
     {   /* SELECT turns GRID (stops at its ends, saved when the layer lets go); a key armed on a GRID lands on its line */
-        uint32_t from_head;
+        uint32_t from_ticks;
         ui_grid = 0;
         lys.rp_dirty = 0;
         turn(EN_SELECT, 1);
@@ -8897,16 +8898,16 @@ static int test_perform(void)
             turn(EN_SELECT, 1);
         ok &= ui_grid == GRID_N - 1u && msg_is("GRID 1/16T");
         ui_grid = 1;
-        from_head = tape_head;
-        tape_head = 100;
+        from_ticks = song_ticks;
+        song_ticks = 100;
         ly_tap(white(1));
-        ok &= arm[1].op == ARM_RUN_OFF && arm[1].at == song_ticks + TAPE_BAR - 100u && msg_is("T2 RUN OFF ON GRID");
+        ok &= arm[1].op == ARM_RUN_OFF && arm[1].at == TAPE_BAR && msg_is("T2 RUN OFF ON GRID");
         ly_tap(white(1));
         ui_grid = 0;
         ly_tap(white(1));
         ok &= arm[1].op == ARM_RUN_OFF && arm[1].at == song_ticks && msg_is("T2 RUN OFF NEXT STEP");
         ly_tap(white(1));
-        tape_head = from_head;
+        song_ticks = from_ticks;
         bad += check("  PERFORM SELECT turns GRID (OFF .. 1/16T, stops at the ends); a key lands on the next GRID line, OFF: next step", ok);
     }
     ly_tap(key_at(1, 2));                             /* (T3's mute armed) */

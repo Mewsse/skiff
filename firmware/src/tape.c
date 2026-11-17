@@ -4,8 +4,8 @@
  * a few stores. The audio ISR (tape_block) only moves each track's cur, sets the ghost bit, plays its voices and
  * fills the record queue. A node that leaves a list waits in limbo until the ISR finished a block since.
  * Included by seq.c after tape_length(). Needs, declared before it: grid.c TAPE_TPQ / TAPE_BAR; seq.c tape_len
- * (0: 4 bars), tape_length(), tape_head, tape_pass, song_ticks; voice.c trk[], trk_note_on / trk_note_off,
- * tape_playing; core.h song.playing / song.rec, NTRK; fm1_irq.h fm1_irq_off / fm1_irq_on. */
+ * (0: 4 bars), tape_length(), tape_head, tape_pass, song_ticks, tape_go / tape_recording; voice.c trk[], trk_note_on /
+ * trk_note_off, tape_playing; core.h NTRK; fm1_irq.h fm1_irq_off / fm1_irq_on. */
 #ifndef TAPE_N
 #define TAPE_N 1440u                   /* nodes, all tracks: 10 B each (tape_store.c: three chunks of them) */
 #endif
@@ -179,7 +179,7 @@ static void tp_play(uint32_t track, uint32_t wrapped)
 {
     tape_track_t *tt = &tp_trk[track];
     uint32_t budget = TAPE_BURST, len = tape_length(), quiet = tt->mute, steps = TAPE_N;
-    uint32_t replace = song.rec && track == tp_target && !tp_overdub;
+    uint32_t replace = tape_recording && track == tp_target && !tp_overdub;
     uint16_t node = tt->cur;
     int round;
     for (round = wrapped ? 0 : 1; round < 2; round++) {
@@ -227,11 +227,11 @@ static __attribute__((noinline)) void tape_block(void)
     uint32_t k, adv, wraps, ending = 0;
     tp_epoch++;
     for (k = 0; k < TAPE_TRACKS; k++)
-        if (tp_trk[k].kill || (tp_trk[k].mute && song.playing)) {
+        if (tp_trk[k].kill || (tp_trk[k].mute && tape_go)) {
             ending |= 1u << k;
             tp_trk[k].kill = 0;
         }
-    if (!song.playing) {
+    if (!tape_go) {
         if (ending && tp_voices)
             for (k = 0; k < TAPE_VOICES; k++)
                 if (tp_voice[k] && (ending >> TP_VTRK(tp_voice[k]) & 1u))
@@ -574,7 +574,7 @@ static void tape_poll(void)
         if (lost)
             tp_close_open(0, 0, tape_head, tape_pass);
     }
-    if (tp_ghosts && !song.playing) {             /* stopped: the ghosts go, the counts are the notes (the TAPE page) */
+    if (tp_ghosts && !tape_go) {                  /* stopped: the ghosts go, the counts are the notes (the TAPE page) */
         tp_ghosts = 0;
         tape_sweep();
     }

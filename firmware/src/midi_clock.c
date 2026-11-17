@@ -37,11 +37,11 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
             midi_clock.spp = 0;
             return;
         }
-        if (!song.playing) {
+        if (!clock_run()) {
             motion_begin();
             tape_resume();
         }
-        song.playing = 1;
+        song.playing = tape_go = 1;
     } else if (status == 0xFCu) {
         seq_stop();
     }
@@ -51,7 +51,7 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
 static __attribute__((noinline)) void midi_clock_spp(uint32_t pos)
 {
     pos &= 0x3FFFu;
-    if (song.playing)
+    if (clock_run())
         seq_locate(pos);
     else
         midi_clock.spp = (uint16_t)(pos + 1u);
@@ -91,7 +91,7 @@ static __attribute__((noinline)) void midi_clock_tempo(uint32_t dt)
     song.g[G_BPM] = (int16_t)clamp((int32_t)((t10 + 5u) / 10u), 40, 240);
     old_beat = beat_samples();
     new_beat = QUARTER24((uint32_t)FS * sum / (1000u * n));   /* ((2.5, #107) core.h) */
-    if (song.playing && new_beat != old_beat) {
+    if (clock_run() && new_beat != old_beat) {
         uint32_t i, ratio = (new_beat << 12) / old_beat;
         /* Preserve each track's fractional step phase when the master
          * changes tempo. The next pulse then lands on its new boundary. */
@@ -122,7 +122,7 @@ static __attribute__((noinline)) void midi_clock_pulse(uint32_t ms)
         if (dt >= 250u && dt <= 1500u)             /* (40..240 BPM: a gap or a burst is not a tempo) */
             midi_clock_tempo(dt);
     }
-    if (song.playing) {
+    if (clock_run()) {
         if (midi_clock.have_pulse) {
             uint32_t interval = ms - midi_clock.last_ms;
             if (interval >= 8u && interval <= 80u)   /* ((2.5, #111) smoothed, as SLOOP's) */

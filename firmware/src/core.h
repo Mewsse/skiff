@@ -571,6 +571,10 @@ typedef struct {
 
 static track_t trk[NTRK];        /* the instrument: six parts */
 static song_t song;
+/* the tape's transport (the audio ISR's, seq.c): it runs, it records. The step sequencers' is song.playing; the shared
+ * clock (seq.c song_ticks, the beat, the click) runs while either does */
+static volatile uint8_t tape_go __attribute__((section(".pool"))), tape_recording __attribute__((section(".pool")));
+static int clock_run(void) { return (song.playing | tape_go) != 0; }
 static uint8_t ui_cpu;           /* the load (%) the MENU shows: taken at each frame's start (main.c), so a frame draws one
                                   * value ((Skiff Studio) the cast's F tells the copy) */
 /* the selected track. (Skiff 2.0) A pointer kept with song.sel, so a use is a load, not song.sel times the track's

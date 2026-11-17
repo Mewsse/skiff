@@ -196,6 +196,42 @@ static int test_transport(void)
     return bad;
 }
 
+/* while the tape runs its head and the shared clock are on the same place in the bar (the GRID reads song_ticks) */
+static uint32_t phase_wrong;
+static void phase_blocks(uint32_t blocks)
+{
+    uint32_t blk;
+    for (blk = 0; blk < blocks; blk++) {
+        events_block(CTL);
+        phase_wrong += tape_go && song_ticks % TAPE_BAR != tape_head % TAPE_BAR;
+    }
+}
+static int test_phase_invariant(void)
+{
+    uint32_t ran;
+    fresh(120);
+    phase_wrong = 0;
+    tape_head = 5000;
+    transport_req = 1;
+    phase_blocks(3000);
+    ran = tape_go;
+    seq_locate(301);
+    phase_wrong += song_ticks % TAPE_BAR != tape_head % TAPE_BAR;
+    phase_blocks(3000);
+    tape_set_len(3);
+    phase_blocks(3000);
+    transport_req = 2;
+    events_block(CTL);
+    ran &= tape_bar_step(1) && tape_bar_step(1);
+    transport_req = 1;
+    phase_blocks(3000);
+    ran &= tape_go;
+    transport_req = 2;
+    events_block(CTL);
+    tape_len = 0;
+    return check("the tape running: head = clock mod a bar across PLAY, SPP, a length change, bar steps", ran && !phase_wrong);
+}
+
 /* the arm table (launch.c): an op armed on step k lands at the boundary into step k + 1 */
 static uint32_t arm_land(track_t *t, uint32_t op, uint32_t *from)
 {
@@ -518,6 +554,7 @@ int main(void)
     fails += test_off();
     fails += test_window();
     fails += test_transport();
+    fails += test_phase_invariant();
     fails += test_bars();
     fails += test_tempo();
     fails += test_external();

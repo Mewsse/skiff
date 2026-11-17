@@ -18,7 +18,7 @@ static uint32_t arm_when(uint32_t grid)
     int32_t swing = song.g[G_SWING];
     if (!grid)
         return song_ticks;
-    return song_ticks + grid_next(grid, swing < 0 ? 0u : (uint32_t)swing, tape_head) - tape_head;
+    return grid_next(grid, swing < 0 ? 0u : (uint32_t)swing, song_ticks);
 }
 /* track k's armed op now (the ISR at a step boundary, or the main loop stopped) */
 static void arm_do(track_t *t, uint32_t op)
