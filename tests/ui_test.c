@@ -2418,18 +2418,24 @@ static uint32_t gates(void)                        /* voices of every track with
 static uint32_t white(uint32_t w) { return key_at(0, w); }
 
 /* the tape is the main screen: power-on, every way home, the keys, the reels */
-static uint32_t reels_hash(void)
+static uint32_t screen_hash(uint32_t top, uint32_t rows, uint32_t left, uint32_t right)
 {
     uint32_t sum = 2166136261u, row, col;
-    for (row = 0; row < 30u; row++)
-        for (col = 20u; col < 220u; col++)
-            if (col < 52u || col > 188u)
-                sum = (sum ^ host_screen[(graph_y() + 2u + row) * 240u + col]) * 16777619u;
+    for (row = top; row < top + rows; row++)
+        for (col = left; col < right; col++)
+            sum = (sum ^ host_screen[(graph_y() + row) * 240u + col]) * 16777619u;
     return sum;
 }
+/* the two reels' hubs: their spokes turn, the pack around them follows the head */
+static uint32_t reels_hash(void)
+{
+    return screen_hash(TPR_CY - 14u, 29u, TPR_L - 14u, TPR_L + 15u) ^ screen_hash(TPR_CY - 14u, 29u, TPR_R - 14u, TPR_R + 15u) * 31u;
+}
+/* the pill's row: the caption at rest, a knob's name and value after a turn */
+static uint32_t pill_hash(void) { return screen_hash(TPQ_Y, TPQ_H, 40u, 200u); }
 static int test_tape_home(void)
 {
-    uint32_t bad = 0, still, turned, moves = 0, step, before;
+    uint32_t bad = 0, still, turned, moves = 0, step, before, shift_ref;
     ui_power_on();
     memset(&ui, 0, sizeof ui);
     go_tape();                                        /* as main.c felucca_init */
@@ -2493,6 +2499,46 @@ static int test_tape_home(void)
     }
     bad += check("playing: the reels turn with the head", moves >= 6u);
     song.playing = 0;
+    {
+        uint32_t len = 8u * TAPE_BAR;
+        bad += check("pack radii: the head at the start, the left reel full and the right one empty",
+                     tape_pack(len, len) == TPR_PACK_MIN + TPR_PACK_ADD && tape_pack(0, len) == TPR_PACK_MIN);
+        bad += check("pack radii: halfway the two are equal", tape_pack(len / 2u, len) == tape_pack(len - len / 2u, len));
+        bad += check("pack radii: the left shrinks and the right grows with the head",
+                     tape_pack(len - len / 4u, len) < tape_pack(len - 0u, len) &&
+                     tape_pack(len / 4u, len) > tape_pack(0, len) && tape_pack(len / 4u, len) < tape_pack(len / 2u, len));
+    }
+    ui.hot_t = 0;
+    tape_head = 0;
+    ui.force = 1;
+    frames(100);
+    {
+        uint32_t rest = pill_hash(), start = reels_hash();
+        bad += check("at rest: no knob blocks, the tape has the screen under the header",
+                     tape_scene() && card_h() == 0u && graph_y() == Y_LABEL && graph_h() == TP_SCENE_H && ui.hot_t == 0u);
+        turn(EN_K1, 1);
+        bad += check("a knob turned: its pill shows in the caption's row", ui.hot_t != 0u && pill_hash() != rest && card_h() == 0u);
+        turn(EN_K4, 1);
+        bad += check("another knob: the pill follows it (MUTE ON)", ui.hot_col == 3u && tp_trk[tp_target % TAPE_TRACKS].mute);
+        turn(EN_K4, -1);
+        frames(1500);
+        bad += check("the pill is gone after its time, the caption is back", ui.hot_t == 0u && pill_hash() == rest);
+        tape_head = 5u * TAPE_BAR / 3u;
+        ui.force = 1;
+        frames(100);
+        bad += check("the head moved: the reels show it", reels_hash() != start);
+    }
+    shift_ref = reels_hash();
+    ui.shift = 1;
+    ui.force = 1;
+    ui_draw();
+    bad += check("SHIFT's map over the tape: the cards are back, the tape's own geometry is not used",
+                 !tape_scene() && card_h() == CARD_H && graph_y() == Y_GRAPH);
+    ui.shift = 0;
+    ui.force = 1;
+    ui_draw();
+    ui_draw();
+    bad += check("SHIFT let go: the tape again, as before", tape_scene() && graph_y() == Y_LABEL && reels_hash() == shift_ref);
     return bad;
 }
 

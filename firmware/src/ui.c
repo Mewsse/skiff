@@ -481,14 +481,21 @@ static uint32_t large_kind(void)
     return g == GR_BROWSE || g == GR_SLOTS || g == GR_USER || step_page(g) ||
            g == GR_FEEL || g == GR_SLICES || g == GR_EVENTS || g == GR_TAPE || sheet_of(g) ? LK_LABEL : LK_TALL;
 }
+/* SEQ > TAPE (ui_graph.c graph_tape) has the whole screen under the header, no cards: the page's own, not under a layer's
+ * or SHIFT's map (they draw the cards over it), not FREE TAKE's picker */
+#define TP_SCENE_H (Y_GRAPH + H_GRAPH + FOOT_LINE - Y_LABEL)
+static int tape_scene(void);
 /* the geometry of the page shown: the cards' height, the panel's top and height */
-static uint32_t card_h(void) { return large_kind() == LK_TALL ? LG_CARD_H : CARD_H; }
-static uint32_t graph_y(void) { return large_kind() == LK_TALL ? LG_Y_GRAPH : Y_GRAPH; }
+static uint32_t card_h(void) { return tape_scene() ? 0u : large_kind() == LK_TALL ? LG_CARD_H : CARD_H; }
+static uint32_t graph_y(void) { return tape_scene() ? Y_LABEL : large_kind() == LK_TALL ? LG_Y_GRAPH : Y_GRAPH; }
 /* (Skiff) BLOCKS: the footer is one line, as the B mockup's (no step strip): its canvas 16 px lower, the panel 16 px
  * taller (ADSR and LFO grow into it, the fixed layouts sit centred: graph_pad) */
 #define FOOT_LINE 16u
 static uint32_t foot_less(void) { return FOOT_LINE; }
-static uint32_t graph_h(void) { return (large_kind() == LK_TALL ? LG_H_GRAPH : H_GRAPH) + foot_less(); }
+static uint32_t graph_h(void)
+{
+    return tape_scene() ? TP_SCENE_H : (large_kind() == LK_TALL ? LG_H_GRAPH : H_GRAPH) + foot_less();
+}
 static int32_t graph_pad(void) { return (int32_t)foot_less() / 2; }
 static uint32_t foot_y(void) { return Y_FOOT + foot_less(); }
 static uint32_t foot_h(void) { return H_FOOT - foot_less(); }
@@ -1607,6 +1614,7 @@ static void load_end(track_t *t)
 }
 
 #include "ui_take.c"                                  /* Skiff: SHIFT + SAVE, TAKES into the track (take_commit) */
+static int tape_scene(void) { return !ui.home && !ui.shift && !ui.layer && !fr.on && cur_page()->graph == GR_TAPE; }
 
 /* the editor's SET right after a load on the selected track (an audition: G_ENGSEL, then the patch's
  * values): part of that load, the copy from before it stays */

@@ -219,7 +219,7 @@ too. Switching a track to DRUM-X keeps the kit the project has.
 
 <table>
 <tr>
-<td width="33%"><img src="docs/img/tape_notes.png" alt="SEQ › TAPE"><br><sub><b>TAPE</b>, the main screen: two reels that turn with the head, the tape between them, four lanes of notes, the target's raised</sub></td>
+<td width="33%"><img src="docs/img/tape_notes.png" alt="SEQ › TAPE"><br><sub><b>TAPE</b>, the main screen: a tape machine, two large reels that turn with the head, and the four tracks as thin bars below, the target's raised</sub></td>
 <td width="33%"><img src="docs/img/layer_perform.png" alt="The PERFORM layer"><br><sub><b>PERFORM</b> (hold ARP): each track's RUN, its mute, throws on the knobs</sub></td>
 <td width="33%"><img src="docs/img/tape_merge.png" alt="SEQ › TAPE, merging"><br><sub><b>MERGE</b>: a track into the target, after a question</sub></td>
 </tr>
@@ -487,9 +487,7 @@ scenes and no LAUNCH point: what a track plays is what is on its steps, and the 
   (each note as it sounds; chord follow is applied again on playback); a track that SEQ REC records is not copied. Overdub keeps what is there; a note played again within a few ticks of the same note is
   kept once, so a sequencer left running over four passes leaves one pass. A key held when the loop ends keeps its
   whole length. Turn RUN off after a pass to keep only the tape's copy. A muted track records nothing.
-- **The tape screen** draws two reels and the tape between them past a head block; the reels turn a bar of tape a turn and the band's marks pass a beat each, so they stand still when stopped. Under them the four tracks' lanes
-  (the target's raised, a muted one dimmed, a merge's source framed), the head, the counter (bar.beat), PLAY / REC / STOP, the
-  notes held, the GRID and the length. NEON adds the striped sun. The sound pages are one button away (ENV, EDIT, ...); HOME
+- **The tape screen** is a tape machine on the whole screen under the header: two large reels (the tape wound on each follows the head, the hubs turn a bar of tape a turn), the tape running from them over guide rollers to a head block, a big bar.beat counter on top, the transport as a sign between the reels (a triangle for PLAY, a square for STOP, a red dot blinking for REC, a ring for an armed track), a striped sun behind and a grid floor under, in the look's colours. At the bottom the four tracks are thin bars over the tape's length, each note a segment (where it is and how long, not its pitch; the target's raised with a tab, a muted one dimmed, a merge's source framed) under a loop bracket with a tick a bar, the head a line across them; the notes held, the GRID and the length are in small text. No knob blocks sit on it: turn a knob and a pill names it and its value for about a second. The sound pages are one button away (ENV, EDIT, ...); HOME
   comes back.
 - **TAPE's knobs:** 1 TRACK (the target: REC writes there, 3 and 4 act on it), 2 LENGTH (bars), 3 ACTION (CLEAR, or
   merge track 1–4 into the target), 4 MUTE. OCT+ does the action after asking; a merge empties the source and keeps

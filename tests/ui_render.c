@@ -757,7 +757,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_INS_FILTER, S_INS_FILTER_HP,                                                         /* (2.5, 6B) */
        S_CHORD_STRUM, S_CHORD_STRUM_ALT,                                                      /* (2.5, 7B) */
        S_HINT_FREE,                                                             /* (2.5) */
-       S_TAPE_EMPTY, S_TAPE_NOTES, S_TAPE_MUTED, S_TAPE_LONG, S_TAPE_MERGE, S_TAPE_CLEAR, S_TAPE_PLAY, S_TAPE_REC,   /* SEQ > TAPE */
+       S_TAPE_EMPTY, S_TAPE_NOTES, S_TAPE_MUTED, S_TAPE_LONG, S_TAPE_MERGE, S_TAPE_CLEAR, S_TAPE_PLAY, S_TAPE_REC, S_TAPE_PICK, S_TAPE_MUTE_TURN,   /* SEQ > TAPE */
        S_MOCK_HOME, S_MOCK_PRESETS, S_MOCK_SEQ, S_MOCK_DRUM, S_MOCK_MIXER, S_MOCK_DIALOG, S_MOCK_MENU, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "message_nofile", "presets", "presets_nofav", "user",
     "project", "lanes", "step", "pattern", "chance", "motion", "drum",
@@ -793,7 +793,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "drum_kit_usr", "lanes_usr",
     "follow", "follow_scale", "follow_fit", "follow_off", "follow_wait", "free_take", "free_take_turned", "dly_mono", "dly_ping", "fx_delay", "fx_reverb", "fx_sends", "pattern_64", "project_new",
     "project_clear", "confirm_clear_trks", "insert_filter", "insert_filter_hp", "chord_strum",
-    "chord_strum_alt", "hint_free_take", "tape_empty", "tape_notes", "tape_muted", "tape_long", "tape_merge", "tape_clear", "tape_play", "tape_rec", "mock_home", "mock_presets", "mock_seq", "mock_drum", "mock_mixer", "mock_dialog", "mock_menu"};
+    "chord_strum_alt", "hint_free_take", "tape_empty", "tape_notes", "tape_muted", "tape_long", "tape_merge", "tape_clear", "tape_play", "tape_rec", "tape_pick", "tape_mute_turn", "mock_home", "mock_presets", "mock_seq", "mock_drum", "mock_mixer", "mock_dialog", "mock_menu"};
 
 /* the scenes of the UI design screens: the state the UI-redesign
  * prototype drew them from (its setup(): two pattern tracks, the drum pattern on track 4, a synthetic scope),
@@ -1164,7 +1164,7 @@ static void setup(int s)
         else ui.home = 1;
         ui.shift = 1;
         break;
-    case S_TAPE_EMPTY: case S_TAPE_NOTES: case S_TAPE_MUTED: case S_TAPE_LONG: case S_TAPE_MERGE: case S_TAPE_CLEAR: case S_TAPE_PLAY: case S_TAPE_REC: {
+    case S_TAPE_EMPTY: case S_TAPE_NOTES: case S_TAPE_MUTED: case S_TAPE_LONG: case S_TAPE_MERGE: case S_TAPE_CLEAR: case S_TAPE_PLAY: case S_TAPE_REC: case S_TAPE_PICK: case S_TAPE_MUTE_TURN: {
         static const uint8_t NOTE[12] = {60, 64, 67, 72, 48, 52, 55, 60, 36, 43, 36, 48};
         uint32_t k, bars = s == S_TAPE_LONG ? 40u : 4u;
         song.playing = 0; song.rec = 0; ui.msg_t = 0;
@@ -1173,12 +1173,12 @@ static void setup(int s)
             for (k = 0; k < 12u; k++)
                 (void)tape_insert(k % 3u, (k * bars * TAPE_BAR / 12u + 40u) | (uint32_t)NOTE[k] << 20 | (k % 6u) << 27,
                                   (k % 2u ? 480u : 120u) | 100u << 20, TAPE_ANY_PASS);
-        tp_target = s == S_TAPE_MERGE || s == S_TAPE_CLEAR ? 0u : 1u;
-        if (s == S_TAPE_MUTED) tp_trk[tp_target].mute = 1;
-        if (s == S_TAPE_MERGE) ui.tsrc = 2;
+        tp_target = s == S_TAPE_MERGE || s == S_TAPE_CLEAR || s == S_TAPE_PICK ? 0u : 1u;
+        if (s == S_TAPE_MUTED || s == S_TAPE_MUTE_TURN) tp_trk[tp_target].mute = 1;
+        if (s == S_TAPE_MERGE || s == S_TAPE_PICK) ui.tsrc = 2;
         tape_head = bars * TAPE_BAR * 2u / 5u;
         go_page(GR_TAPE);
-        ui.hot_col = s == S_TAPE_MUTED ? 3u : s == S_TAPE_LONG ? 1u : 0u; ui.hot_t = 30;
+        ui.hot_col = s == S_TAPE_MUTE_TURN ? 3u : s == S_TAPE_PICK ? 2u : 1u; ui.hot_t = s == S_TAPE_LONG || s == S_TAPE_PICK || s == S_TAPE_MUTE_TURN ? 30u : 0u;   /* (a knob turned: its pill; the others at rest) */
         if (s == S_TAPE_MERGE) { ui.confirm = CF_TAPE_MERGE; ui.confirm_trk = 0u | 1u << 4; }
         if (s == S_TAPE_CLEAR) { ui.confirm = CF_TAPE_CLEAR; ui.confirm_trk = 0u; }
         if (s == S_TAPE_PLAY || s == S_TAPE_REC) { song.playing = 1; ui.frame = 0; tape_head += TAPE_TPQ / 3u; }

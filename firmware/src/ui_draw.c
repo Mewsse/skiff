@@ -804,6 +804,8 @@ static void draw_columns(void)
     char val[12];
     const char *unit;
     (void)motion_mask(song.sel, card_mot_mask);       /* (PLAY OFF: no scan) */
+    if (tape_scene())                                 /* (the tape's knobs speak in its own picture: graph_tape's pill) */
+        return;
     if (fr.on) {
         fr_columns();
         return;
@@ -927,23 +929,14 @@ static void draw_columns(void)
         sheet_of(cur_page()->graph)->cards();
         return;
     }
-    if (cur_page()->graph == GR_TAPE) {                  /* TRACK, LENGTH, ACTION (KNOB 3: what OCT+ does), MUTE */
+    if (cur_page()->graph == GR_TAPE) {                  /* under a layer's or SHIFT's map: TRACK, LENGTH, ACTION, MUTE */
         uint32_t target = tp_target % TAPE_TRACKS, bars = tape_length() / TAPE_BAR, mute = tp_trk[target].mute;
-        fmt_int(val, (int32_t)target + 1);
-        draw_column(0, "TRACK", val, "/4", VR_LIVE, (int32_t)target * 1000 / 3, ICON_AUTO);
-        fmt_int(val, (int32_t)bars);
-        draw_column(1, "LENGTH", val, bars == 1u ? "BAR" : "BARS", VR_LIVE, (int32_t)bars * 1000 / (int32_t)TAPE_BARS_MAX,
-                    ICON_AUTO);
-        if (!ui.tsrc) {
-            str_cpy(val, "CLEAR", sizeof val);
-        } else if (tape_src_ok()) {
-            str_cpy(val, "FROM 1", sizeof val);
-            val[5] = (char)('0' + ui.tsrc);
-        } else {
-            str_cpy(val, "--", sizeof val);
+        const char *label;
+        for (c = 0; c < 4u; c++) {
+            tape_words(c, &label, val, &unit);
+            draw_column(c, label, val, unit, c == 2u ? (tape_act_ready() ? VR_THEME : VR_DIM) : c == 3u && mute ? VR_ACCENT : VR_LIVE,
+                        c == 0u ? (int32_t)target * 1000 / 3 : c == 1u ? (int32_t)bars * 1000 / (int32_t)TAPE_BARS_MAX : -1, ICON_AUTO);
         }
-        draw_column(2, "ACTION", val, "", tape_act_ready() ? VR_THEME : VR_DIM, -1, ICON_AUTO);
-        draw_column(3, "MUTE", mute ? "ON" : "OFF", "", mute ? VR_ACCENT : VR_LIVE, -1, ICON_AUTO);
         return;
     }
     if (cur_page()->graph == GR_USER) {                  /* SLOT, then three GO buttons */
