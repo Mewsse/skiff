@@ -2062,12 +2062,38 @@ static void tape_roller(int32_t cx)
     tape_disc(cx, TPT_Y + TPT_ROLLER, TPT_ROLLER, T_MID);
     tape_disc(cx, TPT_Y + TPT_ROLLER, 1, T_BG);
 }
+static uint32_t tape_isqrt(uint32_t value)
+{
+    uint32_t root = 0u, bit = 1u << 30;
+    while (bit > value)
+        bit >>= 2;
+    for (; bit; bit >>= 2) {
+        if (value >= root + bit) {
+            value -= root + bit;
+            root = (root >> 1) + bit;
+        } else {
+            root >>= 1;
+        }
+    }
+    return root;
+}
+static int32_t tape_div(int32_t num, int32_t den) { return (num < 0 ? num - den / 2 : num + den / 2) / den; }
+/* the outer tangent, on the side away from the machine's middle, of the reel's pack and the roller under it: the tape runs
+ * from the pack's tangent point to the roller's. dir is -1 for the right-hand reel (the picture mirrored) */
+static void tape_leave(int32_t reel_x, int32_t pack, int32_t roller_x, int32_t dir)
+{
+    int32_t run = (roller_x - reel_x) * dir, drop = TPT_Y + TPT_ROLLER - TPR_CY;
+    int32_t gap = pack - TPT_ROLLER, dist2 = run * run + drop * drop;
+    int32_t span = (int32_t)tape_isqrt((uint32_t)(dist2 - gap * gap));
+    int32_t norm_x = run * gap - drop * span, norm_y = drop * gap + run * span;
+    cv_line_t(reel_x + dir * tape_div(pack * norm_x, dist2), TPR_CY + tape_div(pack * norm_y, dist2),
+              roller_x + dir * tape_div(TPT_ROLLER * norm_x, dist2), TPT_Y + TPT_ROLLER + tape_div(TPT_ROLLER * norm_y, dist2), T_MID, 2);
+}
 static void tape_run(uint32_t pos, uint32_t len)
 {
     int32_t mark;
-    int32_t supply = tape_pack(len - pos, len) * 707 / 1000, take = tape_pack(pos, len) * 707 / 1000;
-    cv_line_t(TPR_L + supply, TPR_CY + supply, TPT_L, TPT_Y, T_MID, 2);
-    cv_line_t(TPR_R - take, TPR_CY + take, TPT_R, TPT_Y, T_MID, 2);
+    tape_leave(TPR_L, tape_pack(len - pos, len), TPT_L, 1);
+    tape_leave(TPR_R, tape_pack(pos, len), TPT_R, -1);
     cv_rect(TPT_L, TPT_Y, TPT_R - TPT_L, 2, T_MID);
     tape_roller(TPT_L);
     tape_roller(TPT_R);
